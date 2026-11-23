@@ -1,0 +1,6 @@
+{
+  "name": "Thế Giới Voxel 3D",
+  "description": "Game khám phá và xây dựng thế giới khối Voxel 3D vô hạn bằng Three.js, Simplex Noise và Face Culling.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

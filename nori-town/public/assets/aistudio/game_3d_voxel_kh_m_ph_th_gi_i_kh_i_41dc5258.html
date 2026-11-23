@@ -1,0 +1,1742 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Thế Giới Voxel 3D - Three.js</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+  <style>
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: 'Inter', sans-serif;
+      background-color: #78a7ff;
+    }
+    #game-canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+    .font-mono-tech {
+      font-family: 'JetBrains Mono', monospace;
+    }
+    /* Tâm ngắm dấu cộng giữa màn hình */
+    .crosshair {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      width: 20px;
+      height: 20px;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+      z-index: 20;
+    }
+    .crosshair::before,
+    .crosshair::after {
+      content: '';
+      position: absolute;
+      background: rgba(255, 255, 255, 0.9);
+      box-shadow: 0 0 3px rgba(0, 0, 0, 0.85);
+    }
+    .crosshair::before {
+      top: 9px;
+      left: 0;
+      width: 20px;
+      height: 2px;
+    }
+    .crosshair::after {
+      top: 0;
+      left: 9px;
+      width: 2px;
+      height: 20px;
+    }
+    /* Ô chọn trong Hotbar */
+    .hotbar-slot {
+      transition: transform 0.12s cubic-bezier(0.2, 0.8, 0.2, 1), border-color 0.12s ease, background-color 0.12s ease;
+    }
+    .hotbar-slot.active {
+      transform: translateY(-5px) scale(1.06);
+      border-color: #ffffff;
+      background-color: rgba(255, 255, 255, 0.28);
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.45), inset 0 0 0 2px rgba(255, 255, 255, 0.6);
+    }
+    /* Hiệu ứng mờ kính */
+    .glass-panel {
+      background: rgba(15, 23, 42, 0.62);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+    }
+  </style>
+</head>
+<body>
+  <!-- Canvas 3D chính -->
+  <canvas id="game-canvas"></canvas>
+
+  <!-- Tâm ngắm -->
+  <div id="crosshair" class="crosshair hidden"></div>
+
+  <!-- HUD Góc trên bên trái: Thông số kỹ thuật & Tọa độ -->
+  <div id="hud-stats" class="fixed top-4 left-4 z-20 glass-panel text-white px-4 py-3 rounded-xl shadow-lg pointer-events-none text-xs sm:text-sm space-y-1.5">
+    <div class="flex items-center gap-2 font-bold text-emerald-300 tracking-wide uppercase text-xs">
+      <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+      Thế Giới Voxel 3D
+    </div>
+    <div class="font-mono-tech text-slate-100">
+      Tọa độ: <span id="stat-coords" class="text-amber-300 font-semibold">X: 0 | Y: 0 | Z: 0</span>
+    </div>
+    <div class="font-mono-tech text-slate-200 flex items-center gap-4">
+      <span>FPS: <strong id="stat-fps" class="text-emerald-400">60</strong></span>
+      <span>Chunk: <strong id="stat-chunks" class="text-sky-300">0</strong></span>
+    </div>
+    <div id="stat-target" class="font-mono-tech text-xs text-slate-300 pt-0.5 border-t border-white/10">
+      Đang nhìn: <span class="text-white">Không có</span>
+    </div>
+  </div>
+
+  <!-- HUD Góc trên bên phải: Hướng dẫn nhanh & Nút tạm dừng -->
+  <div class="fixed top-4 right-4 z-20 flex flex-col items-end gap-2">
+    <button id="btn-pause" class="glass-panel hover:bg-slate-800/80 active:scale-95 text-white px-3.5 py-2 rounded-xl text-xs sm:text-sm font-medium shadow-lg transition flex items-center gap-2 cursor-pointer">
+      <svg class="w-4 h-4 text-amber-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+      </svg>
+      <span>Menu (ESC)</span>
+    </button>
+
+    <div class="hidden md:block glass-panel text-slate-200 px-3.5 py-2.5 rounded-xl text-xs space-y-1 pointer-events-none shadow-lg">
+      <div><span class="text-amber-300 font-semibold">WASD</span>: Di chuyển • <span class="text-amber-300 font-semibold">Shift</span>: Chạy nhanh</div>
+      <div><span class="text-amber-300 font-semibold">Space</span>: Nhảy / Bơi lên</div>
+      <div><span class="text-amber-300 font-semibold">Chuột trái</span>: Đập khối • <span class="text-amber-300 font-semibold">Chuột phải / E</span>: Đặt khối</div>
+      <div><span class="text-amber-300 font-semibold">1 - 6 / Lăn chuột</span>: Đổi loại khối</div>
+    </div>
+  </div>
+
+  <!-- Thanh Hotbar chọn khối ở đáy màn hình -->
+  <div id="hotbar-container" class="fixed bottom-4 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center gap-2">
+    <div id="selected-block-label" class="glass-panel text-white text-xs sm:text-sm font-semibold px-3.5 py-1 rounded-full shadow-md tracking-wide">
+      1. Khối Cỏ
+    </div>
+    <div id="hotbar" class="glass-panel p-2 rounded-2xl flex items-center gap-2 sm:gap-2.5 shadow-2xl">
+      <!-- Các ô khối sẽ được tạo tự động bằng JS kèm hình preview pixel art -->
+    </div>
+  </div>
+
+  <!-- Điều khiển cảm ứng cho thiết bị di động / máy tính bảng -->
+  <div id="mobile-controls" class="md:hidden fixed inset-x-0 bottom-24 z-20 px-4 flex justify-between items-end pointer-events-none">
+    <!-- Cụm D-Pad di chuyển -->
+    <div class="grid grid-cols-3 gap-1.5 pointer-events-auto">
+      <div></div>
+      <button data-key="KeyW" class="mobile-btn w-12 h-12 glass-panel rounded-xl text-white font-bold flex items-center justify-center active:bg-white/30">▲</button>
+      <div></div>
+      <button data-key="KeyA" class="mobile-btn w-12 h-12 glass-panel rounded-xl text-white font-bold flex items-center justify-center active:bg-white/30">◀</button>
+      <button data-key="KeyS" class="mobile-btn w-12 h-12 glass-panel rounded-xl text-white font-bold flex items-center justify-center active:bg-white/30">▼</button>
+      <button data-key="KeyD" class="mobile-btn w-12 h-12 glass-panel rounded-xl text-white font-bold flex items-center justify-center active:bg-white/30">▶</button>
+    </div>
+
+    <!-- Cụm hành động: Đập, Đặt, Nhảy -->
+    <div class="flex flex-col gap-2 items-end pointer-events-auto">
+      <div class="flex gap-2">
+        <button id="mobile-break" class="px-3.5 py-3 glass-panel rounded-xl text-rose-300 font-semibold text-xs active:bg-rose-500/30">Đập</button>
+        <button id="mobile-place" class="px-3.5 py-3 glass-panel rounded-xl text-emerald-300 font-semibold text-xs active:bg-emerald-500/30">Đặt</button>
+      </div>
+      <button data-key="Space" class="mobile-btn w-24 h-12 glass-panel rounded-xl text-amber-300 font-bold text-sm flex items-center justify-center active:bg-white/30">NHẢY</button>
+    </div>
+  </div>
+
+  <!-- Màn hình chờ / Tạm dừng (Pointer Lock Overlay) -->
+  <div id="overlay-menu" class="fixed inset-0 z-30 bg-slate-950/75 backdrop-blur-md flex items-center justify-center p-4">
+    <div class="max-w-lg w-full bg-slate-900/90 border border-white/15 rounded-3xl p-6 sm:p-8 text-white shadow-2xl space-y-6">
+      <div class="text-center space-y-2">
+        <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/20 border border-emerald-400/30 text-emerald-300 text-xs font-semibold">
+          Three.js Voxel Engine • 60 FPS
+        </div>
+        <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-white">
+          Thế Giới Voxel 3D Vô Hạn
+        </h1>
+        <p class="text-slate-300 text-sm leading-relaxed">
+          Khám phá địa hình đồi núi tự nhiên sinh vô hạn theo từng Chunk với thuật toán Simplex Noise nhiều lớp, tối ưu Face Culling và vật lý va chạm AABB.
+        </p>
+      </div>
+
+      <!-- Tùy chọn cấu hình nhanh -->
+      <div class="bg-slate-800/70 border border-white/10 rounded-2xl p-4 space-y-4">
+        <div class="flex items-center justify-between">
+          <div>
+            <div class="text-sm font-semibold text-white">Tầm nhìn tải Chunk (Render Distance)</div>
+            <div class="text-xs text-slate-400">Tăng giá trị để nhìn xa hơn (mặc định: 4)</div>
+          </div>
+          <div class="flex items-center gap-2">
+            <input id="setting-render-dist" type="range" min="2" max="7" value="4" class="w-24 accent-emerald-400 cursor-pointer">
+            <span id="setting-render-dist-val" class="font-mono-tech text-sm font-bold text-emerald-400 w-5 text-center">4</span>
+          </div>
+        </div>
+
+        <div class="flex items-center justify-between pt-2 border-t border-white/10">
+          <div>
+            <div class="text-sm font-semibold text-white">Độ nhạy chuột (Camera)</div>
+            <div class="text-xs text-slate-400">Điều chỉnh tốc độ xoay góc nhìn</div>
+          </div>
+          <div class="flex items-center gap-2">
+            <input id="setting-sensitivity" type="range" min="1" max="10" value="5" class="w-24 accent-sky-400 cursor-pointer">
+            <span id="setting-sensitivity-val" class="font-mono-tech text-sm font-bold text-sky-400 w-5 text-center">5</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Bảng phím tắt -->
+      <div class="grid grid-cols-2 gap-2.5 text-xs text-slate-300">
+        <div class="bg-slate-800/50 p-2.5 rounded-xl border border-white/5 flex justify-between">
+          <span>Di chuyển / Chạy</span>
+          <strong class="text-white font-mono-tech">WASD + Shift</strong>
+        </div>
+        <div class="bg-slate-800/50 p-2.5 rounded-xl border border-white/5 flex justify-between">
+          <span>Nhảy / Bơi</span>
+          <strong class="text-white font-mono-tech">Space</strong>
+        </div>
+        <div class="bg-slate-800/50 p-2.5 rounded-xl border border-white/5 flex justify-between">
+          <span>Đập / Đặt khối</span>
+          <strong class="text-white font-mono-tech">Chuột Trái / Phải</strong>
+        </div>
+        <div class="bg-slate-800/50 p-2.5 rounded-xl border border-white/5 flex justify-between">
+          <span>Chọn loại khối</span>
+          <strong class="text-white font-mono-tech">Phím 1-6 / Cuộn</strong>
+        </div>
+      </div>
+
+      <!-- Nút hành động -->
+      <div class="flex flex-col sm:flex-row gap-3 pt-1">
+        <button id="btn-play" class="flex-1 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 active:scale-[0.99] text-slate-950 font-bold py-3.5 px-6 rounded-2xl shadow-lg shadow-emerald-500/25 transition cursor-pointer text-base">
+          Bắt Đầu Khám Phá
+        </button>
+        <button id="btn-new-seed" class="bg-slate-800 hover:bg-slate-700 active:scale-[0.99] text-slate-200 font-semibold py-3.5 px-4 rounded-2xl border border-white/10 transition cursor-pointer text-sm">
+          Tạo Thế Giới Mới
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Hộp thông báo nhẹ (Toast) -->
+  <div id="toast-msg" class="fixed top-20 left-1/2 -translate-x-1/2 z-40 glass-panel text-white text-xs sm:text-sm font-medium px-4 py-2 rounded-full shadow-xl opacity-0 pointer-events-none transition-opacity duration-300">
+    Thông báo
+  </div>
+
+  <script>
+    /**
+     * ============================================================================
+     * PHẦN 1: THUẬT TOÁN 2D SIMPLEX NOISE & TẠO SỐ NGẪU NHIÊN THEO SEED
+     * ============================================================================
+     */
+    class SimplexNoise2D {
+      constructor(seed = 1337) {
+        this.grad3 = [
+          [1, 1], [-1, 1], [1, -1], [-1, -1],
+          [1, 0], [-1, 0], [0, 1], [0, -1]
+        ];
+        this.p = new Uint8Array(256);
+        for (let i = 0; i < 256; i++) this.p[i] = i;
+
+        // Trộn mảng hoán vị dựa trên seed bằng thuật toán LCG
+        let s = seed % 2147483647;
+        if (s <= 0) s += 2147483646;
+        for (let i = 255; i > 0; i--) {
+          s = (s * 16807) % 2147483647;
+          const j = s % (i + 1);
+          const tmp = this.p[i];
+          this.p[i] = this.p[j];
+          this.p[j] = tmp;
+        }
+
+        this.perm = new Uint8Array(512);
+        this.permMod8 = new Uint8Array(512);
+        for (let i = 0; i < 512; i++) {
+          this.perm[i] = this.p[i & 255];
+          this.permMod8[i] = this.perm[i] % 8;
+        }
+      }
+
+      noise(xin, yin) {
+        const F2 = 0.5 * (Math.sqrt(3.0) - 1.0);
+        const G2 = (3.0 - Math.sqrt(3.0)) / 6.0;
+        let n0 = 0, n1 = 0, n2 = 0;
+
+        const s = (xin + yin) * F2;
+        const i = Math.floor(xin + s);
+        const j = Math.floor(yin + s);
+        const t = (i + j) * G2;
+
+        const X0 = i - t;
+        const Y0 = j - t;
+        const x0 = xin - X0;
+        const y0 = yin - Y0;
+
+        let i1, j1;
+        if (x0 > y0) {
+          i1 = 1; j1 = 0;
+        } else {
+          i1 = 0; j1 = 1;
+        }
+
+        const x1 = x0 - i1 + G2;
+        const y1 = y0 - j1 + G2;
+        const x2 = x0 - 1.0 + 2.0 * G2;
+        const y2 = y0 - 1.0 + 2.0 * G2;
+
+        const ii = i & 255;
+        const jj = j & 255;
+        const gi0 = this.permMod8[ii + this.perm[jj]];
+        const gi1 = this.permMod8[ii + i1 + this.perm[jj + j1]];
+        const gi2 = this.permMod8[ii + 1 + this.perm[jj + 1]];
+
+        let t0 = 0.5 - x0 * x0 - y0 * y0;
+        if (t0 >= 0) {
+          t0 *= t0;
+          n0 = t0 * t0 * (this.grad3[gi0][0] * x0 + this.grad3[gi0][1] * y0);
+        }
+
+        let t1 = 0.5 - x1 * x1 - y1 * y1;
+        if (t1 >= 0) {
+          t1 *= t1;
+          n1 = t1 * t1 * (this.grad3[gi1][0] * x1 + this.grad3[gi1][1] * y1);
+        }
+
+        let t2 = 0.5 - x2 * x2 - y2 * y2;
+        if (t2 >= 0) {
+          t2 *= t2;
+          n2 = t2 * t2 * (this.grad3[gi2][0] * x2 + this.grad3[gi2][1] * y2);
+        }
+
+        return 70.0 * (n0 + n1 + n2); // Trả về giá trị trong khoảng [-1, 1]
+      }
+
+      // Kết hợp nhiều lớp sóng (Fractal Brownian Motion / Octaves) tạo đồi núi tự nhiên
+      fbm(x, y, octaves = 4, persistence = 0.5, lacunarity = 2.0) {
+        let total = 0;
+        let frequency = 1;
+        let amplitude = 1;
+        let maxValue = 0;
+        for (let i = 0; i < octaves; i++) {
+          total += this.noise(x * frequency, y * frequency) * amplitude;
+          maxValue += amplitude;
+          amplitude *= persistence;
+          frequency *= lacunarity;
+        }
+        return total / maxValue;
+      }
+    }
+
+    /**
+     * ============================================================================
+     * PHẦN 2: ĐỊNH NGHĨA CÁC LOẠI KHỐI (BLOCKS) & TẠO TEXTURE ATLAS PIXEL ART
+     * ============================================================================
+     */
+    const CHUNK_SIZE = 16;
+    const CHUNK_HEIGHT = 64;
+    const WATER_LEVEL = 18;
+
+    const BLOCK = {
+      AIR: 0,
+      GRASS: 1,
+      DIRT: 2,
+      STONE: 3,
+      WOOD: 4,
+      LEAVES: 5,
+      SAND: 6,
+      WATER: 7,
+      BEDROCK: 8
+    };
+
+    // Danh sách 6 loại khối người chơi có thể cầm trên Hotbar
+    const HOTBAR_BLOCKS = [
+      { id: BLOCK.GRASS,  name: 'Khối Cỏ',   key: '1' },
+      { id: BLOCK.DIRT,   name: 'Khối Đất',  key: '2' },
+      { id: BLOCK.STONE,  name: 'Khối Đá',   key: '3' },
+      { id: BLOCK.WOOD,   name: 'Gỗ Sồi',    key: '4' },
+      { id: BLOCK.LEAVES, name: 'Lá Cây',    key: '5' },
+      { id: BLOCK.SAND,   name: 'Khối Cát',  key: '6' }
+    ];
+
+    const BLOCK_NAMES = {
+      [BLOCK.AIR]: 'Không khí',
+      [BLOCK.GRASS]: 'Khối Cỏ',
+      [BLOCK.DIRT]: 'Khối Đất',
+      [BLOCK.STONE]: 'Khối Đá',
+      [BLOCK.WOOD]: 'Gỗ Sồi',
+      [BLOCK.LEAVES]: 'Lá Cây',
+      [BLOCK.SAND]: 'Khối Cát',
+      [BLOCK.WATER]: 'Nước',
+      [BLOCK.BEDROCK]: 'Đá Nền'
+    };
+
+    // Chỉ số ô texture (0..15) trong Texture Atlas 16x16 ô (mỗi ô 16x16 px)
+    const TEX_INDEX = {
+      GRASS_TOP: 0,
+      GRASS_SIDE: 1,
+      DIRT: 2,
+      STONE: 3,
+      WOOD_SIDE: 4,
+      WOOD_TOP: 5,
+      LEAVES: 6,
+      SAND: 7,
+      WATER: 8,
+      BEDROCK: 9
+    };
+
+    // Ánh xạ mặt khối (top, bottom, side) -> chỉ số texture
+    function getBlockFaceTexture(blockId, faceDir) {
+      switch (blockId) {
+        case BLOCK.GRASS:
+          if (faceDir === 'top') return TEX_INDEX.GRASS_TOP;
+          if (faceDir === 'bottom') return TEX_INDEX.DIRT;
+          return TEX_INDEX.GRASS_SIDE;
+        case BLOCK.DIRT:
+          return TEX_INDEX.DIRT;
+        case BLOCK.STONE:
+          return TEX_INDEX.STONE;
+        case BLOCK.WOOD:
+          if (faceDir === 'top' || faceDir === 'bottom') return TEX_INDEX.WOOD_TOP;
+          return TEX_INDEX.WOOD_SIDE;
+        case BLOCK.LEAVES:
+          return TEX_INDEX.LEAVES;
+        case BLOCK.SAND:
+          return TEX_INDEX.SAND;
+        case BLOCK.WATER:
+          return TEX_INDEX.WATER;
+        case BLOCK.BEDROCK:
+          return TEX_INDEX.BEDROCK;
+        default:
+          return TEX_INDEX.STONE;
+      }
+    }
+
+    // Sinh Texture Atlas procedural sắc nét phong cách Minecraft bằng HTML5 Canvas
+    function createProceduralTextureAtlas() {
+      const tileSize = 16;
+      const gridCols = 16;
+      const canvas = document.createElement('canvas');
+      canvas.width = tileSize * gridCols;
+      canvas.height = tileSize * gridCols;
+      const ctx = canvas.getContext('2d');
+
+      // Hàm tiện ích vẽ pixel có nhiễu hạt tự nhiên
+      function fillTile(index, baseHex, variations, patternFn = null) {
+        const startX = (index % gridCols) * tileSize;
+        const startY = Math.floor(index / gridCols) * tileSize;
+        for (let y = 0; y < tileSize; y++) {
+          for (let x = 0; x < tileSize; x++) {
+            const hash = Math.sin((x + index * 31) * 12.9898 + (y + index * 17) * 78.233) * 43758.5453;
+            const r = hash - Math.floor(hash);
+            let color = baseHex;
+            if (variations && variations.length > 0) {
+              const vIdx = Math.floor(r * (variations.length + 1));
+              if (vIdx < variations.length) color = variations[vIdx];
+            }
+            if (patternFn) {
+              const custom = patternFn(x, y, r);
+              if (custom) color = custom;
+            }
+            ctx.fillStyle = color;
+            ctx.fillRect(startX + x, startY + y, 1, 1);
+          }
+        }
+      }
+
+      // 0: Mặt trên cỏ (Xanh lục tươi)
+      fillTile(TEX_INDEX.GRASS_TOP, '#5da832', ['#4f9628', '#6ab83d', '#458721']);
+
+      // 1: Mặt bên cỏ (Cỏ rủ xuống nền đất)
+      fillTile(TEX_INDEX.GRASS_SIDE, '#866043', ['#79553a', '#946b4c'], (x, y, r) => {
+        const grassDepth = 3 + Math.floor(((Math.sin(x * 1.9) + 1) * 1.5) + r * 1.5);
+        if (y < grassDepth) {
+          return r > 0.5 ? '#5da832' : '#4f9628';
+        }
+        return null;
+      });
+
+      // 2: Đất
+      fillTile(TEX_INDEX.DIRT, '#866043', ['#79553a', '#946b4c', '#694931']);
+
+      // 3: Đá
+      fillTile(TEX_INDEX.STONE, '#828282', ['#737373', '#919191', '#686868', '#9c9c9c'], (x, y, r) => {
+        if ((y === 4 || y === 11) && r > 0.35) return '#666666';
+        return null;
+      });
+
+      // 4: Vỏ gỗ sồi (Vân dọc)
+      fillTile(TEX_INDEX.WOOD_SIDE, '#6b5132', ['#594227', '#7a5d3b'], (x, y, r) => {
+        if (x % 3 === 0 && r > 0.25) return '#4d3820';
+        return null;
+      });
+
+      // 5: Mặt cắt gỗ (Vòng tròn đồng tâm)
+      fillTile(TEX_INDEX.WOOD_TOP, '#b39062', ['#a17f53'], (x, y) => {
+        if (x === 0 || x === 15 || y === 0 || y === 15) return '#594227';
+        const dist = Math.max(Math.abs(x - 7.5), Math.abs(y - 7.5));
+        if (Math.floor(dist) % 2 === 0) return '#9c7a4e';
+        return '#bfa074';
+      });
+
+      // 6: Lá cây (Rậm rạp nhiều sắc độ xanh)
+      fillTile(TEX_INDEX.LEAVES, '#3a7d22', ['#2c6318', '#49942d', '#224f12', '#52a334']);
+
+      // 7: Cát vàng
+      fillTile(TEX_INDEX.SAND, '#dfd39b', ['#d4c78c', '#ebe0ab', '#c9bc81']);
+
+      // 8: Nước trong xanh
+      fillTile(TEX_INDEX.WATER, '#2b7de9', ['#236fd4', '#3889f2', '#1f63bd']);
+
+      // 9: Đá nền (Bedrock)
+      fillTile(TEX_INDEX.BEDROCK, '#2e2e2e', ['#1c1c1c', '#454545', '#121212']);
+
+      // Tạo thumbnail DataURL cho thanh Hotbar UI
+      const tileThumbnails = {};
+      Object.entries(TEX_INDEX).forEach(([key, idx]) => {
+        const subCanvas = document.createElement('canvas');
+        subCanvas.width = 32;
+        subCanvas.height = 32;
+        const sCtx = subCanvas.getContext('2d');
+        sCtx.imageSmoothingEnabled = false;
+        const sx = (idx % gridCols) * tileSize;
+        const sy = Math.floor(idx / gridCols) * tileSize;
+        sCtx.drawImage(canvas, sx, sy, tileSize, tileSize, 0, 0, 32, 32);
+        tileThumbnails[idx] = subCanvas.toDataURL();
+      });
+
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.magFilter = THREE.NearestFilter;
+      texture.minFilter = THREE.NearestFilter;
+      texture.generateMipmaps = false;
+
+      return { texture, tileThumbnails, gridCols };
+    }
+
+    /**
+     * ============================================================================
+     * PHẦN 3: HỆ THỐNG QUẢN LÝ CHUNK & FACE CULLING TỐI ƯU CAO
+     * ============================================================================
+     */
+    // 6 hướng mặt khối kèm tọa độ 4 đỉnh (CCW) và độ sáng giả lập (Ambient/Directional Shading)
+    const VOXEL_FACES = [
+      {
+        dir: 'top',
+        offset: [0, 1, 0],
+        shade: 1.0,
+        corners: [
+          { pos: [0, 1, 1], uv: [0, 0] },
+          { pos: [1, 1, 1], uv: [1, 0] },
+          { pos: [1, 1, 0], uv: [1, 1] },
+          { pos: [0, 1, 0], uv: [0, 1] }
+        ]
+      },
+      {
+        dir: 'bottom',
+        offset: [0, -1, 0],
+        shade: 0.52,
+        corners: [
+          { pos: [0, 0, 0], uv: [0, 0] },
+          { pos: [1, 0, 0], uv: [1, 0] },
+          { pos: [1, 0, 1], uv: [1, 1] },
+          { pos: [0, 0, 1], uv: [0, 1] }
+        ]
+      },
+      {
+        dir: 'left', // -X
+        offset: [-1, 0, 0],
+        shade: 0.78,
+        corners: [
+          { pos: [0, 0, 0], uv: [0, 0] },
+          { pos: [0, 0, 1], uv: [1, 0] },
+          { pos: [0, 1, 1], uv: [1, 1] },
+          { pos: [0, 1, 0], uv: [0, 1] }
+        ]
+      },
+      {
+        dir: 'right', // +X
+        offset: [1, 0, 0],
+        shade: 0.82,
+        corners: [
+          { pos: [1, 0, 1], uv: [0, 0] },
+          { pos: [1, 0, 0], uv: [1, 0] },
+          { pos: [1, 1, 0], uv: [1, 1] },
+          { pos: [1, 1, 1], uv: [0, 1] }
+        ]
+      },
+      {
+        dir: 'front', // +Z
+        offset: [0, 0, 1],
+        shade: 0.90,
+        corners: [
+          { pos: [0, 0, 1], uv: [0, 0] },
+          { pos: [1, 0, 1], uv: [1, 0] },
+          { pos: [1, 1, 1], uv: [1, 1] },
+          { pos: [0, 1, 1], uv: [0, 1] }
+        ]
+      },
+      {
+        dir: 'back', // -Z
+        offset: [0, 0, -1],
+        shade: 0.72,
+        corners: [
+          { pos: [1, 0, 0], uv: [0, 0] },
+          { pos: [0, 0, 0], uv: [1, 0] },
+          { pos: [0, 1, 0], uv: [1, 1] },
+          { pos: [1, 1, 0], uv: [0, 1] }
+        ]
+      }
+    ];
+
+    class WorldManager {
+      constructor(scene, solidMaterial, waterMaterial, gridCols) {
+        this.scene = scene;
+        this.solidMaterial = solidMaterial;
+        this.waterMaterial = waterMaterial;
+        this.gridCols = gridCols;
+
+        this.chunks = new Map(); // Lưu dữ liệu mảng Uint8Array của mỗi chunk: "cx,cz" -> ChunkObject
+        this.dirtyChunks = new Set(); // Hàng đợi các chunk cần dựng lại mesh
+        this.seed = Math.floor(Math.random() * 100000);
+        this.noise = new SimplexNoise2D(this.seed);
+        this.biomeNoise = new SimplexNoise2D(this.seed + 7919);
+        this.treeNoise = new SimplexNoise2D(this.seed + 3571);
+      }
+
+      resetSeed(newSeed) {
+        // Giải phóng toàn bộ mesh cũ
+        for (const chunk of this.chunks.values()) {
+          this.disposeChunkMeshes(chunk);
+        }
+        this.chunks.clear();
+        this.dirtyChunks.clear();
+
+        this.seed = newSeed;
+        this.noise = new SimplexNoise2D(this.seed);
+        this.biomeNoise = new SimplexNoise2D(this.seed + 7919);
+        this.treeNoise = new SimplexNoise2D(this.seed + 3571);
+      }
+
+      getChunkKey(cx, cz) {
+        return `${cx},${cz}`;
+      }
+
+      // Hàm băm xác định vị trí cây tự nhiên
+      pseudoRandom2D(x, z) {
+        const n = Math.sin(x * 127.1 + z * 311.7 + this.seed * 0.13) * 43758.5453123;
+        return n - Math.floor(n);
+      }
+
+      // Tính chiều cao địa hình tại tọa độ thế giới (wx, wz)
+      getTerrainHeight(wx, wz) {
+        const continental = this.biomeNoise.fbm(wx * 0.0045, wz * 0.0045, 3);
+        const hills = this.noise.fbm(wx * 0.014, wz * 0.014, 4, 0.5, 2.0);
+        const detail = this.noise.noise(wx * 0.06, wz * 0.06) * 0.12;
+
+        // Kết hợp vùng đồng bằng, hồ nước và núi cao
+        let elevation = continental * 16 + hills * 14 + detail * 4;
+        let height = Math.floor(21 + elevation);
+        return Math.max(4, Math.min(CHUNK_HEIGHT - 10, height));
+      }
+
+      // Tạo dữ liệu Voxel 16x64x16 cho một Chunk
+      generateChunkData(cx, cz) {
+        const key = this.getChunkKey(cx, cz);
+        if (this.chunks.has(key)) return this.chunks.get(key);
+
+        const data = new Uint8Array(CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE);
+        const chunk = {
+          cx,
+          cz,
+          key,
+          data,
+          solidMesh: null,
+          waterMesh: null
+        };
+
+        const baseX = cx * CHUNK_SIZE;
+        const baseZ = cz * CHUNK_SIZE;
+
+        // 1. Sinh lớp đất, đá, cát, cỏ và nước
+        for (let lx = 0; lx < CHUNK_SIZE; lx++) {
+          for (let lz = 0; lz < CHUNK_SIZE; lz++) {
+            const wx = baseX + lx;
+            const wz = baseZ + lz;
+            const surfaceY = this.getTerrainHeight(wx, wz);
+            const isBeach = surfaceY <= WATER_LEVEL + 1;
+
+            for (let y = 0; y < CHUNK_HEIGHT; y++) {
+              const idx = lx + lz * CHUNK_SIZE + y * CHUNK_SIZE * CHUNK_SIZE;
+
+              if (y === 0) {
+                data[idx] = BLOCK.BEDROCK;
+              } else if (y < surfaceY - 3) {
+                data[idx] = BLOCK.STONE;
+              } else if (y < surfaceY) {
+                data[idx] = isBeach ? BLOCK.SAND : BLOCK.DIRT;
+              } else if (y === surfaceY) {
+                data[idx] = isBeach ? BLOCK.SAND : BLOCK.GRASS;
+              } else if (y <= WATER_LEVEL) {
+                data[idx] = BLOCK.WATER;
+              } else {
+                data[idx] = BLOCK.AIR;
+              }
+            }
+          }
+        }
+
+        // 2. Trồng cây sồi tự nhiên trên các vùng cỏ (cách rìa chunk 2 ô để tán lá không bị cắt)
+        for (let lx = 2; lx < CHUNK_SIZE - 2; lx++) {
+          for (let lz = 2; lz < CHUNK_SIZE - 2; lz++) {
+            const wx = baseX + lx;
+            const wz = baseZ + lz;
+            const surfaceY = this.getTerrainHeight(wx, wz);
+
+            if (surfaceY > WATER_LEVEL + 2 && surfaceY < CHUNK_HEIGHT - 9) {
+              const forestDensity = this.treeNoise.noise(wx * 0.02, wz * 0.02);
+              const rand = this.pseudoRandom2D(wx, wz);
+              // Mật độ cây vừa phải, tạo cụm rừng tự nhiên
+              if (forestDensity > -0.15 && rand > 0.984) {
+                this.placeTreeInChunk(data, lx, surfaceY + 1, lz);
+              }
+            }
+          }
+        }
+
+        this.chunks.set(key, chunk);
+        this.dirtyChunks.add(key);
+
+        // Đánh dấu 4 chunk lân cận cần cập nhật Face Culling ở biên giới
+        this.markNeighborChunksDirty(cx, cz);
+
+        return chunk;
+      }
+
+      placeTreeInChunk(data, lx, startY, lz) {
+        const trunkHeight = 4 + Math.floor(this.pseudoRandom2D(lx * 7, lz * 13) * 2);
+
+        // Đặt tán lá
+        const leafStart = startY + trunkHeight - 2;
+        const leafEnd = startY + trunkHeight + 1;
+        for (let y = leafStart; y <= leafEnd; y++) {
+          const radius = (y === leafEnd) ? 1 : 2;
+          for (let dx = -radius; dx <= radius; dx++) {
+            for (let dz = -radius; dz <= radius; dz++) {
+              // Bo tròn 4 góc tán lá cho tự nhiên
+              if (Math.abs(dx) === radius && Math.abs(dz) === radius && y !== leafStart) continue;
+              const tx = lx + dx;
+              const tz = lz + dz;
+              if (tx >= 0 && tx < CHUNK_SIZE && tz >= 0 && tz < CHUNK_SIZE && y < CHUNK_HEIGHT) {
+                const idx = tx + tz * CHUNK_SIZE + y * CHUNK_SIZE * CHUNK_SIZE;
+                if (data[idx] === BLOCK.AIR) {
+                  data[idx] = BLOCK.LEAVES;
+                }
+              }
+            }
+          }
+        }
+
+        // Đặt thân gỗ
+        for (let h = 0; h < trunkHeight; h++) {
+          const y = startY + h;
+          if (y < CHUNK_HEIGHT) {
+            const idx = lx + lz * CHUNK_SIZE + y * CHUNK_SIZE * CHUNK_SIZE;
+            data[idx] = BLOCK.WOOD;
+          }
+        }
+      }
+
+      markNeighborChunksDirty(cx, cz) {
+        const neighbors = [
+          [cx - 1, cz],
+          [cx + 1, cz],
+          [cx, cz - 1],
+          [cx, cz + 1]
+        ];
+        for (const [nx, nz] of neighbors) {
+          const nKey = this.getChunkKey(nx, nz);
+          if (this.chunks.has(nKey)) {
+            this.dirtyChunks.add(nKey);
+          }
+        }
+      }
+
+      // Truy xuất loại khối tại bất kỳ tọa độ thế giới nào (wx, wy, wz)
+      getBlockAt(wx, wy, wz) {
+        if (wy < 0 || wy >= CHUNK_HEIGHT) return BLOCK.AIR;
+        const cx = Math.floor(wx / CHUNK_SIZE);
+        const cz = Math.floor(wz / CHUNK_SIZE);
+        const chunk = this.chunks.get(this.getChunkKey(cx, cz));
+        if (!chunk) return BLOCK.AIR;
+
+        const lx = ((wx % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
+        const lz = ((wz % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
+        const idx = lx + lz * CHUNK_SIZE + wy * CHUNK_SIZE * CHUNK_SIZE;
+        return chunk.data[idx];
+      }
+
+      // Đặt hoặc đập khối tại tọa độ thế giới (wx, wy, wz)
+      setBlockAt(wx, wy, wz, blockId) {
+        if (wy <= 0 || wy >= CHUNK_HEIGHT) return false; // Không cho phá Bedrock ở tầng 0
+        const cx = Math.floor(wx / CHUNK_SIZE);
+        const cz = Math.floor(wz / CHUNK_SIZE);
+        const key = this.getChunkKey(cx, cz);
+        const chunk = this.chunks.get(key);
+        if (!chunk) return false;
+
+        const lx = ((wx % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
+        const lz = ((wz % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
+        const idx = lx + lz * CHUNK_SIZE + wy * CHUNK_SIZE * CHUNK_SIZE;
+
+        if (chunk.data[idx] === blockId) return false;
+        chunk.data[idx] = blockId;
+        this.dirtyChunks.add(key);
+
+        // Nếu khối nằm sát rìa chunk, cập nhật cả chunk hàng xóm để Face Culling chính xác
+        if (lx === 0) this.dirtyChunks.add(this.getChunkKey(cx - 1, cz));
+        if (lx === CHUNK_SIZE - 1) this.dirtyChunks.add(this.getChunkKey(cx + 1, cz));
+        if (lz === 0) this.dirtyChunks.add(this.getChunkKey(cx, cz - 1));
+        if (lz === CHUNK_SIZE - 1) this.dirtyChunks.add(this.getChunkKey(cx, cz + 1));
+
+        return true;
+      }
+
+      // Kiểm tra khối có đặc (chặn va chạm vật lý) không
+      isSolidBlock(wx, wy, wz) {
+        const b = this.getBlockAt(wx, wy, wz);
+        return b !== BLOCK.AIR && b !== BLOCK.WATER;
+      }
+
+      // Dựng BufferGeometry tối ưu với Face Culling cho 1 Chunk
+      buildChunkMesh(chunk) {
+        this.disposeChunkMeshes(chunk);
+
+        const solidPos = [];
+        const solidNorm = [];
+        const solidUv = [];
+        const solidColor = [];
+        const solidIndices = [];
+
+        const waterPos = [];
+        const waterNorm = [];
+        const waterUv = [];
+        const waterColor = [];
+        const waterIndices = [];
+
+        const baseX = chunk.cx * CHUNK_SIZE;
+        const baseZ = chunk.cz * CHUNK_SIZE;
+        const tileStep = 1.0 / this.gridCols;
+        const pad = 0.0015; // Chống rò rỉ đường viền pixel (texture bleeding)
+
+        for (let y = 0; y < CHUNK_HEIGHT; y++) {
+          for (let lz = 0; lz < CHUNK_SIZE; lz++) {
+            for (let lx = 0; lx < CHUNK_SIZE; lx++) {
+              const idx = lx + lz * CHUNK_SIZE + y * CHUNK_SIZE * CHUNK_SIZE;
+              const blockId = chunk.data[idx];
+              if (blockId === BLOCK.AIR) continue;
+
+              const wx = baseX + lx;
+              const wz = baseZ + lz;
+              const isWater = (blockId === BLOCK.WATER);
+
+              for (let f = 0; f < 6; f++) {
+                const face = VOXEL_FACES[f];
+                const nx = wx + face.offset[0];
+                const ny = y + face.offset[1];
+                const nz = wz + face.offset[2];
+
+                const neighborBlock = this.getBlockAt(nx, ny, nz);
+
+                // Thuật toán Face Culling:
+                // 1. Khối đặc chỉ vẽ mặt khi hàng xóm là Không khí hoặc Nước
+                // 2. Khối nước chỉ vẽ mặt khi hàng xóm là Không khí (không vẽ mặt tiếp giáp nước-nước hay nước-đất)
+                let shouldRenderFace = false;
+                if (isWater) {
+                  shouldRenderFace = (neighborBlock === BLOCK.AIR);
+                } else {
+                  shouldRenderFace = (neighborBlock === BLOCK.AIR || neighborBlock === BLOCK.WATER);
+                }
+
+                if (!shouldRenderFace) continue;
+
+                const texIdx = getBlockFaceTexture(blockId, face.dir);
+                const uMin = (texIdx % this.gridCols) * tileStep + pad;
+                const uMax = uMin + tileStep - pad * 2;
+                // Canvas UV lật trục Y trong WebGL
+                const vMax = 1.0 - Math.floor(texIdx / this.gridCols) * tileStep - pad;
+                const vMin = vMax - tileStep + pad * 2;
+
+                const targetPos = isWater ? waterPos : solidPos;
+                const targetNorm = isWater ? waterNorm : solidNorm;
+                const targetUv = isWater ? waterUv : solidUv;
+                const targetColor = isWater ? waterColor : solidColor;
+                const targetIndices = isWater ? waterIndices : solidIndices;
+
+                const vertStart = targetPos.length / 3;
+                const yTopOffset = (isWater && face.dir === 'top') ? -0.12 : 0; // Hạ mặt nước thấp hơn bờ 1 chút cho đẹp
+
+                for (let c = 0; c < 4; c++) {
+                  const corner = face.corners[c];
+                  const vy = corner.pos[1] === 1 ? (y + 1 + yTopOffset) : y;
+                  targetPos.push(wx + corner.pos[0], vy, wz + corner.pos[2]);
+                  targetNorm.push(face.offset[0], face.offset[1], face.offset[2]);
+
+                  const u = corner.uv[0] === 0 ? uMin : uMax;
+                  const v = corner.uv[1] === 0 ? vMin : vMax;
+                  targetUv.push(u, v);
+
+                  // Vertex color tạo độ sáng tối theo hướng mặt khối
+                  targetColor.push(face.shade, face.shade, face.shade);
+                }
+
+                targetIndices.push(
+                  vertStart, vertStart + 1, vertStart + 2,
+                  vertStart, vertStart + 2, vertStart + 3
+                );
+              }
+            }
+          }
+        }
+
+        if (solidPos.length > 0) {
+          const geo = new THREE.BufferGeometry();
+          geo.setAttribute('position', new THREE.Float32BufferAttribute(solidPos, 3));
+          geo.setAttribute('normal', new THREE.Float32BufferAttribute(solidNorm, 3));
+          geo.setAttribute('uv', new THREE.Float32BufferAttribute(solidUv, 2));
+          geo.setAttribute('color', new THREE.Float32BufferAttribute(solidColor, 3));
+          geo.setIndex(solidIndices);
+          geo.computeBoundingSphere();
+
+          chunk.solidMesh = new THREE.Mesh(geo, this.solidMaterial);
+          chunk.solidMesh.matrixAutoUpdate = false;
+          chunk.solidMesh.updateMatrix();
+          this.scene.add(chunk.solidMesh);
+        }
+
+        if (waterPos.length > 0) {
+          const wGeo = new THREE.BufferGeometry();
+          wGeo.setAttribute('position', new THREE.Float32BufferAttribute(waterPos, 3));
+          wGeo.setAttribute('normal', new THREE.Float32BufferAttribute(waterNorm, 3));
+          wGeo.setAttribute('uv', new THREE.Float32BufferAttribute(waterUv, 2));
+          wGeo.setAttribute('color', new THREE.Float32BufferAttribute(waterColor, 3));
+          wGeo.setIndex(waterIndices);
+          wGeo.computeBoundingSphere();
+
+          chunk.waterMesh = new THREE.Mesh(wGeo, this.waterMaterial);
+          chunk.waterMesh.matrixAutoUpdate = false;
+          chunk.waterMesh.updateMatrix();
+          this.scene.add(chunk.waterMesh);
+        }
+      }
+
+      disposeChunkMeshes(chunk) {
+        if (chunk.solidMesh) {
+          this.scene.remove(chunk.solidMesh);
+          chunk.solidMesh.geometry.dispose();
+          chunk.solidMesh = null;
+        }
+        if (chunk.waterMesh) {
+          this.scene.remove(chunk.waterMesh);
+          chunk.waterMesh.geometry.dispose();
+          chunk.waterMesh = null;
+        }
+      }
+
+      // Cập nhật sinh chunk mới & giải phóng chunk ở xa xung quanh người chơi
+      updateChunksAroundPlayer(playerX, playerZ, renderDistance) {
+        const playerCx = Math.floor(playerX / CHUNK_SIZE);
+        const playerCz = Math.floor(playerZ / CHUNK_SIZE);
+
+        // 1. Tạo danh sách các chunk cần có trong bán kính renderDistance, sắp xếp từ gần ra xa
+        const neededCoords = [];
+        for (let dx = -renderDistance; dx <= renderDistance; dx++) {
+          for (let dz = -renderDistance; dz <= renderDistance; dz++) {
+            if (dx * dx + dz * dz <= renderDistance * renderDistance + 1) {
+              neededCoords.push({
+                cx: playerCx + dx,
+                cz: playerCz + dz,
+                distSq: dx * dx + dz * dz
+              });
+            }
+          }
+        }
+        neededCoords.sort((a, b) => a.distSq - b.distSq);
+
+        // Sinh tối đa 2 chunk mỗi khung hình để tránh khựng hình (stutter)
+        let generatedThisFrame = 0;
+        for (const item of neededCoords) {
+          const key = this.getChunkKey(item.cx, item.cz);
+          if (!this.chunks.has(key)) {
+            this.generateChunkData(item.cx, item.cz);
+            generatedThisFrame++;
+            if (generatedThisFrame >= 2) break;
+          }
+        }
+
+        // 2. Giải phóng các chunk nằm ngoài vùng đệm (renderDistance + 2) để tiết kiệm RAM
+        const unloadDistSq = (renderDistance + 2) * (renderDistance + 2);
+        for (const [key, chunk] of this.chunks.entries()) {
+          const dx = chunk.cx - playerCx;
+          const dz = chunk.cz - playerCz;
+          if (dx * dx + dz * dz > unloadDistSq) {
+            this.disposeChunkMeshes(chunk);
+            this.chunks.delete(key);
+            this.dirtyChunks.delete(key);
+          }
+        }
+
+        // 3. Dựng lại BufferGeometry cho tối đa 3 chunk đang chờ (ưu tiên chunk gần người chơi)
+        if (this.dirtyChunks.size > 0) {
+          const sortedDirty = Array.from(this.dirtyChunks).sort((k1, k2) => {
+            const c1 = this.chunks.get(k1);
+            const c2 = this.chunks.get(k2);
+            if (!c1 || !c2) return 0;
+            const d1 = (c1.cx - playerCx) ** 2 + (c1.cz - playerCz) ** 2;
+            const d2 = (c2.cx - playerCx) ** 2 + (c2.cz - playerCz) ** 2;
+            return d1 - d2;
+          });
+
+          let rebuiltCount = 0;
+          for (const key of sortedDirty) {
+            this.dirtyChunks.delete(key);
+            const chunk = this.chunks.get(key);
+            if (chunk) {
+              this.buildChunkMesh(chunk);
+              rebuiltCount++;
+              if (rebuiltCount >= 3) break;
+            }
+          }
+        }
+      }
+    }
+
+    /**
+     * ============================================================================
+     * PHẦN 4: VẬT LÝ NGƯỜI CHƠI (AABB COLLISION, TRỌNG LỰC) & ĐIỀU KHIỂN FPS
+     * ============================================================================
+     */
+    class FirstPersonPlayer {
+      constructor(camera, world) {
+        this.camera = camera;
+        this.world = world;
+
+        // Kích thước hộp va chạm AABB của người chơi (Rộng 0.6m, Cao 1.75m, Mắt cao 1.6m)
+        this.halfWidth = 0.3;
+        this.height = 1.75;
+        this.eyeHeight = 1.6;
+
+        // Vị trí chân người chơi (feet position)
+        this.position = new THREE.Vector3(8, 40, 8);
+        this.velocity = new THREE.Vector3(0, 0, 0);
+
+        // Góc xoay camera (Euler YXZ)
+        this.yaw = 0;
+        this.pitch = -0.2;
+
+        // Thông số vật lý
+        this.walkSpeed = 5.4;
+        this.sprintSpeed = 8.6;
+        this.jumpForce = 8.4;
+        this.gravity = 24.0;
+        this.onGround = false;
+        this.inWater = false;
+
+        // Trạng thái phím bấm
+        this.keys = {};
+        this.sensitivity = 0.0022;
+      }
+
+      spawnAtSafeHeight(x = 8, z = 8) {
+        // Đảm bảo chunk tại điểm xuất phát đã được sinh
+        const cx = Math.floor(x / CHUNK_SIZE);
+        const cz = Math.floor(z / CHUNK_SIZE);
+        for (let dx = -2; dx <= 2; dx++) {
+          for (let dz = -2; dz <= 2; dz++) {
+            this.world.generateChunkData(cx + dx, cz + dz);
+          }
+        }
+        // Dựng ngay mesh các chunk xung quanh để không rơi vào khoảng không khi vừa vào game
+        for (const key of Array.from(this.world.dirtyChunks)) {
+          const ch = this.world.chunks.get(key);
+          if (ch) this.world.buildChunkMesh(ch);
+          this.world.dirtyChunks.delete(key);
+        }
+
+        // Tìm mặt đất cao nhất tại (x, z)
+        let spawnY = CHUNK_HEIGHT - 2;
+        for (let y = CHUNK_HEIGHT - 2; y >= 1; y--) {
+          if (this.world.isSolidBlock(Math.floor(x), y, Math.floor(z))) {
+            spawnY = y + 1.1;
+            break;
+          }
+        }
+        this.position.set(x, spawnY, z);
+        this.velocity.set(0, 0, 0);
+        this.updateCameraTransform();
+      }
+
+      rotate(dx, dy) {
+        this.yaw -= dx * this.sensitivity;
+        this.pitch -= dy * this.sensitivity;
+        const maxPitch = Math.PI / 2 - 0.02;
+        this.pitch = Math.max(-maxPitch, Math.min(maxPitch, this.pitch));
+      }
+
+      // Kiểm tra hộp AABB tại vị trí (px, py, pz) có giao cắt với khối đặc nào không
+      checkAABBCollision(px, py, pz) {
+        const minX = Math.floor(px - this.halfWidth);
+        const maxX = Math.floor(px + this.halfWidth);
+        const minY = Math.floor(py);
+        const maxY = Math.floor(py + this.height);
+        const minZ = Math.floor(pz - this.halfWidth);
+        const maxZ = Math.floor(pz + this.halfWidth);
+
+        for (let x = minX; x <= maxX; x++) {
+          for (let y = minY; y <= maxY; y++) {
+            for (let z = minZ; z <= maxZ; z++) {
+              if (this.world.isSolidBlock(x, y, z)) {
+                return true;
+              }
+            }
+          }
+        }
+        return false;
+      }
+
+      // Kiểm tra hộp AABB của người chơi có giao cắt với một tọa độ khối cụ thể (bx, by, bz) khi đặt khối mới
+      intersectsBlock(bx, by, bz) {
+        const pMinX = this.position.x - this.halfWidth;
+        const pMaxX = this.position.x + this.halfWidth;
+        const pMinY = this.position.y;
+        const pMaxY = this.position.y + this.height;
+        const pMinZ = this.position.z - this.halfWidth;
+        const pMaxZ = this.position.z + this.halfWidth;
+
+        return (
+          pMaxX > bx && pMinX < bx + 1 &&
+          pMaxY > by && pMinY < by + 1 &&
+          pMaxZ > bz && pMinZ < bz + 1
+        );
+      }
+
+      update(dt) {
+        // Giới hạn bước thời gian dt để tránh xuyên tường nếu tab bị treo tạm thời
+        dt = Math.min(dt, 0.05);
+
+        // Kiểm tra xem người chơi có đang ở dưới nước không
+        const headBlock = this.world.getBlockAt(
+          Math.floor(this.position.x),
+          Math.floor(this.position.y + 0.8),
+          Math.floor(this.position.z)
+        );
+        this.inWater = (headBlock === BLOCK.WATER);
+
+        // Tính vector hướng di chuyển trên mặt phẳng XZ dựa theo góc nhìn yaw
+        const forwardX = -Math.sin(this.yaw);
+        const forwardZ = -Math.cos(this.yaw);
+        const rightX = Math.cos(this.yaw);
+        const rightZ = -Math.sin(this.yaw);
+
+        let moveForward = 0;
+        let moveRight = 0;
+        if (this.keys['KeyW'] || this.keys['ArrowUp']) moveForward += 1;
+        if (this.keys['KeyS'] || this.keys['ArrowDown']) moveForward -= 1;
+        if (this.keys['KeyD'] || this.keys['ArrowRight']) moveRight += 1;
+        if (this.keys['KeyA'] || this.keys['ArrowLeft']) moveRight -= 1;
+
+        let wishX = forwardX * moveForward + rightX * moveRight;
+        let wishZ = forwardZ * moveForward + rightZ * moveRight;
+        const wishLen = Math.hypot(wishX, wishZ);
+        if (wishLen > 0) {
+          wishX /= wishLen;
+          wishZ /= wishLen;
+        }
+
+        const isSprinting = this.keys['ShiftLeft'] || this.keys['ShiftRight'];
+        let targetSpeed = isSprinting ? this.sprintSpeed : this.walkSpeed;
+        if (this.inWater) targetSpeed *= 0.6;
+
+        // Gia tốc và ma sát mượt mà trên mặt đất / trên không
+        const accel = this.onGround ? 14.0 : 5.5;
+        this.velocity.x += (wishX * targetSpeed - this.velocity.x) * Math.min(1, accel * dt);
+        this.velocity.z += (wishZ * targetSpeed - this.velocity.z) * Math.min(1, accel * dt);
+
+        // Trọng lực & Nhảy / Bơi
+        if (this.inWater) {
+          this.velocity.y -= this.gravity * 0.32 * dt;
+          this.velocity.y = Math.max(this.velocity.y, -3.5);
+          if (this.keys['Space']) {
+            this.velocity.y = 4.6;
+          }
+        } else {
+          this.velocity.y -= this.gravity * dt;
+          if (this.keys['Space'] && this.onGround) {
+            this.velocity.y = this.jumpForce;
+            this.onGround = false;
+          }
+        }
+
+        // Giải quyết va chạm tách từng trục (X -> Z -> Y) để trượt mượt dọc theo tường
+        // 1. Trục X
+        const nextX = this.position.x + this.velocity.x * dt;
+        if (!this.checkAABBCollision(nextX, this.position.y, this.position.z)) {
+          this.position.x = nextX;
+        } else {
+          this.velocity.x = 0;
+        }
+
+        // 2. Trục Z
+        const nextZ = this.position.z + this.velocity.z * dt;
+        if (!this.checkAABBCollision(this.position.x, this.position.y, nextZ)) {
+          this.position.z = nextZ;
+        } else {
+          this.velocity.z = 0;
+        }
+
+        // 3. Trục Y
+        const nextY = this.position.y + this.velocity.y * dt;
+        if (!this.checkAABBCollision(this.position.x, nextY, this.position.z)) {
+          this.position.y = nextY;
+          this.onGround = false;
+        } else {
+          if (this.velocity.y < 0) {
+            this.onGround = true;
+            // Căn chỉnh chân đứng sát trên bề mặt khối bên dưới
+            this.position.y = Math.floor(nextY) + 1.0001;
+          }
+          this.velocity.y = 0;
+        }
+
+        // Chống rơi khỏi đáy thế giới
+        if (this.position.y < 1) {
+          this.spawnAtSafeHeight(this.position.x, this.position.z);
+        }
+
+        this.updateCameraTransform();
+      }
+
+      updateCameraTransform() {
+        this.camera.position.set(
+          this.position.x,
+          this.position.y + this.eyeHeight,
+          this.position.z
+        );
+        const euler = new THREE.Euler(this.pitch, this.yaw, 0, 'YXZ');
+        this.camera.quaternion.setFromEuler(euler);
+      }
+    }
+
+    /**
+     * ============================================================================
+     * PHẦN 5: THUẬT TOÁN VOXEL RAYCASTING (DDA 3D) ĐỂ CHỌN, ĐẬP & ĐẶT KHỐI
+     * ============================================================================
+     */
+    function voxelRaycast(world, origin, direction, maxDistance = 6.5) {
+      let x = Math.floor(origin.x);
+      let y = Math.floor(origin.y);
+      let z = Math.floor(origin.z);
+
+      const stepX = direction.x > 0 ? 1 : -1;
+      const stepY = direction.y > 0 ? 1 : -1;
+      const stepZ = direction.z > 0 ? 1 : -1;
+
+      const tDeltaX = direction.x !== 0 ? Math.abs(1 / direction.x) : Infinity;
+      const tDeltaY = direction.y !== 0 ? Math.abs(1 / direction.y) : Infinity;
+      const tDeltaZ = direction.z !== 0 ? Math.abs(1 / direction.z) : Infinity;
+
+      let tMaxX = direction.x > 0 ? (x + 1 - origin.x) * tDeltaX : (origin.x - x) * tDeltaX;
+      let tMaxY = direction.y > 0 ? (y + 1 - origin.y) * tDeltaY : (origin.y - y) * tDeltaY;
+      let tMaxZ = direction.z > 0 ? (z + 1 - origin.z) * tDeltaZ : (origin.z - z) * tDeltaZ;
+
+      let normal = [0, 0, 0];
+      let distance = 0;
+
+      for (let i = 0; i < 64; i++) {
+        const blockId = world.getBlockAt(x, y, z);
+        if (blockId !== BLOCK.AIR && blockId !== BLOCK.WATER) {
+          return {
+            blockPos: [x, y, z],
+            placePos: [x + normal[0], y + normal[1], z + normal[2]],
+            normal,
+            blockId
+          };
+        }
+
+        if (tMaxX < tMaxY) {
+          if (tMaxX < tMaxZ) {
+            distance = tMaxX;
+            if (distance > maxDistance) break;
+            x += stepX;
+            tMaxX += tDeltaX;
+            normal = [-stepX, 0, 0];
+          } else {
+            distance = tMaxZ;
+            if (distance > maxDistance) break;
+            z += stepZ;
+            tMaxZ += tDeltaZ;
+            normal = [0, 0, -stepZ];
+          }
+        } else {
+          if (tMaxY < tMaxZ) {
+            distance = tMaxY;
+            if (distance > maxDistance) break;
+            y += stepY;
+            tMaxY += tDeltaY;
+            normal = [0, -stepY, 0];
+          } else {
+            distance = tMaxZ;
+            if (distance > maxDistance) break;
+            z += stepZ;
+            tMaxZ += tDeltaZ;
+            normal = [0, 0, -stepZ];
+          }
+        }
+      }
+      return null;
+    }
+
+    /**
+     * ============================================================================
+     * PHẦN 6: KHỞI TẠO CẢNH 3D, ÁNH SÁNG, SƯƠNG MÙ, ÂM THANH & VÒNG LẶP GAME
+     * ============================================================================
+     */
+    window.onload = function () {
+      const canvas = document.getElementById('game-canvas');
+      const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.setSize(window.innerWidth, window.innerHeight);
+
+      const scene = new THREE.Scene();
+      const skyColor = new THREE.Color(0x82b6ff);
+      scene.background = skyColor;
+
+      let renderDistance = 4;
+      scene.fog = new THREE.Fog(skyColor, renderDistance * CHUNK_SIZE * 0.45, renderDistance * CHUNK_SIZE * 0.98);
+
+      const camera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 0.1, 300);
+
+      // Ánh sáng bầu trời & mặt trời
+      const hemiLight = new THREE.HemisphereLight(0xffffff, 0x5c6e58, 0.85);
+      scene.add(hemiLight);
+
+      const sunLight = new THREE.DirectionalLight(0xfff5e0, 0.45);
+      sunLight.position.set(60, 120, 40);
+      scene.add(sunLight);
+
+      // Tạo Texture Atlas & Vật liệu cho khối đặc và mặt nước
+      const { texture, tileThumbnails, gridCols } = createProceduralTextureAtlas();
+
+      const solidMaterial = new THREE.MeshLambertMaterial({
+        map: texture,
+        vertexColors: true
+      });
+
+      const waterMaterial = new THREE.MeshLambertMaterial({
+        map: texture,
+        vertexColors: true,
+        transparent: true,
+        opacity: 0.78,
+        side: THREE.DoubleSide
+      });
+
+      // Khởi tạo Thế giới & Người chơi
+      const world = new WorldManager(scene, solidMaterial, waterMaterial, gridCols);
+      const player = new FirstPersonPlayer(camera, world);
+      player.spawnAtSafeHeight(8, 8);
+
+      // Khung Wireframe hiển thị khối đang nhắm tới (Block Selection Box)
+      const boxGeo = new THREE.EdgesGeometry(new THREE.BoxGeometry(1.006, 1.006, 1.006));
+      const boxMat = new THREE.LineBasicMaterial({ color: 0x0f172a, linewidth: 2 });
+      const selectionBox = new THREE.LineSegments(boxGeo, boxMat);
+      selectionBox.visible = false;
+      scene.add(selectionBox);
+
+      // Hiệu ứng âm thanh tổng hợp bằng Web Audio API (không cần tải file âm thanh ngoài)
+      let audioCtx = null;
+      function playBlockSound(type = 'break') {
+        try {
+          if (!audioCtx) {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+          }
+          if (audioCtx.state === 'suspended') audioCtx.resume();
+
+          const osc = audioCtx.createOscillator();
+          const gain = audioCtx.createGain();
+          const now = audioCtx.currentTime;
+
+          if (type === 'break') {
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(160, now);
+            osc.frequency.exponentialRampToValueAtTime(55, now + 0.09);
+            gain.gain.setValueAtTime(0.18, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
+          } else {
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(240, now);
+            osc.frequency.exponentialRampToValueAtTime(340, now + 0.07);
+            gain.gain.setValueAtTime(0.15, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.07);
+          }
+
+          osc.connect(gain);
+          gain.connect(audioCtx.destination);
+          osc.start(now);
+          osc.stop(now + 0.1);
+        } catch (e) {
+          // Bỏ qua nếu trình duyệt chặn audio
+        }
+      }
+
+      // Xây dựng giao diện Hotbar 6 ô chọn khối
+      let selectedSlotIndex = 0;
+      const hotbarEl = document.getElementById('hotbar');
+      const selectedLabelEl = document.getElementById('selected-block-label');
+
+      function renderHotbar() {
+        hotbarEl.innerHTML = '';
+        HOTBAR_BLOCKS.forEach((item, index) => {
+          const texIdx = getBlockFaceTexture(item.id, item.id === BLOCK.GRASS ? 'side' : 'top');
+          const thumbUrl = tileThumbnails[texIdx];
+          const isActive = index === selectedSlotIndex;
+
+          const slot = document.createElement('button');
+          slot.type = 'button';
+          slot.className = `hotbar-slot relative w-11 h-11 sm:w-13 sm:h-13 rounded-xl border-2 ${
+            isActive ? 'active' : 'border-white/20 bg-slate-900/60 hover:border-white/50'
+          } flex items-center justify-center cursor-pointer overflow-hidden`;
+          slot.title = `${item.key}. ${item.name}`;
+          slot.innerHTML = `
+            <span class="absolute top-0.5 left-1.5 text-[10px] font-mono-tech font-bold text-white drop-shadow">${item.key}</span>
+            <img src="${thumbUrl}" alt="${item.name}" class="w-7 h-7 sm:w-8 sm:h-8 rounded-sm shadow" style="image-rendering: pixelated;">
+          `;
+          slot.addEventListener('click', (e) => {
+            e.stopPropagation();
+            selectHotbarSlot(index);
+          });
+          hotbarEl.appendChild(slot);
+        });
+        const current = HOTBAR_BLOCKS[selectedSlotIndex];
+        selectedLabelEl.textContent = `${current.key}. ${current.name}`;
+      }
+
+      function selectHotbarSlot(index) {
+        selectedSlotIndex = (index + HOTBAR_BLOCKS.length) % HOTBAR_BLOCKS.length;
+        renderHotbar();
+      }
+
+      renderHotbar();
+
+      // Hiển thị Toast thông báo ngắn gọn
+      const toastEl = document.getElementById('toast-msg');
+      let toastTimeout = null;
+      function showToast(msg) {
+        toastEl.textContent = msg;
+        toastEl.style.opacity = '1';
+        clearTimeout(toastTimeout);
+        toastTimeout = setTimeout(() => {
+          toastEl.style.opacity = '0';
+        }, 2000);
+      }
+
+      // Hành động Đập khối & Đặt khối
+      let currentTarget = null;
+
+      function handleBreakBlock() {
+        if (!currentTarget) return;
+        const [bx, by, bz] = currentTarget.blockPos;
+        if (by === 0) {
+          showToast('Không thể phá hủy Đá Nền ở đáy thế giới!');
+          return;
+        }
+        if (world.setBlockAt(bx, by, bz, BLOCK.AIR)) {
+          playBlockSound('break');
+        }
+      }
+
+      function handlePlaceBlock() {
+        if (!currentTarget) return;
+        const [px, py, pz] = currentTarget.placePos;
+        if (py >= CHUNK_HEIGHT) {
+          showToast('Đã đạt giới hạn chiều cao xây dựng!');
+          return;
+        }
+        // Không cho đặt khối đè lên chính cơ thể người chơi
+        if (player.intersectsBlock(px, py, pz)) {
+          return;
+        }
+        const blockToPlace = HOTBAR_BLOCKS[selectedSlotIndex].id;
+        if (world.setBlockAt(px, py, pz, blockToPlace)) {
+          playBlockSound('place');
+        }
+      }
+
+      // Quản lý Pointer Lock & Menu tạm dừng
+      const overlayMenu = document.getElementById('overlay-menu');
+      const crosshair = document.getElementById('crosshair');
+      const btnPlay = document.getElementById('btn-play');
+      const btnPause = document.getElementById('btn-pause');
+      const btnNewSeed = document.getElementById('btn-new-seed');
+
+      let isPlaying = false;
+      const isTouchDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+
+      function enterGame() {
+        overlayMenu.classList.add('hidden');
+        crosshair.classList.remove('hidden');
+        isPlaying = true;
+        if (!isTouchDevice && canvas.requestPointerLock) {
+          try {
+            canvas.requestPointerLock();
+          } catch (err) {
+            // Fallback nếu sandbox iframe hạn chế pointer lock
+          }
+        }
+      }
+
+      function pauseGame() {
+        isPlaying = false;
+        overlayMenu.classList.remove('hidden');
+        crosshair.classList.add('hidden');
+        btnPlay.textContent = 'Tiếp Tục Chơi';
+        player.keys = {};
+        if (document.pointerLockElement === canvas && document.exitPointerLock) {
+          document.exitPointerLock();
+        }
+      }
+
+      btnPlay.addEventListener('click', enterGame);
+      btnPause.addEventListener('click', pauseGame);
+
+      btnNewSeed.addEventListener('click', () => {
+        const newSeed = Math.floor(Math.random() * 999999) + 1;
+        world.resetSeed(newSeed);
+        player.spawnAtSafeHeight(8, 8);
+        showToast(`Đã tạo thế giới mới (Seed: #${newSeed})`);
+        enterGame();
+      });
+
+      document.addEventListener('pointerlockchange', () => {
+        if (document.pointerLockElement === canvas) {
+          overlayMenu.classList.add('hidden');
+          crosshair.classList.remove('hidden');
+          isPlaying = true;
+        } else if (!isTouchDevice && isPlaying) {
+          pauseGame();
+        }
+      });
+
+      // Xoay camera bằng chuột (Pointer Lock hoặc kéo chuột fallback)
+      let isMouseDragging = false;
+      document.addEventListener('mousemove', (e) => {
+        if (!isPlaying) return;
+        if (document.pointerLockElement === canvas) {
+          player.rotate(e.movementX, e.movementY);
+        } else if (isMouseDragging) {
+          player.rotate(e.movementX, e.movementY);
+        }
+      });
+
+      canvas.addEventListener('mousedown', (e) => {
+        if (!isPlaying) return;
+        if (document.pointerLockElement !== canvas && !isTouchDevice) {
+          try { canvas.requestPointerLock(); } catch (err) {}
+          isMouseDragging = true;
+        }
+        if (e.button === 0) {
+          handleBreakBlock();
+        } else if (e.button === 2) {
+          handlePlaceBlock();
+        }
+      });
+
+      window.addEventListener('mouseup', () => {
+        isMouseDragging = false;
+      });
+
+      canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+      // Bàn phím: Di chuyển, Chọn ô Hotbar (1-6), Đặt khối bằng phím E/F
+      window.addEventListener('keydown', (e) => {
+        player.keys[e.code] = true;
+
+        if (e.code.startsWith('Digit')) {
+          const num = parseInt(e.code.replace('Digit', ''), 10);
+          if (num >= 1 && num <= HOTBAR_BLOCKS.length) {
+            selectHotbarSlot(num - 1);
+          }
+        }
+
+        if (isPlaying && (e.code === 'KeyE' || e.code === 'KeyF')) {
+          handlePlaceBlock();
+        }
+      });
+
+      window.addEventListener('keyup', (e) => {
+        player.keys[e.code] = false;
+      });
+
+      // Con lăn chuột chuyển đổi ô Hotbar
+      window.addEventListener('wheel', (e) => {
+        if (!isPlaying) return;
+        if (e.deltaY > 0) {
+          selectHotbarSlot(selectedSlotIndex + 1);
+        } else if (e.deltaY < 0) {
+          selectHotbarSlot(selectedSlotIndex - 1);
+        }
+      }, { passive: true });
+
+      // Hỗ trợ điều khiển cảm ứng trên màn hình điện thoại / tablet
+      document.querySelectorAll('.mobile-btn').forEach((btn) => {
+        const keyCode = btn.getAttribute('data-key');
+        btn.addEventListener('touchstart', (e) => {
+          e.preventDefault();
+          player.keys[keyCode] = true;
+        }, { passive: false });
+        btn.addEventListener('touchend', (e) => {
+          e.preventDefault();
+          player.keys[keyCode] = false;
+        }, { passive: false });
+      });
+
+      document.getElementById('mobile-break').addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        handleBreakBlock();
+      }, { passive: false });
+
+      document.getElementById('mobile-place').addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        handlePlaceBlock();
+      }, { passive: false });
+
+      // Vuốt trên canvas để xoay góc nhìn trên thiết bị cảm ứng
+      let lastTouchX = 0, lastTouchY = 0;
+      canvas.addEventListener('touchstart', (e) => {
+        if (e.touches.length === 1) {
+          lastTouchX = e.touches[0].clientX;
+          lastTouchY = e.touches[0].clientY;
+        }
+      }, { passive: true });
+
+      canvas.addEventListener('touchmove', (e) => {
+        if (!isPlaying || e.touches.length !== 1) return;
+        const touch = e.touches[0];
+        const dx = touch.clientX - lastTouchX;
+        const dy = touch.clientY - lastTouchY;
+        lastTouchX = touch.clientX;
+        lastTouchY = touch.clientY;
+        player.rotate(dx * 1.6, dy * 1.6);
+      }, { passive: true });
+
+      // Thanh trượt cài đặt Render Distance & Độ nhạy chuột
+      const renderDistSlider = document.getElementById('setting-render-dist');
+      const renderDistVal = document.getElementById('setting-render-dist-val');
+      renderDistSlider.addEventListener('input', () => {
+        renderDistance = parseInt(renderDistSlider.value, 10);
+        renderDistVal.textContent = renderDistance;
+        scene.fog.near = renderDistance * CHUNK_SIZE * 0.45;
+        scene.fog.far = renderDistance * CHUNK_SIZE * 0.98;
+      });
+
+      const sensSlider = document.getElementById('setting-sensitivity');
+      const sensVal = document.getElementById('setting-sensitivity-val');
+      sensSlider.addEventListener('input', () => {
+        const val = parseInt(sensSlider.value, 10);
+        sensVal.textContent = val;
+        player.sensitivity = 0.0005 + val * 0.00035;
+      });
+
+      // Xử lý thay đổi kích thước cửa sổ
+      window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      });
+
+      // Các phần tử HUD cập nhật thông số
+      const statCoordsEl = document.getElementById('stat-coords');
+      const statFpsEl = document.getElementById('stat-fps');
+      const statChunksEl = document.getElementById('stat-chunks');
+      const statTargetEl = document.getElementById('stat-target');
+
+      let lastTime = performance.now();
+      let frameCount = 0;
+      let fpsTimer = 0;
+      const rayDir = new THREE.Vector3();
+
+      // Vòng lặp Render & Vật lý chính (60 FPS)
+      function animate(now) {
+        requestAnimationFrame(animate);
+
+        const dt = (now - lastTime) / 1000;
+        lastTime = now;
+
+        // Tính FPS mỗi 0.4 giây
+        frameCount++;
+        fpsTimer += dt;
+        if (fpsTimer >= 0.4) {
+          const fps = Math.round(frameCount / fpsTimer);
+          statFpsEl.textContent = fps;
+          statFpsEl.className = fps >= 45 ? 'text-emerald-400' : (fps >= 25 ? 'text-amber-300' : 'text-rose-400');
+          frameCount = 0;
+          fpsTimer = 0;
+        }
+
+        // Cập nhật vật lý người chơi khi đang chơi
+        if (isPlaying) {
+          player.update(dt);
+        }
+
+        // Tự động sinh & giải phóng Chunk vô hạn quanh vị trí người chơi
+        world.updateChunksAroundPlayer(player.position.x, player.position.z, renderDistance);
+
+        // Raycasting tìm khối người chơi đang chỉ vào
+        camera.getWorldDirection(rayDir);
+        currentTarget = voxelRaycast(world, camera.position, rayDir, 6.5);
+
+        if (currentTarget) {
+          const [bx, by, bz] = currentTarget.blockPos;
+          selectionBox.position.set(bx + 0.5, by + 0.5, bz + 0.5);
+          selectionBox.visible = true;
+          statTargetEl.innerHTML = `Đang nhìn: <span class="text-emerald-300 font-semibold">${BLOCK_NAMES[currentTarget.blockId]}</span> <span class="text-slate-400">(${bx}, ${by}, ${bz})</span>`;
+        } else {
+          selectionBox.visible = false;
+          statTargetEl.innerHTML = `Đang nhìn: <span class="text-slate-400">Không có</span>`;
+        }
+
+        // Cập nhật HUD tọa độ & số chunk
+        statCoordsEl.textContent = `X: ${player.position.x.toFixed(1)} | Y: ${player.position.y.toFixed(1)} | Z: ${player.position.z.toFixed(1)}`;
+        statChunksEl.textContent = world.chunks.size;
+
+        // Đổi màu sương mù nhẹ nếu người chơi lặn dưới nước
+        const eyeBlock = world.getBlockAt(
+          Math.floor(camera.position.x),
+          Math.floor(camera.position.y),
+          Math.floor(camera.position.z)
+        );
+        if (eyeBlock === BLOCK.WATER) {
+          scene.background.setHex(0x1e579c);
+          scene.fog.color.setHex(0x1e579c);
+          scene.fog.near = 2;
+          scene.fog.far = 22;
+        } else {
+          scene.background.copy(skyColor);
+          scene.fog.color.copy(skyColor);
+          scene.fog.near = renderDistance * CHUNK_SIZE * 0.45;
+          scene.fog.far = renderDistance * CHUNK_SIZE * 0.98;
+        }
+
+        renderer.render(scene, camera);
+      }
+
+      requestAnimationFrame(animate);
+    };
+  </script>
+</body>
+</html>

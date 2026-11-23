@@ -1,0 +1,255 @@
+import { memo, useEffect, useState } from 'react';
+import { Backpack, Shield, Sword, TreePine } from 'lucide-react';
+import { HudStats, VoxelEngine } from '../game/engine';
+import { BACKPACK_CAPACITY, BackpackItem } from '../game/trees';
+
+interface BackpackHudProps {
+  engine: VoxelEngine | null;
+}
+
+interface BackpackViewState {
+  hasBackpack: boolean;
+  hasKatana: boolean;
+  hasShield: boolean;
+  backpackOpen: boolean;
+  holdingKatana: boolean;
+  shieldRaised: boolean;
+  items: Array<BackpackItem | null>;
+}
+
+const INITIAL_STATE: BackpackViewState = {
+  hasBackpack: false,
+  hasKatana: false,
+  hasShield: false,
+  backpackOpen: false,
+  holdingKatana: false,
+  shieldRaised: false,
+  items: Array.from({ length: BACKPACK_CAPACITY }, () => null),
+};
+
+export const BackpackHud = memo(function BackpackHud({ engine }: BackpackHudProps) {
+  const [state, setState] = useState<BackpackViewState>(INITIAL_STATE);
+
+  useEffect(() => {
+    if (!engine) {
+      setState(INITIAL_STATE);
+      return;
+    }
+
+    return engine.subscribeStats((stats: HudStats) => {
+      setState((prev) => {
+        if (
+          prev.hasBackpack === stats.hasBackpack &&
+          prev.hasKatana === stats.hasKatana &&
+          prev.hasShield === stats.hasShield &&
+          prev.backpackOpen === stats.backpackOpen &&
+          prev.holdingKatana === stats.holdingKatana &&
+          prev.shieldRaised === stats.shieldRaised &&
+          prev.items === stats.backpackItems
+        ) {
+          return prev;
+        }
+        return {
+          hasBackpack: stats.hasBackpack,
+          hasKatana: stats.hasKatana,
+          hasShield: stats.hasShield,
+          backpackOpen: stats.backpackOpen,
+          holdingKatana: stats.holdingKatana,
+          shieldRaised: stats.shieldRaised,
+          items: stats.backpackItems,
+        };
+      });
+    });
+  }, [engine]);
+
+  if (!state.hasBackpack && !state.hasKatana && !state.hasShield) {
+    return null;
+  }
+
+  const count = state.items.reduce((acc, item) => (item ? acc + 1 : acc), 0);
+  const isFull = count >= BACKPACK_CAPACITY;
+  const firstOccupiedIndex = state.items.findIndex((item) => item !== null);
+
+  return (
+    <>
+      <div className="flex flex-col items-start gap-2 pointer-events-none">
+        {state.hasBackpack && (
+          <div
+            className={`px-3.5 py-2 rounded-xl shadow-lg border flex items-center gap-3 transition-colors ${
+              isFull
+                ? 'bg-rose-950/95 border-rose-500 text-rose-100'
+                : 'bg-slate-950/85 border-amber-400/25 text-white'
+            }`}
+          >
+            <div
+              className={`w-8 h-8 rounded-lg border flex items-center justify-center shrink-0 ${
+                isFull
+                  ? 'bg-rose-500/30 border-rose-400 text-rose-200'
+                  : 'bg-amber-500/20 border-amber-400/35 text-amber-300'
+              }`}
+            >
+              <Backpack className="w-4 h-4" />
+            </div>
+            <div className="leading-tight">
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] uppercase tracking-wider font-medium text-slate-300">
+                  Balo (E)
+                </span>
+                {isFull && (
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-rose-600 text-white tracking-wide">
+                    ĐẦY
+                  </span>
+                )}
+              </div>
+              <div
+                className={`font-mono-tech text-sm font-bold tabular-nums ${
+                  isFull ? 'text-rose-300' : 'text-amber-300'
+                }`}
+              >
+                {count} / {BACKPACK_CAPACITY} ô
+              </div>
+            </div>
+          </div>
+        )}
+
+        {state.hasKatana && (
+          <div
+            className={`px-3.5 py-2 rounded-xl shadow-lg border flex items-center gap-3 transition-colors ${
+              state.holdingKatana
+                ? 'bg-slate-900/95 border-sky-400/60 text-white'
+                : 'bg-slate-950/85 border-white/15 text-slate-200'
+            }`}
+          >
+            <div
+              className={`w-8 h-8 rounded-lg border flex items-center justify-center shrink-0 ${
+                state.holdingKatana
+                  ? 'bg-sky-500/25 border-sky-400/50 text-sky-300'
+                  : 'bg-slate-800 border-white/15 text-slate-400'
+              }`}
+            >
+              <Sword className="w-4 h-4" />
+            </div>
+            <div className="leading-tight">
+              <div className="text-[11px] uppercase tracking-wider font-medium text-slate-400">
+                Katana (Q)
+              </div>
+              <div
+                className={`text-xs font-semibold ${
+                  state.holdingKatana ? 'text-sky-300' : 'text-slate-300'
+                }`}
+              >
+                {state.holdingKatana ? 'Đang cầm · Chuột trái chém' : 'Đang cất'}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {state.hasShield && (
+          <div
+            className={`px-3.5 py-2 rounded-xl shadow-lg border flex items-center gap-3 transition-colors ${
+              state.shieldRaised
+                ? 'bg-slate-900/95 border-amber-400/60 text-white'
+                : 'bg-slate-950/85 border-white/15 text-slate-200'
+            }`}
+          >
+            <div
+              className={`w-8 h-8 rounded-lg border flex items-center justify-center shrink-0 ${
+                state.shieldRaised
+                  ? 'bg-amber-500/25 border-amber-400/50 text-amber-300'
+                  : 'bg-slate-800 border-white/15 text-slate-400'
+              }`}
+            >
+              <Shield className="w-4 h-4" />
+            </div>
+            <div className="leading-tight">
+              <div className="text-[11px] uppercase tracking-wider font-medium text-slate-400">
+                Khiên chắn (R)
+              </div>
+              <div
+                className={`text-xs font-semibold ${
+                  state.shieldRaised ? 'text-amber-300' : 'text-slate-300'
+                }`}
+              >
+                {state.shieldRaised ? 'Đang che trước mặt' : 'Đang chắn sau lưng'}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {state.hasBackpack && state.backpackOpen && (
+        <div className="fixed bottom-[268px] md:bottom-24 left-1/2 -translate-x-1/2 z-20 pointer-events-none w-[min(94vw,640px)]">
+          <div
+            className={`rounded-2xl border p-3 sm:p-4 shadow-2xl ${
+              isFull
+                ? 'bg-rose-950/95 border-rose-500/80 text-white'
+                : 'bg-slate-950/90 border-white/15 text-white'
+            }`}
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-2.5">
+              <div className="flex items-center gap-2">
+                <Backpack className={`w-4 h-4 ${isFull ? 'text-rose-300' : 'text-amber-300'}`} />
+                <span className="text-xs sm:text-sm font-bold tracking-wide">
+                  Balo chứa gỗ ({count}/{BACKPACK_CAPACITY})
+                </span>
+              </div>
+              <span
+                className={`text-[11px] font-mono-tech font-semibold px-2 py-0.5 rounded ${
+                  isFull
+                    ? 'bg-rose-600 text-white'
+                    : 'bg-slate-800 text-slate-300 border border-white/10'
+                }`}
+              >
+                {isFull ? 'BALO ĐẦY · Phím 1–9 lấy ô' : 'Phím 1–9: Lấy ô · F: Lấy nhanh 1→9'}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-3 sm:grid-cols-9 gap-1.5 sm:gap-2">
+              {Array.from({ length: BACKPACK_CAPACITY }, (_, index) => {
+                const item = state.items[index];
+                const isNextQuick = index === firstOccupiedIndex && Boolean(item);
+
+                return (
+                  <div
+                    key={index}
+                    className={`relative h-16 sm:h-[70px] rounded-xl border flex flex-col items-center justify-center px-1 text-center ${
+                      item
+                        ? isNextQuick
+                          ? 'bg-amber-950/85 border-emerald-400/80 text-amber-100'
+                          : 'bg-amber-950/60 border-amber-500/40 text-amber-100'
+                        : 'bg-slate-900/75 border-white/10 text-slate-500'
+                    }`}
+                  >
+                    <span className="absolute top-1 left-1.5 text-[10px] font-mono-tech font-bold px-1 rounded bg-slate-800/90 text-amber-300 border border-white/10 leading-tight">
+                      {index + 1}
+                    </span>
+
+                    {isNextQuick && (
+                      <span className="absolute top-1 right-1 text-[9px] font-bold px-1 rounded bg-emerald-500 text-slate-950 leading-tight">
+                        F
+                      </span>
+                    )}
+
+                    {item ? (
+                      <>
+                        <TreePine className="w-4 h-4 text-amber-300 mt-3 shrink-0" />
+                        <span className="font-mono-tech text-[10px] font-bold text-white leading-tight mt-0.5">
+                          {item.length.toFixed(1)}m
+                        </span>
+                        <span className="font-mono-tech text-[9px] text-emerald-300 leading-none">
+                          {item.valueVnd.toLocaleString('vi-VN')}đ
+                        </span>
+                      </>
+                    ) : (
+                      <span className="text-[10px] text-slate-600 mt-2">Trống</span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+});
