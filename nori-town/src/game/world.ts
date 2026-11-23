@@ -2,6 +2,12 @@ import * as THREE from 'three';
 import { applyCitadelToChunk } from './citadel';
 import { BlockId, CHUNK_HEIGHT, CHUNK_SIZE } from './constants';
 import { CashierStation } from './counter';
+import {
+  DragonAttackResult,
+  DragonBossHudState,
+  DragonBossManager,
+  DragonUpdateCallbacks,
+} from './dragon';
 import { OutsideGenerator } from './outside';
 import {
   SlimeAttackResult,
@@ -54,6 +60,7 @@ export class WorldManager {
   private cashier: CashierStation;
   private weaponShop: WeaponShop;
   private slimes: SlimeManager;
+  private dragon: DragonBossManager;
 
   readonly chunks = new Map<string, Chunk>();
   readonly dirtyChunks = new Set<string>();
@@ -75,6 +82,7 @@ export class WorldManager {
     this.cashier = new CashierStation(this.scene);
     this.weaponShop = new WeaponShop(this.scene);
     this.slimes = new SlimeManager(this.scene, this.outside, this.seed);
+    this.dragon = new DragonBossManager(this.scene, this.outside);
   }
 
   resetSeed(newSeed: number): void {
@@ -85,6 +93,7 @@ export class WorldManager {
     this.cashier = new CashierStation(this.scene);
     this.weaponShop = new WeaponShop(this.scene);
     this.slimes = new SlimeManager(this.scene, this.outside, this.seed);
+    this.dragon = new DragonBossManager(this.scene, this.outside);
     this.lastPlayerCx = Number.NaN;
     this.lastPlayerCz = Number.NaN;
     this.pendingCoords = [];
@@ -159,6 +168,22 @@ export class WorldManager {
     return this.trees.getBackpackItems();
   }
 
+  getBackpackSlotKind(slotIndex: number): 'wood' | 'potion' | null {
+    return this.trees.getSlotKind(slotIndex);
+  }
+
+  getPotionCountAtSlot(slotIndex: number): number {
+    return this.trees.getPotionCountAtSlot(slotIndex);
+  }
+
+  addPotionToBackpack(): { added: boolean; slotIndex: number; count: number } {
+    return this.trees.addPotionToBackpack();
+  }
+
+  consumePotionFromSlot(slotIndex: number): number {
+    return this.trees.consumePotionFromSlot(slotIndex);
+  }
+
   isBackpackFull(): boolean {
     return this.trees.isBackpackFull();
   }
@@ -224,6 +249,40 @@ export class WorldManager {
     return this.slimes.attackWithKatana(cameraPos, forwardDir, maxRange);
   }
 
+  raycastDragon(
+    origin: THREE.Vector3,
+    direction: THREE.Vector3,
+    maxDistance = 8.0,
+  ): { point: THREE.Vector3; hp: number; maxHp: number } | null {
+    return this.dragon.raycastDragon(origin, direction, maxDistance);
+  }
+
+  raycastDroppedIceKatana(
+    origin: THREE.Vector3,
+    direction: THREE.Vector3,
+    maxDistance = 6.5,
+  ): { point: THREE.Vector3 } | null {
+    return this.dragon.raycastDroppedIceKatana(origin, direction, maxDistance);
+  }
+
+  tryCollectIceKatana(callbacks?: DragonUpdateCallbacks): boolean {
+    return this.dragon.tryCollectIceKatana(callbacks);
+  }
+
+  attackDragonWithKatana(
+    cameraPos: THREE.Vector3,
+    forwardDir: THREE.Vector3,
+    damage = 1,
+    maxRange = 5.4,
+    playerLevel = 1,
+  ): DragonAttackResult {
+    return this.dragon.attackWithKatana(cameraPos, forwardDir, damage, maxRange, playerLevel);
+  }
+
+  getBossHudState(playerX: number, playerZ: number): DragonBossHudState {
+    return this.dragon.getBossHudState(playerX, playerZ);
+  }
+
   update(
     dt: number,
     playerX: number,
@@ -234,9 +293,11 @@ export class WorldManager {
     onTreeLanded?: () => void,
     onEarnMoney?: (earned: number, lengthBlocks: number) => void,
     slimeCallbacks?: SlimeUpdateCallbacks,
+    dragonCallbacks?: DragonUpdateCallbacks,
   ): void {
     this.trees.update(dt, onTreeLanded);
     this.slimes.update(dt, playerX, playerY, playerZ, playerYaw, shieldRaised, slimeCallbacks);
+    this.dragon.update(dt, playerX, playerY, playerZ, playerYaw, shieldRaised, dragonCallbacks);
 
     const bounds = this.cashier.getConveyorDropBounds();
     const droppedOnBelt = this.trees.popFallenLogInZone(bounds);
@@ -901,6 +962,7 @@ export class WorldManager {
     this.cashier.dispose();
     this.weaponShop.dispose();
     this.slimes.dispose();
+    this.dragon.dispose();
     this.chunks.clear();
     this.dirtyChunks.clear();
     this.pendingCoords = [];

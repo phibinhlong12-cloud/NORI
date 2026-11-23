@@ -30,6 +30,14 @@ export const SLIME_ZONE_SPECS: SlimeZoneSpec[] = [
   },
 ];
 
+export const DRAGON_ZONE_SPEC: SlimeZoneSpec = {
+  id: 'dragon-ice-zone',
+  name: 'Lãnh Địa Rồng Băng',
+  x: 0.5,
+  z: -138,
+  radius: 34,
+};
+
 export function isInsideSlimeZone(wx: number, wz: number, padding = 0): boolean {
   for (const zone of SLIME_ZONE_SPECS) {
     const r = zone.radius + padding;
@@ -40,6 +48,13 @@ export function isInsideSlimeZone(wx: number, wz: number, padding = 0): boolean 
     }
   }
   return false;
+}
+
+export function isInsideDragonZone(wx: number, wz: number, padding = 0): boolean {
+  const r = DRAGON_ZONE_SPEC.radius + padding;
+  const dx = wx - DRAGON_ZONE_SPEC.x;
+  const dz = wz - DRAGON_ZONE_SPEC.z;
+  return dx * dx + dz * dz <= r * r;
 }
 
 export const MAX_PLAYER_HP = 10;

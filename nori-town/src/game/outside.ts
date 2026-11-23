@@ -7,7 +7,7 @@ import {
   WALL_MIN,
 } from './citadel';
 import { BLOCK_COLORS, BlockId, CHUNK_SIZE } from './constants';
-import { isInsideSlimeZone } from './slimeZones';
+import { isInsideDragonZone, isInsideSlimeZone } from './slimeZones';
 
 export const FLAT_GROUND_Y = 4.0;
 
@@ -131,7 +131,7 @@ export class OutsideGenerator {
     ) {
       return false;
     }
-    if (isInsideSlimeZone(wx, wz, 1.8)) {
+    if (isInsideSlimeZone(wx, wz, 1.8) || isInsideDragonZone(wx, wz, 2.0)) {
       return false;
     }
     return true;

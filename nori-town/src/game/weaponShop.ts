@@ -1,31 +1,35 @@
 import * as THREE from 'three';
 import { createKatanaMeshGroup, KatanaAssetHandles } from './katana';
+import { createPotionMeshGroup } from './potion';
 import { createShieldMeshGroup } from './shield';
 
-export type ShopItemId = 'backpack' | 'katana' | 'shield';
+export type ShopItemId = 'backpack' | 'katana' | 'shield' | 'potion';
 
 export const SHOP_ITEM_PRICES: Record<ShopItemId, number> = {
   backpack: 500,
   katana: 1000,
   shield: 600,
+  potion: 200,
 };
 
 export const SHOP_ITEM_NAMES: Record<ShopItemId, string> = {
   backpack: 'Balo (9 ô)',
   katana: 'Katana',
   shield: 'Khiên chắn',
+  potion: 'Lọ thuốc hồi máu',
 };
 
 export const SHOP_MIN_X = 5.2;
-export const SHOP_MAX_X = 15.3;
+export const SHOP_MAX_X = 18.4;
 export const SHOP_MIN_Z = -21.55;
 export const SHOP_MAX_Z = -19.25;
 export const SHOP_TOP_Y = 5.18;
 
 /**
  * Module Quầy Bán Vũ Khí đặt đối diện quầy thu ngân (góc phải bên trong cổng thành).
- * Không có NPC, gồm 3 khung vật phẩm:
- * Khung 1 (Balo - 500 VNĐ), Khung 2 (Katana - 1.000 VNĐ), Khung 3 (Khiên chắn - 600 VNĐ).
+ * Không có NPC, gồm 4 khung vật phẩm:
+ * Khung 1 (Balo - 500 VNĐ), Khung 2 (Katana - 1.000 VNĐ),
+ * Khung 3 (Khiên chắn - 600 VNĐ), Khung 4 (Lọ thuốc hồi máu - 200 VNĐ).
  */
 export class WeaponShop {
   private readonly scene: THREE.Scene;
@@ -38,9 +42,11 @@ export class WeaponShop {
   private readonly backpackDisplay: THREE.Group;
   private readonly katanaDisplay: THREE.Group;
   private readonly shieldDisplay: THREE.Group;
+  private readonly potionDisplay: THREE.Group;
   private readonly backpackSignMat: THREE.MeshBasicMaterial;
   private readonly katanaSignMat: THREE.MeshBasicMaterial;
   private readonly shieldSignMat: THREE.MeshBasicMaterial;
+  private readonly potionSignMat: THREE.MeshBasicMaterial;
 
   private backpackOwned = false;
   private katanaOwned = false;
@@ -120,9 +126,11 @@ export class WeaponShop {
     const frame1X = 7.15;
     const frame2X = 10.25;
     const frame3X = 13.35;
+    const frame4X = 16.45;
     buildFrame(frame1X, 'backpack');
     buildFrame(frame2X, 'katana');
     buildFrame(frame3X, 'shield');
+    buildFrame(frame4X, 'potion');
 
     // 3. Vật phẩm khung 1: Balo 3D
     this.backpackDisplay = new THREE.Group();
@@ -193,14 +201,36 @@ export class WeaponShop {
 
     addBox(0.6, 0.18, 0.36, frame3X, SHOP_TOP_Y + 0.19, centerZ + 0.04, trimMat, 'shield');
 
-    // 6. Bảng tên & giá tiền trên mỗi khung vật phẩm
+    // 6. Vật phẩm khung 4: Lọ thuốc hồi máu 3D đặt trên đệm nhỏ
+    this.potionDisplay = new THREE.Group();
+    this.potionDisplay.position.set(frame4X, SHOP_TOP_Y + 0.22, centerZ + 0.04);
+    const potionMesh = createPotionMeshGroup(this.assets);
+    potionMesh.scale.set(1.85, 1.85, 1.85);
+    potionMesh.traverse((obj) => {
+      if (obj instanceof THREE.Mesh) {
+        obj.userData.shopItem = 'potion';
+        this.hitMeshes.push(obj);
+      }
+    });
+    this.potionDisplay.add(potionMesh);
+    this.rootGroup.add(this.potionDisplay);
+    addBox(0.55, 0.12, 0.55, frame4X, SHOP_TOP_Y + 0.16, centerZ + 0.04, trimMat, 'potion');
+
+    // 7. Bảng tên & giá tiền trên mỗi khung vật phẩm
     const sign1Tex = this.createPriceTexture('Khung 1 · Balo', '500 VNĐ', false);
     const sign2Tex = this.createPriceTexture('Khung 2 · Katana', '1.000 VNĐ', false);
     const sign3Tex = this.createPriceTexture('Khung 3 · Khiên chắn', '600 VNĐ', false);
+    const sign4Tex = this.createPriceTexture('Khung 4 · Thuốc máu', '200 VNĐ', false);
     this.backpackSignMat = new THREE.MeshBasicMaterial({ map: sign1Tex });
     this.katanaSignMat = new THREE.MeshBasicMaterial({ map: sign2Tex });
     this.shieldSignMat = new THREE.MeshBasicMaterial({ map: sign3Tex });
-    this.assets.materials.push(this.backpackSignMat, this.katanaSignMat, this.shieldSignMat);
+    this.potionSignMat = new THREE.MeshBasicMaterial({ map: sign4Tex });
+    this.assets.materials.push(
+      this.backpackSignMat,
+      this.katanaSignMat,
+      this.shieldSignMat,
+      this.potionSignMat,
+    );
 
     const signGeo = new THREE.PlaneGeometry(1.9, 0.68);
     this.assets.geometries.push(signGeo);
@@ -223,6 +253,12 @@ export class WeaponShop {
     this.hitMeshes.push(sign3);
     this.rootGroup.add(sign3);
 
+    const sign4 = new THREE.Mesh(signGeo, this.potionSignMat);
+    sign4.position.set(frame4X, SHOP_TOP_Y + 1.48, centerZ - 0.56);
+    sign4.userData.shopItem = 'potion';
+    this.hitMeshes.push(sign4);
+    this.rootGroup.add(sign4);
+
     // Bảng giá mặt trước quầy để dễ đọc từ xa
     const frontSignGeo = new THREE.PlaneGeometry(1.75, 0.62);
     this.assets.geometries.push(frontSignGeo);
@@ -244,6 +280,12 @@ export class WeaponShop {
     frontSign3.userData.shopItem = 'shield';
     this.hitMeshes.push(frontSign3);
     this.rootGroup.add(frontSign3);
+
+    const frontSign4 = new THREE.Mesh(frontSignGeo, this.potionSignMat);
+    frontSign4.position.set(frame4X, 4.5, SHOP_MAX_Z + 0.02);
+    frontSign4.userData.shopItem = 'potion';
+    this.hitMeshes.push(frontSign4);
+    this.rootGroup.add(frontSign4);
 
     this.scene.add(this.rootGroup);
   }
@@ -301,7 +343,9 @@ export class WeaponShop {
   isOwned(itemId: ShopItemId): boolean {
     if (itemId === 'backpack') return this.backpackOwned;
     if (itemId === 'katana') return this.katanaOwned;
-    return this.shieldOwned;
+    if (itemId === 'shield') return this.shieldOwned;
+    // Thuốc hồi máu có thể mua nhiều lần vào balo
+    return false;
   }
 
   markOwned(itemId: ShopItemId): void {

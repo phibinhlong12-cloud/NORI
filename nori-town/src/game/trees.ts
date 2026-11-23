@@ -7,13 +7,25 @@ export type TreeState = 'standing' | 'fallen';
 export type DetachedLogState = 'falling' | 'fallen' | 'carried';
 
 export const BACKPACK_CAPACITY = 9;
+export const MAX_POTION_STACK = 50;
 
-export interface BackpackItem {
-  id: string;
-  length: number;
-  hasCanopy: boolean;
-  valueVnd: number;
-}
+export type BackpackItem =
+  | {
+      kind: 'wood';
+      id: string;
+      length: number;
+      hasCanopy: boolean;
+      valueVnd: number;
+    }
+  | {
+      kind: 'potion';
+      id: string;
+      count: number;
+    };
+
+type InternalBackpackSlot =
+  | { kind: 'wood'; log: DetachedLog }
+  | { kind: 'potion'; id: string; count: number };
 
 export interface InteractiveTree {
   id: string;
@@ -86,7 +98,7 @@ export class TreeManager {
   private readonly chunkTrees = new Map<string, InteractiveTree[]>();
   private readonly detachedLogs = new Set<DetachedLog>();
   private readonly fallingLogs = new Set<DetachedLog>();
-  private readonly backpackSlots: Array<DetachedLog | null> = Array.from(
+  private readonly backpackSlots: Array<InternalBackpackSlot | null> = Array.from(
     { length: BACKPACK_CAPACITY },
     () => null,
   );
@@ -158,20 +170,78 @@ export class TreeManager {
   }
 
   private rebuildBackpackSnapshot(): void {
-    this.backpackSnapshot = this.backpackSlots.map((log) =>
-      log
-        ? {
-            id: log.id,
-            length: log.length,
-            hasCanopy: log.hasCanopy,
-            valueVnd: Math.max(10, Math.round(log.length * VND_PER_BLOCK)),
-          }
-        : null,
-    );
+    this.backpackSnapshot = this.backpackSlots.map((slot) => {
+      if (!slot) return null;
+      if (slot.kind === 'potion') {
+        return {
+          kind: 'potion',
+          id: slot.id,
+          count: slot.count,
+        };
+      }
+      const log = slot.log;
+      return {
+        kind: 'wood',
+        id: log.id,
+        length: log.length,
+        hasCanopy: log.hasCanopy,
+        valueVnd: Math.max(10, Math.round(log.length * VND_PER_BLOCK)),
+      };
+    });
   }
 
   getBackpackItems(): Array<BackpackItem | null> {
     return this.backpackSnapshot;
+  }
+
+  getSlotKind(slotIndex: number): 'wood' | 'potion' | null {
+    if (slotIndex < 0 || slotIndex >= BACKPACK_CAPACITY) return null;
+    const slot = this.backpackSlots[slotIndex];
+    return slot ? slot.kind : null;
+  }
+
+  getPotionCountAtSlot(slotIndex: number): number {
+    if (slotIndex < 0 || slotIndex >= BACKPACK_CAPACITY) return 0;
+    const slot = this.backpackSlots[slotIndex];
+    return slot && slot.kind === 'potion' ? slot.count : 0;
+  }
+
+  addPotionToBackpack(): { added: boolean; slotIndex: number; count: number } {
+    for (let i = 0; i < BACKPACK_CAPACITY; i++) {
+      const slot = this.backpackSlots[i];
+      if (slot && slot.kind === 'potion' && slot.count < MAX_POTION_STACK) {
+        slot.count += 1;
+        this.rebuildBackpackSnapshot();
+        return { added: true, slotIndex: i, count: slot.count };
+      }
+    }
+
+    const emptyIndex = this.backpackSlots.findIndex((slot) => slot === null);
+    if (emptyIndex === -1) {
+      return { added: false, slotIndex: -1, count: 0 };
+    }
+
+    this.backpackSlots[emptyIndex] = {
+      kind: 'potion',
+      id: `potion:${emptyIndex}:${++this.cutCounter}`,
+      count: 1,
+    };
+    this.rebuildBackpackSnapshot();
+    return { added: true, slotIndex: emptyIndex, count: 1 };
+  }
+
+  consumePotionFromSlot(slotIndex: number): number {
+    if (slotIndex < 0 || slotIndex >= BACKPACK_CAPACITY) return -1;
+    const slot = this.backpackSlots[slotIndex];
+    if (!slot || slot.kind !== 'potion') return -1;
+
+    slot.count -= 1;
+    const remaining = slot.count;
+    if (remaining <= 0) {
+      this.backpackSlots[slotIndex] = null;
+    }
+    this.rebuildBackpackSnapshot();
+    return Math.max(0, remaining);
   }
 
   isBackpackFull(): boolean {
@@ -191,7 +261,7 @@ export class TreeManager {
     this.fallingLogs.delete(log);
     this.detachedLogs.delete(log);
     this.scene.remove(log.group);
-    this.backpackSlots[emptyIndex] = log;
+    this.backpackSlots[emptyIndex] = { kind: 'wood', log };
     this.rebuildBackpackSnapshot();
     return true;
   }
@@ -201,9 +271,10 @@ export class TreeManager {
       return false;
     }
 
-    const log = this.backpackSlots[slotIndex];
-    if (!log) return false;
+    const slot = this.backpackSlots[slotIndex];
+    if (!slot || slot.kind !== 'wood') return false;
 
+    const log = slot.log;
     this.backpackSlots[slotIndex] = null;
     log.state = 'carried';
     log.group.scale.set(0.52, 0.52, 0.52);
@@ -217,8 +288,8 @@ export class TreeManager {
   retrieveLogFromBackpack(): boolean {
     if (this.carriedLog) return false;
 
-    // Lấy nhanh theo thứ tự từ ô 1 tới ô 9
-    const firstIndex = this.backpackSlots.findIndex((slot) => slot !== null);
+    // Lấy nhanh khúc gỗ đầu tiên theo thứ tự từ ô 1 tới ô 9
+    const firstIndex = this.backpackSlots.findIndex((slot) => slot !== null && slot.kind === 'wood');
     if (firstIndex === -1) {
       return false;
     }

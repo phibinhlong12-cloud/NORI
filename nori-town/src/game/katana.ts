@@ -5,14 +5,27 @@ export interface KatanaAssetHandles {
   materials: THREE.Material[];
 }
 
-export function createKatanaMeshGroup(handles: KatanaAssetHandles): THREE.Group {
+export function createKatanaMeshGroup(
+  handles: KatanaAssetHandles,
+  isIce = false,
+): THREE.Group {
   const group = new THREE.Group();
 
-  const hiltMat = new THREE.MeshLambertMaterial({ color: '#1e293b' });
-  const wrapMat = new THREE.MeshLambertMaterial({ color: '#7f1d1d' });
-  const goldMat = new THREE.MeshLambertMaterial({ color: '#f59e0b' });
-  const bladeMat = new THREE.MeshLambertMaterial({ color: '#e2e8f0' });
-  const spineMat = new THREE.MeshLambertMaterial({ color: '#94a3b8' });
+  const hiltMat = new THREE.MeshLambertMaterial({
+    color: isIce ? '#0c4a6e' : '#1e293b',
+  });
+  const wrapMat = new THREE.MeshLambertMaterial({
+    color: isIce ? '#0284c7' : '#7f1d1d',
+  });
+  const goldMat = new THREE.MeshLambertMaterial({
+    color: isIce ? '#7dd3fc' : '#f59e0b',
+  });
+  const bladeMat = isIce
+    ? new THREE.MeshBasicMaterial({ color: '#bae6fd' })
+    : new THREE.MeshLambertMaterial({ color: '#e2e8f0' });
+  const spineMat = new THREE.MeshLambertMaterial({
+    color: isIce ? '#0ea5e9' : '#94a3b8',
+  });
   handles.materials.push(hiltMat, wrapMat, goldMat, bladeMat, spineMat);
 
   // Tay cầm (Tsuka)
@@ -68,13 +81,34 @@ export function createKatanaMeshGroup(handles: KatanaAssetHandles): THREE.Group 
   tip.scale.set(0.42, 1, 1.1);
   group.add(tip);
 
+  // Tinh thể băng phát sáng trên chắn kiếm & sống kiếm cho phiên bản Katana Băng
+  if (isIce) {
+    const frostMat = new THREE.MeshBasicMaterial({ color: '#e0f2fe' });
+    handles.materials.push(frostMat);
+
+    const crystalGeo = new THREE.OctahedronGeometry(0.036, 0);
+    handles.geometries.push(crystalGeo);
+    const crystal = new THREE.Mesh(crystalGeo, frostMat);
+    crystal.position.set(0, 0.255, 0.045);
+    crystal.scale.set(0.75, 1.3, 0.75);
+    group.add(crystal);
+
+    const edgeGlowGeo = new THREE.BoxGeometry(0.006, 0.66, 0.012);
+    edgeGlowGeo.translate(0, 0.33, 0);
+    handles.geometries.push(edgeGlowGeo);
+    const edgeGlow = new THREE.Mesh(edgeGlowGeo, frostMat);
+    edgeGlow.position.set(0, 0.252, -0.017);
+    group.add(edgeGlow);
+  }
+
   return group;
 }
 
 export class KatanaViewModel {
   private readonly scene: THREE.Scene;
-  private readonly group: THREE.Group;
-  private readonly assets: KatanaAssetHandles = { geometries: [], materials: [] };
+  private group: THREE.Group;
+  private assets: KatanaAssetHandles = { geometries: [], materials: [] };
+  private isIce = false;
 
   private readonly idleOffset = new THREE.Vector3(0.42, -0.34, -0.62);
   private readonly slashOffset = new THREE.Vector3();
@@ -88,10 +122,33 @@ export class KatanaViewModel {
 
   constructor(scene: THREE.Scene) {
     this.scene = scene;
-    this.group = createKatanaMeshGroup(this.assets);
+    this.group = createKatanaMeshGroup(this.assets, false);
     this.group.scale.set(0.85, 0.85, 0.85);
     this.group.visible = false;
     this.scene.add(this.group);
+  }
+
+  setIceVariant(enabled: boolean): void {
+    if (this.isIce === enabled) return;
+    this.isIce = enabled;
+    const wasVisible = this.group.visible;
+    this.disposeMeshOnly();
+    this.group = createKatanaMeshGroup(this.assets, enabled);
+    this.group.scale.set(0.85, 0.85, 0.85);
+    this.group.visible = wasVisible;
+    this.scene.add(this.group);
+  }
+
+  private disposeMeshOnly(): void {
+    this.scene.remove(this.group);
+    for (const geo of this.assets.geometries) {
+      geo.dispose();
+    }
+    for (const mat of this.assets.materials) {
+      mat.dispose();
+    }
+    this.assets.geometries.length = 0;
+    this.assets.materials.length = 0;
   }
 
   triggerSlash(): void {
@@ -102,17 +159,26 @@ export class KatanaViewModel {
     this.slashElapsed = 0;
   }
 
-  update(camera: THREE.Camera, dt: number, visible: boolean): void {
+  update(
+    camera: THREE.Camera,
+    dt: number,
+    visible: boolean,
+    motion?: { lagY: number; strideX: number; strideY: number },
+  ): void {
     this.group.visible = visible;
     if (!visible) {
       this.isSlashing = false;
       return;
     }
 
-    let pitch = -0.65;
+    const lagY = motion?.lagY ?? 0;
+    const strideX = motion?.strideX ?? 0;
+    const strideY = motion?.strideY ?? 0;
+
+    let pitch = -0.65 + lagY * 1.1;
     let yaw = 0.18;
-    let roll = 0.25;
-    this.slashOffset.set(0, 0, 0);
+    let roll = 0.25 - strideX * 1.6;
+    this.slashOffset.set(strideX, lagY + strideY, 0);
 
     if (this.isSlashing) {
       this.slashElapsed += dt;
@@ -123,29 +189,29 @@ export class KatanaViewModel {
         const k = t / 0.2;
         pitch += 0.28 * k;
         roll -= 0.45 * k;
-        this.slashOffset.set(0.06 * k, 0.08 * k, 0.04 * k);
+        this.slashOffset.set(strideX + 0.06 * k, lagY + strideY + 0.08 * k, 0.04 * k);
       } else if (t < 0.55) {
         // Chém chéo từ phải-trên xuống trái-dưới
         const k = (t - 0.2) / 0.35;
         const swing = k * k * (3 - 2 * k);
-        pitch = -0.37 - 1.15 * swing;
+        pitch = -0.37 - 1.15 * swing + lagY * 0.6;
         yaw = 0.18 + 0.95 * swing;
         roll = -0.2 + 1.35 * swing;
         this.slashOffset.set(
-          0.06 - 0.44 * swing,
-          0.08 - 0.22 * swing,
+          strideX + 0.06 - 0.44 * swing,
+          lagY + strideY + 0.08 - 0.22 * swing,
           0.04 - 0.18 * swing,
         );
       } else {
         // Thu kiếm về vị trí ban đầu
         const k = (t - 0.55) / 0.45;
         const ease = 1 - (1 - k) * (1 - k);
-        pitch = -1.52 + (-0.65 - -1.52) * ease;
+        pitch = -1.52 + (-0.65 - -1.52) * ease + lagY * 0.9;
         yaw = 1.13 + (0.18 - 1.13) * ease;
         roll = 1.15 + (0.25 - 1.15) * ease;
         this.slashOffset.set(
-          -0.38 * (1 - ease),
-          -0.14 * (1 - ease),
+          strideX + -0.38 * (1 - ease),
+          lagY + strideY + -0.14 * (1 - ease),
           -0.14 * (1 - ease),
         );
       }
@@ -168,14 +234,6 @@ export class KatanaViewModel {
   }
 
   dispose(): void {
-    this.scene.remove(this.group);
-    for (const geo of this.assets.geometries) {
-      geo.dispose();
-    }
-    for (const mat of this.assets.materials) {
-      mat.dispose();
-    }
-    this.assets.geometries.length = 0;
-    this.assets.materials.length = 0;
+    this.disposeMeshOnly();
   }
 }

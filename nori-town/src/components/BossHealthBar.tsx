@@ -1,0 +1,101 @@
+import { memo, useEffect, useState } from 'react';
+import { Snowflake } from 'lucide-react';
+import { DragonBossHudState } from '../game/dragon';
+import { HudStats, VoxelEngine } from '../game/engine';
+
+interface BossHealthBarProps {
+  engine: VoxelEngine | null;
+}
+
+interface BossViewState {
+  boss: DragonBossHudState;
+  playerLevel: number;
+}
+
+const INITIAL_BOSS_HUD: DragonBossHudState = {
+  visible: false,
+  alive: true,
+  level: 30,
+  hp: 100,
+  maxHp: 100,
+  activeSkill: null,
+  phase: 'idle',
+  warningLabel: null,
+  warningProgress: 0,
+  dropAvailable: false,
+};
+
+const INITIAL_STATE: BossViewState = {
+  boss: INITIAL_BOSS_HUD,
+  playerLevel: 1,
+};
+
+export const BossHealthBar = memo(function BossHealthBar({ engine }: BossHealthBarProps) {
+  const [state, setState] = useState<BossViewState>(INITIAL_STATE);
+
+  useEffect(() => {
+    if (!engine) {
+      setState(INITIAL_STATE);
+      return;
+    }
+
+    return engine.subscribeStats((stats: HudStats) => {
+      setState((prev) => {
+        const next = stats.bossHud;
+        if (
+          prev.playerLevel === stats.level &&
+          prev.boss.visible === next.visible &&
+          prev.boss.alive === next.alive &&
+          prev.boss.hp === next.hp &&
+          prev.boss.dropAvailable === next.dropAvailable
+        ) {
+          return prev;
+        }
+        return {
+          boss: { ...next },
+          playerLevel: stats.level,
+        };
+      });
+    });
+  }, [engine]);
+
+  const { boss, playerLevel } = state;
+  if (!boss.visible) return null;
+
+  const hpPct = Math.max(0, Math.min(100, (boss.hp / boss.maxHp) * 100));
+
+  return (
+    <div className="fixed top-4 left-1/2 -translate-x-1/2 z-20 pointer-events-none w-[min(92vw,440px)] flex flex-col items-center gap-2">
+      {boss.alive && (
+        <div className="w-full bg-slate-950/88 border border-sky-400/45 rounded-xl px-4 py-2.5 shadow-xl">
+          <div className="flex items-center justify-between text-xs font-bold mb-1.5">
+            <div className="flex items-center gap-1.5 text-sky-300">
+              <Snowflake className="w-4 h-4 text-cyan-300" />
+              <span>Rồng Băng · LV.{boss.level}</span>
+              {playerLevel < 20 && (
+                <span className="text-[10px] font-semibold text-amber-300 ml-1">
+                  (Cần Lv.20)
+                </span>
+              )}
+            </div>
+            <span className="font-mono-tech text-cyan-200 tabular-nums">
+              {boss.hp} / {boss.maxHp}
+            </span>
+          </div>
+          <div className="w-full h-3 rounded-md bg-slate-900 border border-white/10 overflow-hidden">
+            <div
+              className="h-full bg-gradient-to-r from-sky-600 via-sky-400 to-cyan-200 transition-all duration-100"
+              style={{ width: `${hpPct}%` }}
+            />
+          </div>
+        </div>
+      )}
+
+      {!boss.alive && boss.dropAvailable && (
+        <div className="bg-sky-950/90 border border-cyan-300/70 text-cyan-100 rounded-xl px-4 py-2 text-xs font-semibold shadow-xl">
+          Katana Băng đã rơi ra! Lại gần hoặc Chuột phải để nhận thay Katana cũ.
+        </div>
+      )}
+    </div>
+  );
+});

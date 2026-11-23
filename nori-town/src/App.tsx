@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { BackpackHud } from './components/BackpackHud';
+import { BossHealthBar } from './components/BossHealthBar';
 import { HudOverlay } from './components/HudOverlay';
 import { MobileControls } from './components/MobileControls';
 import { MoneyTracker } from './components/MoneyTracker';
@@ -103,6 +104,8 @@ export default function App() {
           </>
         }
       />
+
+      <BossHealthBar engine={engineInstance} />
 
       <PlayerStatusBars engine={engineInstance} />
 

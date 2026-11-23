@@ -49,7 +49,7 @@ export interface SlimeUpdateCallbacks {
   onShieldBlocked?: (slimeLevel: SlimeLevel) => void;
 }
 
-const SLIME_RESPAWN_SECONDS = 14.0;
+const SLIME_RESPAWN_SECONDS = 300.0;
 
 function seededRand(seed: number): number {
   const n = Math.sin(seed * 127.1 + 311.7) * 43758.5453123;

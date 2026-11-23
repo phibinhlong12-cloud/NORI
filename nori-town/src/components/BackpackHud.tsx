@@ -1,7 +1,7 @@
 import { memo, useEffect, useState } from 'react';
-import { Backpack, Shield, Sword, TreePine } from 'lucide-react';
+import { Backpack, FlaskConical, Shield, Sword, TreePine } from 'lucide-react';
 import { HudStats, VoxelEngine } from '../game/engine';
-import { BACKPACK_CAPACITY, BackpackItem } from '../game/trees';
+import { BACKPACK_CAPACITY, BackpackItem, MAX_POTION_STACK } from '../game/trees';
 
 interface BackpackHudProps {
   engine: VoxelEngine | null;
@@ -10,9 +10,12 @@ interface BackpackHudProps {
 interface BackpackViewState {
   hasBackpack: boolean;
   hasKatana: boolean;
+  hasIceKatana: boolean;
   hasShield: boolean;
   backpackOpen: boolean;
   holdingKatana: boolean;
+  holdingPotionSlot: number | null;
+  holdingPotionCount: number;
   shieldRaised: boolean;
   items: Array<BackpackItem | null>;
 }
@@ -20,9 +23,12 @@ interface BackpackViewState {
 const INITIAL_STATE: BackpackViewState = {
   hasBackpack: false,
   hasKatana: false,
+  hasIceKatana: false,
   hasShield: false,
   backpackOpen: false,
   holdingKatana: false,
+  holdingPotionSlot: null,
+  holdingPotionCount: 0,
   shieldRaised: false,
   items: Array.from({ length: BACKPACK_CAPACITY }, () => null),
 };
@@ -41,9 +47,12 @@ export const BackpackHud = memo(function BackpackHud({ engine }: BackpackHudProp
         if (
           prev.hasBackpack === stats.hasBackpack &&
           prev.hasKatana === stats.hasKatana &&
+          prev.hasIceKatana === stats.hasIceKatana &&
           prev.hasShield === stats.hasShield &&
           prev.backpackOpen === stats.backpackOpen &&
           prev.holdingKatana === stats.holdingKatana &&
+          prev.holdingPotionSlot === stats.holdingPotionSlot &&
+          prev.holdingPotionCount === stats.holdingPotionCount &&
           prev.shieldRaised === stats.shieldRaised &&
           prev.items === stats.backpackItems
         ) {
@@ -52,9 +61,12 @@ export const BackpackHud = memo(function BackpackHud({ engine }: BackpackHudProp
         return {
           hasBackpack: stats.hasBackpack,
           hasKatana: stats.hasKatana,
+          hasIceKatana: stats.hasIceKatana,
           hasShield: stats.hasShield,
           backpackOpen: stats.backpackOpen,
           holdingKatana: stats.holdingKatana,
+          holdingPotionSlot: stats.holdingPotionSlot,
+          holdingPotionCount: stats.holdingPotionCount,
           shieldRaised: stats.shieldRaised,
           items: stats.backpackItems,
         };
@@ -68,7 +80,7 @@ export const BackpackHud = memo(function BackpackHud({ engine }: BackpackHudProp
 
   const count = state.items.reduce((acc, item) => (item ? acc + 1 : acc), 0);
   const isFull = count >= BACKPACK_CAPACITY;
-  const firstOccupiedIndex = state.items.findIndex((item) => item !== null);
+  const firstWoodIndex = state.items.findIndex((item) => item?.kind === 'wood');
 
   return (
     <>
@@ -112,30 +124,62 @@ export const BackpackHud = memo(function BackpackHud({ engine }: BackpackHudProp
           </div>
         )}
 
+        {state.holdingPotionSlot !== null && state.holdingPotionCount > 0 && (
+          <div className="px-3.5 py-2 rounded-xl shadow-lg border bg-rose-950/90 border-rose-400/70 text-white flex items-center gap-3 transition-colors">
+            <div className="w-8 h-8 rounded-lg border bg-rose-500/25 border-rose-400/60 text-rose-300 flex items-center justify-center shrink-0">
+              <FlaskConical className="w-4 h-4" />
+            </div>
+            <div className="leading-tight">
+              <div className="text-[11px] uppercase tracking-wider font-medium text-rose-200">
+                Thuốc hồi máu (Ô {state.holdingPotionSlot + 1})
+              </div>
+              <div className="text-xs font-semibold text-rose-300">
+                Đang cầm (x{state.holdingPotionCount}) · Chuột phải uống (+2 tim)
+              </div>
+            </div>
+          </div>
+        )}
+
         {state.hasKatana && (
           <div
             className={`px-3.5 py-2 rounded-xl shadow-lg border flex items-center gap-3 transition-colors ${
-              state.holdingKatana
-                ? 'bg-slate-900/95 border-sky-400/60 text-white'
-                : 'bg-slate-950/85 border-white/15 text-slate-200'
+              state.hasIceKatana
+                ? state.holdingKatana
+                  ? 'bg-sky-950/95 border-cyan-300 text-white'
+                  : 'bg-slate-950/90 border-cyan-400/40 text-cyan-100'
+                : state.holdingKatana
+                  ? 'bg-slate-900/95 border-sky-400/60 text-white'
+                  : 'bg-slate-950/85 border-white/15 text-slate-200'
             }`}
           >
             <div
               className={`w-8 h-8 rounded-lg border flex items-center justify-center shrink-0 ${
-                state.holdingKatana
-                  ? 'bg-sky-500/25 border-sky-400/50 text-sky-300'
-                  : 'bg-slate-800 border-white/15 text-slate-400'
+                state.hasIceKatana
+                  ? 'bg-cyan-400/25 border-cyan-300/60 text-cyan-200'
+                  : state.holdingKatana
+                    ? 'bg-sky-500/25 border-sky-400/50 text-sky-300'
+                    : 'bg-slate-800 border-white/15 text-slate-400'
               }`}
             >
               <Sword className="w-4 h-4" />
             </div>
             <div className="leading-tight">
-              <div className="text-[11px] uppercase tracking-wider font-medium text-slate-400">
-                Katana (Q)
+              <div
+                className={`text-[11px] uppercase tracking-wider font-medium ${
+                  state.hasIceKatana ? 'text-cyan-300' : 'text-slate-400'
+                }`}
+              >
+                {state.hasIceKatana ? 'Katana Băng (Q)' : 'Katana (Q)'}
               </div>
               <div
                 className={`text-xs font-semibold ${
-                  state.holdingKatana ? 'text-sky-300' : 'text-slate-300'
+                  state.hasIceKatana
+                    ? state.holdingKatana
+                      ? 'text-cyan-200'
+                      : 'text-cyan-300/80'
+                    : state.holdingKatana
+                      ? 'text-sky-300'
+                      : 'text-slate-300'
                 }`}
               >
                 {state.holdingKatana ? 'Đang cầm · Chuột trái chém' : 'Đang cất'}
@@ -190,7 +234,7 @@ export const BackpackHud = memo(function BackpackHud({ engine }: BackpackHudProp
               <div className="flex items-center gap-2">
                 <Backpack className={`w-4 h-4 ${isFull ? 'text-rose-300' : 'text-amber-300'}`} />
                 <span className="text-xs sm:text-sm font-bold tracking-wide">
-                  Balo chứa gỗ ({count}/{BACKPACK_CAPACITY})
+                  Balo ({count}/{BACKPACK_CAPACITY})
                 </span>
               </div>
               <span
@@ -200,46 +244,72 @@ export const BackpackHud = memo(function BackpackHud({ engine }: BackpackHudProp
                     : 'bg-slate-800 text-slate-300 border border-white/10'
                 }`}
               >
-                {isFull ? 'BALO ĐẦY · Phím 1–9 lấy ô' : 'Phím 1–9: Lấy ô · F: Lấy nhanh 1→9'}
+                {isFull
+                  ? 'BALO ĐẦY · Phím 1–9 chọn ô'
+                  : 'Phím 1–9: Cầm/Lấy ô · F: Lấy gỗ nhanh'}
               </span>
             </div>
 
             <div className="grid grid-cols-3 sm:grid-cols-9 gap-1.5 sm:gap-2">
               {Array.from({ length: BACKPACK_CAPACITY }, (_, index) => {
                 const item = state.items[index];
-                const isNextQuick = index === firstOccupiedIndex && Boolean(item);
+                const isNextQuickWood = index === firstWoodIndex && item?.kind === 'wood';
+                const isHeldPotion =
+                  item?.kind === 'potion' && state.holdingPotionSlot === index;
 
                 return (
                   <div
                     key={index}
                     className={`relative h-16 sm:h-[70px] rounded-xl border flex flex-col items-center justify-center px-1 text-center ${
-                      item
-                        ? isNextQuick
-                          ? 'bg-amber-950/85 border-emerald-400/80 text-amber-100'
-                          : 'bg-amber-950/60 border-amber-500/40 text-amber-100'
-                        : 'bg-slate-900/75 border-white/10 text-slate-500'
+                      item?.kind === 'potion'
+                        ? isHeldPotion
+                          ? 'bg-rose-950/95 border-rose-400 text-rose-100 ring-1 ring-rose-400/50'
+                          : 'bg-rose-950/70 border-rose-500/45 text-rose-100'
+                        : item
+                          ? isNextQuickWood
+                            ? 'bg-amber-950/85 border-emerald-400/80 text-amber-100'
+                            : 'bg-amber-950/60 border-amber-500/40 text-amber-100'
+                          : 'bg-slate-900/75 border-white/10 text-slate-500'
                     }`}
                   >
                     <span className="absolute top-1 left-1.5 text-[10px] font-mono-tech font-bold px-1 rounded bg-slate-800/90 text-amber-300 border border-white/10 leading-tight">
                       {index + 1}
                     </span>
 
-                    {isNextQuick && (
+                    {isNextQuickWood && (
                       <span className="absolute top-1 right-1 text-[9px] font-bold px-1 rounded bg-emerald-500 text-slate-950 leading-tight">
                         F
                       </span>
                     )}
 
+                    {isHeldPotion && (
+                      <span className="absolute top-1 right-1 text-[9px] font-bold px-1 rounded bg-rose-400 text-slate-950 leading-tight">
+                        CẦM
+                      </span>
+                    )}
+
                     {item ? (
-                      <>
-                        <TreePine className="w-4 h-4 text-amber-300 mt-3 shrink-0" />
-                        <span className="font-mono-tech text-[10px] font-bold text-white leading-tight mt-0.5">
-                          {item.length.toFixed(1)}m
-                        </span>
-                        <span className="font-mono-tech text-[9px] text-emerald-300 leading-none">
-                          {item.valueVnd.toLocaleString('vi-VN')}đ
-                        </span>
-                      </>
+                      item.kind === 'potion' ? (
+                        <>
+                          <FlaskConical className="w-4 h-4 text-rose-400 mt-3 shrink-0" />
+                          <span className="text-[10px] font-bold text-white leading-tight mt-0.5">
+                            Thuốc máu
+                          </span>
+                          <span className="font-mono-tech text-[9px] text-rose-300 leading-none">
+                            x{item.count}/{MAX_POTION_STACK}
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <TreePine className="w-4 h-4 text-amber-300 mt-3 shrink-0" />
+                          <span className="font-mono-tech text-[10px] font-bold text-white leading-tight mt-0.5">
+                            {item.length.toFixed(1)}m
+                          </span>
+                          <span className="font-mono-tech text-[9px] text-emerald-300 leading-none">
+                            {item.valueVnd.toLocaleString('vi-VN')}đ
+                          </span>
+                        </>
+                      )
                     ) : (
                       <span className="text-[10px] text-slate-600 mt-2">Trống</span>
                     )}

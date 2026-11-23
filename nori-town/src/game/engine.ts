@@ -9,8 +9,10 @@ import {
   HOTBAR_BLOCKS,
 } from './constants';
 import { CashierStation } from './counter';
+import { DragonBossHudState } from './dragon';
 import { KatanaViewModel } from './katana';
 import { FirstPersonPlayer } from './player';
+import { PotionViewModel } from './potion';
 import { RaycastHit, voxelRaycast } from './raycast';
 import { ShieldViewModel } from './shield';
 import { SlimeEntity } from './slime';
@@ -34,11 +36,15 @@ export interface HudStats {
   xpToNext: number;
   hasBackpack: boolean;
   hasKatana: boolean;
+  hasIceKatana: boolean;
   hasShield: boolean;
   backpackOpen: boolean;
   holdingKatana: boolean;
+  holdingPotionSlot: number | null;
+  holdingPotionCount: number;
   shieldRaised: boolean;
   backpackItems: Array<BackpackItem | null>;
+  bossHud: DragonBossHudState;
   targetName: string | null;
   targetCoords: [number, number, number] | null;
 }
@@ -87,6 +93,7 @@ export class VoxelEngine {
   private readonly audio: VoxelAudio;
   private readonly katanaView: KatanaViewModel;
   private readonly shieldView: ShieldViewModel;
+  private readonly potionView: PotionViewModel;
 
   private readonly solidMaterial: THREE.MeshLambertMaterial;
   private readonly selectionBox: THREE.LineSegments;
@@ -123,6 +130,8 @@ export class VoxelEngine {
   private safeHealTimer = 0;
   private backpackOpen = false;
   private holdingKatana = false;
+  private holdingPotionSlot: number | null = null;
+  private hasIceKatana = false;
   private shieldRaised = false;
   private currentTarget: RaycastHit | null = null;
   private currentTreeTarget: TreeTarget | null = null;
@@ -130,6 +139,8 @@ export class VoxelEngine {
   private currentConveyorTarget: { point: THREE.Vector3 } | null = null;
   private currentShopTarget: { itemId: ShopItemId; point: THREE.Vector3 } | null = null;
   private currentSlimeTarget: { slime: SlimeEntity; point: THREE.Vector3 } | null = null;
+  private currentDragonTarget: { point: THREE.Vector3; hp: number; maxHp: number } | null = null;
+  private currentIceKatanaDropTarget: { point: THREE.Vector3 } | null = null;
   private latestStats: HudStats = {
     x: 0.5,
     y: 4.05,
@@ -144,11 +155,26 @@ export class VoxelEngine {
     xpToNext: getXpForNextLevel(1),
     hasBackpack: false,
     hasKatana: false,
+    hasIceKatana: false,
     hasShield: false,
     backpackOpen: false,
     holdingKatana: false,
+    holdingPotionSlot: null,
+    holdingPotionCount: 0,
     shieldRaised: false,
     backpackItems: Array.from({ length: 9 }, () => null),
+    bossHud: {
+      visible: false,
+      alive: true,
+      level: 30,
+      hp: 100,
+      maxHp: 100,
+      activeSkill: null,
+      phase: 'idle',
+      warningLabel: null,
+      warningProgress: 0,
+      dropAvailable: false,
+    },
     targetName: null,
     targetCoords: null,
   };
@@ -209,6 +235,7 @@ export class VoxelEngine {
     this.audio = new VoxelAudio();
     this.katanaView = new KatanaViewModel(this.scene);
     this.shieldView = new ShieldViewModel(this.scene);
+    this.potionView = new PotionViewModel(this.scene);
 
     const boxGeo = new THREE.EdgesGeometry(new THREE.BoxGeometry(1.006, 1.006, 1.006));
     const boxMat = new THREE.LineBasicMaterial({ color: 0x0f172a, linewidth: 2 });
@@ -311,11 +338,44 @@ export class VoxelEngine {
         }
         return;
       }
+
+      const dragonDmg = this.hasIceKatana ? 2 : 1;
+      const dragonAtk = this.world.attackDragonWithKatana(
+        this.camera.position,
+        this.rayDir,
+        dragonDmg,
+        5.4,
+        this.level,
+      );
+      if (dragonAtk.hit) {
+        if (dragonAtk.blockedByLevel) {
+          this.audio.playShieldBlockSound();
+          this.callbacks.onToast('Cần đạt Level 20 trở lên mới có thể gây sát thương cho Rồng Băng!');
+          return;
+        }
+        this.audio.playSlimeHitSound();
+        if (dragonAtk.killed) {
+          this.audio.playDragonDefeatSound();
+          this.grantXp(dragonAtk.xpReward);
+          this.callbacks.onToast(
+            'Hạ Rồng Băng Lv.30! (+5.000 XP) Katana Băng đã rơi ra!',
+          );
+        } else {
+          this.emitStats();
+        }
+        return;
+      }
     } else if (
       this.currentSlimeTarget &&
       this.currentSlimeTarget.point.distanceTo(this.camera.position) <= 4.2
     ) {
       this.callbacks.onToast('Cần mua và cầm Katana (phím Q) để chém Slime!');
+      return;
+    } else if (
+      this.currentDragonTarget &&
+      this.currentDragonTarget.point.distanceTo(this.camera.position) <= 5.6
+    ) {
+      this.callbacks.onToast('Cần mua và cầm Katana (phím Q) để chém Rồng Băng!');
       return;
     }
 
@@ -341,8 +401,45 @@ export class VoxelEngine {
   }
 
   placeTargetBlock(): void {
+    if (this.currentIceKatanaDropTarget) {
+      if (
+        this.world.tryCollectIceKatana({
+          onCollectIceKatana: () => this.handleCollectIceKatana(),
+        })
+      ) {
+        this.currentIceKatanaDropTarget = null;
+        return;
+      }
+    }
+
     if (this.currentShopTarget) {
       const { itemId } = this.currentShopTarget;
+      if (itemId === 'potion') {
+        if (!this.world.isShopItemOwned('backpack')) {
+          this.callbacks.onToast('Cần mua Balo (500 VNĐ) trước để chứa Lọ thuốc hồi máu!');
+          return;
+        }
+        const price = SHOP_ITEM_PRICES.potion;
+        if (this.money < price) {
+          this.callbacks.onToast(
+            `Chưa đủ ${price.toLocaleString('vi-VN')} VNĐ để mua ${SHOP_ITEM_NAMES.potion}!`,
+          );
+          return;
+        }
+        const res = this.world.addPotionToBackpack();
+        if (!res.added) {
+          this.callbacks.onToast('Balo đã đầy (tối đa 50 lọ/ô)! Không thể mua thêm thuốc.');
+          return;
+        }
+        this.money -= price;
+        this.audio.playCashSound();
+        this.emitStats();
+        this.callbacks.onToast(
+          `Đã mua ${SHOP_ITEM_NAMES.potion} (Ô ${res.slotIndex + 1}: ${res.count}/50 · -${price.toLocaleString('vi-VN')} VNĐ)!`,
+        );
+        return;
+      }
+
       const owned = this.world.isShopItemOwned(itemId);
       if (!owned) {
         const price = SHOP_ITEM_PRICES[itemId];
@@ -363,6 +460,12 @@ export class VoxelEngine {
       }
       if (!this.world.isCarryingLog()) {
         this.callbacks.onToast(`Bạn đã sở hữu ${SHOP_ITEM_NAMES[itemId]}!`);
+        return;
+      }
+    }
+
+    if (this.holdingPotionSlot !== null && !this.world.isCarryingLog()) {
+      if (this.drinkHeldPotion()) {
         return;
       }
     }
@@ -404,6 +507,7 @@ export class VoxelEngine {
     if (this.currentLogTarget) {
       if (this.world.pickUpLog(this.currentLogTarget.log)) {
         this.holdingKatana = false;
+        this.holdingPotionSlot = null;
         this.audio.playBlockSound('place');
         this.currentLogTarget = null;
         this.emitStats();
@@ -454,16 +558,40 @@ export class VoxelEngine {
 
     if (this.world.retrieveLogFromBackpack()) {
       this.holdingKatana = false;
+      this.holdingPotionSlot = null;
       this.audio.playStowSound();
       this.emitStats();
     } else {
-      this.callbacks.onToast('Balo đang trống!');
+      this.callbacks.onToast('Balo không có khúc gỗ nào!');
     }
   }
 
   retrieveBackpackSlot(slotIndex: number): void {
     if (!this.world.isShopItemOwned('backpack') || !this.backpackOpen) return;
     if (slotIndex < 0 || slotIndex >= 9) return;
+
+    const slotKind = this.world.getBackpackSlotKind(slotIndex);
+    if (slotKind === 'potion') {
+      if (this.world.isCarryingLog()) {
+        this.callbacks.onToast('Tay đang khiêng gỗ! Đặt xuống hoặc ấn F để cất trước.');
+        return;
+      }
+      if (this.holdingPotionSlot === slotIndex) {
+        this.holdingPotionSlot = null;
+        this.audio.playStowSound();
+        this.emitStats();
+        return;
+      }
+      this.holdingKatana = false;
+      this.holdingPotionSlot = slotIndex;
+      this.audio.playStowSound();
+      this.emitStats();
+      const count = this.world.getPotionCountAtSlot(slotIndex);
+      this.callbacks.onToast(
+        `Đang cầm Lọ thuốc hồi máu (x${count}) · Chuột phải để uống (+2 tim)!`,
+      );
+      return;
+    }
 
     if (this.world.isCarryingLog()) {
       this.callbacks.onToast('Tay đang khiêng gỗ! Đặt xuống hoặc ấn F để cất trước.');
@@ -472,11 +600,40 @@ export class VoxelEngine {
 
     if (this.world.retrieveLogFromBackpackSlot(slotIndex)) {
       this.holdingKatana = false;
+      this.holdingPotionSlot = null;
       this.audio.playStowSound();
       this.emitStats();
     } else {
       this.callbacks.onToast(`Ô ${slotIndex + 1} đang trống!`);
     }
+  }
+
+  private drinkHeldPotion(): boolean {
+    if (this.holdingPotionSlot === null) return false;
+    const count = this.world.getPotionCountAtSlot(this.holdingPotionSlot);
+    if (count <= 0) {
+      this.holdingPotionSlot = null;
+      this.emitStats();
+      return false;
+    }
+    if (this.hp >= MAX_PLAYER_HP) {
+      this.callbacks.onToast('Máu đã đầy (10/10 tim), chưa cần uống thuốc!');
+      return true;
+    }
+    const remaining = this.world.consumePotionFromSlot(this.holdingPotionSlot);
+    this.hp = Math.min(MAX_PLAYER_HP, Math.round((this.hp + 2.0) * 2) / 2);
+    this.potionView.triggerDrink();
+    this.audio.playPotionDrinkSound();
+    if (remaining <= 0) {
+      this.holdingPotionSlot = null;
+    }
+    this.emitStats();
+    this.callbacks.onToast(
+      remaining > 0
+        ? `Đã uống Lọ thuốc hồi máu (+2 tim) · Còn ${remaining} lọ`
+        : 'Đã uống Lọ thuốc hồi máu (+2 tim) · Đã hết lọ trong ô!',
+    );
+    return true;
   }
 
   toggleKatana(): void {
@@ -505,6 +662,7 @@ export class VoxelEngine {
     }
 
     this.holdingKatana = true;
+    this.holdingPotionSlot = null;
     this.audio.playStowSound();
     this.emitStats();
   }
@@ -553,6 +711,19 @@ export class VoxelEngine {
     this.emitStats();
   }
 
+  private handleCollectIceKatana(): void {
+    this.hasIceKatana = true;
+    this.world.markShopItemOwned('katana');
+    this.katanaView.setIceVariant(true);
+    if (!this.world.isCarryingLog()) {
+      this.holdingKatana = true;
+      this.holdingPotionSlot = null;
+    }
+    this.audio.playLevelUpSound();
+    this.emitStats();
+    this.callbacks.onToast('Đã nhận Katana Băng! Đã thay thế Katana ban đầu.');
+  }
+
   private emitStats(): void {
     this.latestStats.x = this.player.position.x;
     this.latestStats.y = this.player.position.y;
@@ -567,13 +738,48 @@ export class VoxelEngine {
     this.latestStats.xpToNext = getXpForNextLevel(this.level);
     this.latestStats.hasBackpack = this.world.isShopItemOwned('backpack');
     this.latestStats.hasKatana = this.world.isShopItemOwned('katana');
+    this.latestStats.hasIceKatana = this.hasIceKatana;
     this.latestStats.hasShield = this.world.isShopItemOwned('shield');
     this.latestStats.backpackOpen = this.backpackOpen;
     this.latestStats.holdingKatana = this.holdingKatana;
+    if (
+      this.holdingPotionSlot !== null &&
+      this.world.getPotionCountAtSlot(this.holdingPotionSlot) <= 0
+    ) {
+      this.holdingPotionSlot = null;
+    }
+    this.latestStats.holdingPotionSlot = this.holdingPotionSlot;
+    this.latestStats.holdingPotionCount =
+      this.holdingPotionSlot !== null
+        ? this.world.getPotionCountAtSlot(this.holdingPotionSlot)
+        : 0;
     this.latestStats.shieldRaised = this.shieldRaised;
     this.latestStats.backpackItems = this.world.getBackpackItems();
+    this.latestStats.bossHud = this.world.getBossHudState(
+      this.player.position.x,
+      this.player.position.z,
+    );
 
-    if (
+    if (this.currentIceKatanaDropTarget) {
+      const p = this.currentIceKatanaDropTarget.point;
+      this.latestStats.targetName = 'Katana Băng · Chuột phải hoặc lại gần nhận';
+      this.latestStats.targetCoords = [
+        Math.round(p.x),
+        Math.round(p.y * 10) / 10,
+        Math.round(p.z),
+      ];
+    } else if (this.currentDragonTarget) {
+      const { point, hp, maxHp } = this.currentDragonTarget;
+      this.latestStats.targetName =
+        this.level < 20
+          ? `Rồng Băng Lv.30 (${hp}/${maxHp} · Cần Lv.20 để gây sát thương)`
+          : `Rồng Băng Lv.30 (${hp}/${maxHp} · +5.000 XP)`;
+      this.latestStats.targetCoords = [
+        Math.round(point.x),
+        Math.round(point.y * 10) / 10,
+        Math.round(point.z),
+      ];
+    } else if (
       this.currentShopTarget &&
       (!this.world.isCarryingLog() || !this.world.isShopItemOwned(this.currentShopTarget.itemId))
     ) {
@@ -581,7 +787,13 @@ export class VoxelEngine {
       const owned = this.world.isShopItemOwned(itemId);
       const price = SHOP_ITEM_PRICES[itemId];
       const prefix =
-        itemId === 'backpack' ? 'Khung 1' : itemId === 'katana' ? 'Khung 2' : 'Khung 3';
+        itemId === 'backpack'
+          ? 'Khung 1'
+          : itemId === 'katana'
+            ? 'Khung 2'
+            : itemId === 'shield'
+              ? 'Khung 3'
+              : 'Khung 4';
       this.latestStats.targetName = owned
         ? `${prefix}: ${SHOP_ITEM_NAMES[itemId]} · Đã sở hữu`
         : `${prefix}: ${SHOP_ITEM_NAMES[itemId]} · ${price.toLocaleString('vi-VN')} VNĐ (Chuột phải mua)`;
@@ -693,7 +905,7 @@ export class VoxelEngine {
   private readonly onKeyDown = (e: KeyboardEvent): void => {
     this.player.keys[e.code] = true;
 
-    if (e.code.startsWith('Digit')) {
+    if (!this.backpackOpen && e.code.startsWith('Digit')) {
       const num = parseInt(e.code.replace('Digit', ''), 10);
       if (num >= 1 && num <= HOTBAR_BLOCKS.length) {
         this.selectSlot(num - 1);
@@ -854,7 +1066,13 @@ export class VoxelEngine {
     }
 
     if (this.isPlaying) {
-      this.player.update(dt);
+      const jumpState = this.player.update(dt);
+      if (jumpState.jumped) {
+        this.audio.playJumpSound();
+      }
+      if (jumpState.landedImpact > 0) {
+        this.audio.playLandSound(jumpState.landedImpact);
+      }
     }
 
     const clampedDt = Math.min(dt, 0.05);
@@ -917,18 +1135,73 @@ export class VoxelEngine {
           this.callbacks.onToast(`Khiên đã đỡ đòn Slime Lv.${slimeLevel}!`);
         },
       },
+      {
+        onSkillWarning: () => {
+          if (!this.isPlaying) return;
+          this.audio.playDragonWarningSound();
+        },
+        onSkillExecute: (skillId) => {
+          if (!this.isPlaying) return;
+          if (skillId === 1) this.audio.playDragonSlamSound();
+          else if (skillId === 2) this.audio.playDragonDashSound();
+          else this.audio.playDragonBreathSound();
+        },
+        onPlayerHit: (damage, skillId, shieldMitigated, dirX, dirZ) => {
+          if (!this.isPlaying || this.hurtInvulnTimer > 0) return;
+          this.hurtInvulnTimer = 0.65;
+          this.hp = Math.max(0, Math.round((this.hp - damage) * 2) / 2);
+          if (shieldMitigated) {
+            this.audio.playShieldBlockSound();
+          }
+          this.audio.playPlayerHurtSound();
+          if (this.hp <= 0) {
+            this.hp = MAX_PLAYER_HP;
+            this.hurtInvulnTimer = 1.2;
+            this.player.respawnAtStart();
+            this.callbacks.onToast(
+              'Bạn đã hết máu trước Rồng Băng và trở về vị trí ban đầu (đồ đạc được giữ nguyên)!',
+            );
+          } else {
+            const knockDist = skillId === 1 ? 3.0 : 1.0;
+            const knockDur = skillId === 1 ? 0.2 : 0.1;
+            this.player.applyKnockback(dirX, dirZ, knockDist, knockDur);
+            if (skillId === 1 && shieldMitigated) {
+              this.callbacks.onToast('Khiên đã giảm sát thương dậm đất (-1 tim · Đẩy lùi 3 block)!');
+            } else if (skillId === 1) {
+              this.callbacks.onToast('Dính dậm xung kích Rồng Băng (-3 tim · Đẩy lùi 3 block)!');
+            } else if (skillId === 2) {
+              this.callbacks.onToast('Bị Rồng Băng lao trúng (-2 tim · Khiên vô hiệu)!');
+            } else {
+              this.callbacks.onToast('Dính lửa băng Rồng (-2 tim · Khiên vô hiệu)!');
+            }
+          }
+          this.emitStats();
+        },
+        onCollectIceKatana: () => {
+          this.handleCollectIceKatana();
+        },
+      },
     );
     this.world.updateCarried(this.camera);
+    const viewMotion = this.player.getViewmodelMotion();
     this.katanaView.update(
       this.camera,
       clampedDt,
       this.holdingKatana && !this.world.isCarryingLog(),
+      viewMotion,
     );
     this.shieldView.update(
       this.camera,
       clampedDt,
       this.world.isShopItemOwned('shield'),
       this.shieldRaised,
+      viewMotion,
+    );
+    this.potionView.update(
+      this.camera,
+      clampedDt,
+      this.holdingPotionSlot !== null && !this.holdingKatana && !this.world.isCarryingLog(),
+      viewMotion,
     );
 
     this.world.updateChunksAroundPlayer(
@@ -938,50 +1211,87 @@ export class VoxelEngine {
     );
 
     this.camera.getWorldDirection(this.rayDir);
+    const dropHit = this.world.raycastDroppedIceKatana(this.camera.position, this.rayDir, 6.5);
     const shopHit = this.world.raycastShopItem(this.camera.position, this.rayDir, 6.5);
     const shopDist = shopHit ? shopHit.point.distanceTo(this.camera.position) : Infinity;
 
-    if (!this.world.isCarryingLog()) {
+    if (dropHit) {
+      this.currentIceKatanaDropTarget = dropHit;
+      this.currentDragonTarget = null;
+      this.currentShopTarget = null;
+      this.currentSlimeTarget = null;
+      this.currentTreeTarget = null;
+      this.currentLogTarget = null;
       this.currentConveyorTarget = null;
+    } else if (!this.world.isCarryingLog()) {
+      this.currentIceKatanaDropTarget = null;
+      this.currentConveyorTarget = null;
+      const dragonHit = this.world.raycastDragon(this.camera.position, this.rayDir, 8.0);
       const slimeHit = this.world.raycastSlime(this.camera.position, this.rayDir, 6.5);
       const treeHit = this.world.raycastTreeTrunk(this.camera.position, this.rayDir, 7.0);
       const logHit = this.world.raycastDetachedLog(this.camera.position, this.rayDir, 7.0);
 
+      const dragonDist = dragonHit ? dragonHit.point.distanceTo(this.camera.position) : Infinity;
       const slimeDist = slimeHit ? slimeHit.point.distanceTo(this.camera.position) : Infinity;
       const treeDist = treeHit ? treeHit.point.distanceTo(this.camera.position) : Infinity;
       const logDist = logHit ? logHit.point.distanceTo(this.camera.position) : Infinity;
 
-      if (shopHit && shopDist <= slimeDist && shopDist <= treeDist && shopDist <= logDist) {
+      if (
+        shopHit &&
+        shopDist <= dragonDist &&
+        shopDist <= slimeDist &&
+        shopDist <= treeDist &&
+        shopDist <= logDist
+      ) {
         const wallHit = voxelRaycast(this.world, this.camera.position, this.rayDir, shopDist);
         this.currentShopTarget = wallHit ? null : shopHit;
+        this.currentDragonTarget = null;
         this.currentSlimeTarget = null;
         this.currentTreeTarget = null;
         this.currentLogTarget = null;
+      } else if (
+        dragonHit &&
+        dragonDist <= slimeDist &&
+        dragonDist <= treeDist &&
+        dragonDist <= logDist
+      ) {
+        const wallHit = voxelRaycast(this.world, this.camera.position, this.rayDir, dragonDist);
+        this.currentDragonTarget = wallHit ? null : dragonHit;
+        this.currentSlimeTarget = null;
+        this.currentTreeTarget = null;
+        this.currentLogTarget = null;
+        this.currentShopTarget = null;
       } else if (slimeHit && slimeDist <= treeDist && slimeDist <= logDist) {
         const wallHit = voxelRaycast(this.world, this.camera.position, this.rayDir, slimeDist);
         this.currentSlimeTarget = wallHit ? null : slimeHit;
+        this.currentDragonTarget = null;
         this.currentTreeTarget = null;
         this.currentLogTarget = null;
         this.currentShopTarget = null;
       } else if (treeHit && treeDist <= logDist) {
         const wallHit = voxelRaycast(this.world, this.camera.position, this.rayDir, treeDist);
         this.currentTreeTarget = wallHit ? null : treeHit;
+        this.currentDragonTarget = null;
         this.currentSlimeTarget = null;
         this.currentLogTarget = null;
         this.currentShopTarget = null;
       } else if (logHit) {
         const wallHit = voxelRaycast(this.world, this.camera.position, this.rayDir, logDist);
         this.currentLogTarget = wallHit ? null : logHit;
+        this.currentDragonTarget = null;
         this.currentSlimeTarget = null;
         this.currentTreeTarget = null;
         this.currentShopTarget = null;
       } else {
+        this.currentDragonTarget = null;
         this.currentSlimeTarget = null;
         this.currentTreeTarget = null;
         this.currentLogTarget = null;
         this.currentShopTarget = null;
       }
     } else {
+      this.currentIceKatanaDropTarget = null;
+      this.currentDragonTarget = null;
       this.currentSlimeTarget = null;
       this.currentTreeTarget = null;
       this.currentLogTarget = null;
@@ -1049,6 +1359,7 @@ export class VoxelEngine {
     this.world.disposeAll();
     this.katanaView.dispose();
     this.shieldView.dispose();
+    this.potionView.dispose();
     this.selectionBox.geometry.dispose();
     (this.selectionBox.material as THREE.Material).dispose();
     this.treeCutIndicator.geometry.dispose();

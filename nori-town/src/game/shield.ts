@@ -176,7 +176,13 @@ export class ShieldViewModel {
     this.scene.add(this.group);
   }
 
-  update(camera: THREE.Camera, dt: number, owned: boolean, raised: boolean): void {
+  update(
+    camera: THREE.Camera,
+    dt: number,
+    owned: boolean,
+    raised: boolean,
+    motion?: { lagY: number; strideX: number; strideY: number },
+  ): void {
     if (!owned) {
       this.group.visible = false;
       this.deployProgress = 0;
@@ -202,10 +208,16 @@ export class ShieldViewModel {
     this.currentOffset.lerpVectors(this.backOffset, this.frontOffset, t);
     this.currentLocalQuat.slerpQuaternions(this.backQuat, this.frontQuat, t);
 
-    this.tempLocalPos
-      .copy(this.currentOffset)
-      .applyQuaternion(camera.quaternion)
-      .add(camera.position);
+    const lagY = motion?.lagY ?? 0;
+    const strideX = motion?.strideX ?? 0;
+    const strideY = motion?.strideY ?? 0;
+
+    this.tempLocalPos.set(
+      this.currentOffset.x - strideX * 0.7,
+      this.currentOffset.y + lagY * 0.85 + strideY * 0.7,
+      this.currentOffset.z,
+    );
+    this.tempLocalPos.applyQuaternion(camera.quaternion).add(camera.position);
     this.group.position.copy(this.tempLocalPos);
     this.group.quaternion.copy(camera.quaternion).multiply(this.currentLocalQuat);
   }
