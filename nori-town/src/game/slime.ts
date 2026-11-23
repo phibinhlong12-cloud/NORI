@@ -1,8 +1,14 @@
 import * as THREE from 'three';
 import { OutsideGenerator } from './outside';
 import { SLIME_ZONE_SPECS, SlimeZoneSpec } from './slimeZones';
+import { createSoftShadowTexture } from './textures';
 
 export type SlimeLevel = 1 | 2 | 3;
+
+interface SlimeMeshPart {
+  mesh: THREE.Mesh;
+  origMat: THREE.Material | THREE.Material[];
+}
 
 export interface SlimeEntity {
   id: string;
@@ -31,7 +37,9 @@ export interface SlimeEntity {
   alive: boolean;
   respawnTimer: number;
   group: THREE.Group;
-  bodyMeshes: THREE.Mesh[];
+  bodyGroup: THREE.Group;
+  shadowMesh: THREE.Mesh;
+  bodyParts: SlimeMeshPart[];
   labelSprite: THREE.Sprite;
 }
 
@@ -49,6 +57,14 @@ export interface SlimeUpdateCallbacks {
   onShieldBlocked?: (slimeLevel: SlimeLevel) => void;
 }
 
+interface TierVisualSet {
+  outerGelMat: THREE.MeshPhysicalMaterial;
+  coreSideMat: THREE.MeshStandardMaterial;
+  coreFaceMat: THREE.MeshStandardMaterial;
+  accentMat: THREE.MeshStandardMaterial;
+  coreMaterials: THREE.Material[];
+}
+
 const SLIME_RESPAWN_SECONDS = 300.0;
 
 function seededRand(seed: number): number {
@@ -56,112 +72,87 @@ function seededRand(seed: number): number {
   return n - Math.floor(n);
 }
 
-function createSlimeFaceTexture(): THREE.CanvasTexture {
+function createSlimeCoreFaceTexture(level: SlimeLevel): THREE.CanvasTexture {
   const canvas = document.createElement('canvas');
-  canvas.width = 16;
-  canvas.height = 16;
+  canvas.width = 64;
+  canvas.height = 64;
   const ctx = canvas.getContext('2d')!;
 
-  // Nền xanh ngọc mint giống mẫu pixel art
-  ctx.fillStyle = '#4ec799';
-  ctx.fillRect(0, 0, 16, 16);
+  const bg = level === 3 ? '#c2410c' : level === 2 ? '#0369a1' : '#047857';
+  const dark = level === 3 ? '#431407' : level === 2 ? '#082f49' : '#022c22';
+  const glow = level === 3 ? '#fdba74' : level === 2 ? '#7dd3fc' : '#6ee7b7';
 
-  // Viền xanh đậm bao quanh
-  ctx.fillStyle = '#0d565e';
-  ctx.fillRect(0, 0, 16, 1);
-  ctx.fillRect(0, 15, 16, 1);
-  ctx.fillRect(0, 0, 1, 16);
-  ctx.fillRect(15, 0, 1, 16);
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, 64, 64);
 
-  // Điểm sáng bóng nhẹ phía trên-trái
-  ctx.fillStyle = '#8ef0c8';
-  ctx.fillRect(2, 2, 2, 2);
-  ctx.fillRect(5, 2, 1, 1);
-  ctx.fillRect(2, 5, 1, 1);
+  // Vầng sáng lõi nhẹ bên trong
+  const grad = ctx.createRadialGradient(32, 30, 4, 32, 32, 34);
+  grad.addColorStop(0, glow);
+  grad.addColorStop(1, bg);
+  ctx.globalAlpha = 0.35;
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 64, 64);
+  ctx.globalAlpha = 1;
 
-  // Phần đáy đậm hơn
-  ctx.fillStyle = '#1f8a74';
-  ctx.fillRect(1, 13, 14, 2);
-  ctx.fillStyle = '#7de6bc';
-  ctx.fillRect(5, 14, 4, 1);
+  // Mắt sắc nét có ánh sáng long lanh
+  const drawEye = (ex: number, ey: number, slant: number) => {
+    ctx.fillStyle = dark;
+    ctx.beginPath();
+    ctx.roundRect(ex - 7, ey - 8, 14, 16, 4);
+    ctx.fill();
 
-  // Hai mắt chữ nhật trắng viền xanh đậm
-  ctx.fillStyle = '#0d565e';
-  ctx.fillRect(6, 3, 4, 4);
-  ctx.fillRect(11, 3, 4, 4);
-  ctx.fillStyle = '#ffffff';
-  ctx.fillRect(7, 4, 2, 2);
-  ctx.fillRect(12, 4, 2, 2);
+    // Lông mày nghiêng cho Slime cấp cao nhìn ngầu hơn
+    if (level >= 2) {
+      ctx.fillStyle = bg;
+      ctx.beginPath();
+      ctx.moveTo(ex - 8, ey - 9);
+      ctx.lineTo(ex + 8, ey - 9);
+      ctx.lineTo(ex + 8, ey - 9 + slant);
+      ctx.lineTo(ex - 8, ey - 9 - slant);
+      ctx.closePath();
+      ctx.fill();
+    }
 
-  // Miệng gợn sóng chữ W giống mẫu
-  ctx.fillStyle = '#0d5c62';
-  ctx.fillRect(5, 8, 2, 5);
-  ctx.fillRect(7, 11, 3, 2);
-  ctx.fillRect(10, 8, 2, 5);
-  ctx.fillRect(12, 11, 2, 2);
-  ctx.fillRect(13, 8, 2, 5);
-  ctx.fillStyle = '#199482';
-  ctx.fillRect(8, 9, 2, 2);
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.roundRect(ex - 4, ey - 4, 6, 7, 2);
+    ctx.fill();
+
+    ctx.fillStyle = glow;
+    ctx.fillRect(ex + 1, ey + 2, 3, 3);
+  };
+
+  drawEye(20, 27, level >= 2 ? 3 : 0);
+  drawEye(44, 27, level >= 2 ? -3 : 0);
+
+  // Má hồng / ánh sáng nhỏ
+  ctx.fillStyle = level === 3 ? 'rgba(253, 224, 71, 0.38)' : 'rgba(255, 255, 255, 0.25)';
+  ctx.beginPath();
+  ctx.ellipse(12, 39, 4, 2.5, 0, 0, Math.PI * 2);
+  ctx.ellipse(52, 39, 4, 2.5, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Miệng chữ W tinh nghịch / hung dữ theo cấp
+  ctx.strokeStyle = dark;
+  ctx.lineWidth = 4;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.beginPath();
+  if (level === 1) {
+    ctx.moveTo(22, 43);
+    ctx.quadraticCurveTo(27, 49, 32, 43);
+    ctx.quadraticCurveTo(37, 49, 42, 43);
+  } else {
+    ctx.moveTo(20, 45);
+    ctx.lineTo(26, 41);
+    ctx.lineTo(32, 46);
+    ctx.lineTo(38, 41);
+    ctx.lineTo(44, 45);
+  }
+  ctx.stroke();
 
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
-  tex.magFilter = THREE.NearestFilter;
-  tex.minFilter = THREE.NearestFilter;
-  return tex;
-}
-
-function createSlimeSideTexture(): THREE.CanvasTexture {
-  const canvas = document.createElement('canvas');
-  canvas.width = 16;
-  canvas.height = 16;
-  const ctx = canvas.getContext('2d')!;
-
-  ctx.fillStyle = '#47ba8e';
-  ctx.fillRect(0, 0, 16, 16);
-
-  ctx.fillStyle = '#0d565e';
-  ctx.fillRect(0, 0, 16, 1);
-  ctx.fillRect(0, 15, 16, 1);
-  ctx.fillRect(0, 0, 1, 16);
-  ctx.fillRect(15, 0, 1, 16);
-
-  ctx.fillStyle = '#86e8bf';
-  ctx.fillRect(3, 3, 2, 2);
-  ctx.fillRect(10, 5, 1, 1);
-
-  ctx.fillStyle = '#1f8a74';
-  ctx.fillRect(1, 13, 14, 2);
-
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.magFilter = THREE.NearestFilter;
-  tex.minFilter = THREE.NearestFilter;
-  return tex;
-}
-
-function createSlimeTopTexture(): THREE.CanvasTexture {
-  const canvas = document.createElement('canvas');
-  canvas.width = 16;
-  canvas.height = 16;
-  const ctx = canvas.getContext('2d')!;
-
-  ctx.fillStyle = '#56cf9f';
-  ctx.fillRect(0, 0, 16, 16);
-
-  ctx.fillStyle = '#0d565e';
-  ctx.fillRect(0, 0, 16, 1);
-  ctx.fillRect(0, 15, 16, 1);
-  ctx.fillRect(0, 0, 1, 16);
-  ctx.fillRect(15, 0, 1, 16);
-
-  ctx.fillStyle = '#9cf5d2';
-  ctx.fillRect(3, 3, 3, 2);
-  ctx.fillRect(4, 6, 1, 1);
-
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.magFilter = THREE.NearestFilter;
-  tex.minFilter = THREE.NearestFilter;
   return tex;
 }
 
@@ -180,12 +171,9 @@ export class SlimeManager {
   private readonly hitMeshes: THREE.Object3D[] = [];
   private readonly raycaster = new THREE.Raycaster();
 
-  private readonly sideMat: THREE.MeshLambertMaterial;
-  private readonly frontMat: THREE.MeshLambertMaterial;
-  private readonly topMat: THREE.MeshLambertMaterial;
-  private readonly darkMat: THREE.MeshLambertMaterial;
   private readonly hitFlashMat: THREE.MeshBasicMaterial;
-  private readonly bodyMaterials: THREE.Material[];
+  private readonly shadowMat: THREE.MeshBasicMaterial;
+  private readonly tierVisuals: Record<SlimeLevel, TierVisualSet>;
   private readonly labelMaterials = new Map<string, THREE.SpriteMaterial>();
 
   private readonly tempVec = new THREE.Vector3();
@@ -195,27 +183,86 @@ export class SlimeManager {
     this.outside = outside;
     this.seed = seed;
 
-    const faceTex = createSlimeFaceTexture();
-    const sideTex = createSlimeSideTexture();
-    const topTex = createSlimeTopTexture();
-    this.textures.push(faceTex, sideTex, topTex);
-
-    this.sideMat = new THREE.MeshLambertMaterial({ map: sideTex });
-    this.frontMat = new THREE.MeshLambertMaterial({ map: faceTex });
-    this.topMat = new THREE.MeshLambertMaterial({ map: topTex });
-    this.darkMat = new THREE.MeshLambertMaterial({ color: '#0d565e' });
     this.hitFlashMat = new THREE.MeshBasicMaterial({ color: '#ffffff' });
-    this.materials.push(this.sideMat, this.frontMat, this.topMat, this.darkMat, this.hitFlashMat);
+    const shadowTex = createSoftShadowTexture();
+    this.textures.push(shadowTex);
+    this.shadowMat = new THREE.MeshBasicMaterial({
+      map: shadowTex,
+      transparent: true,
+      opacity: 0.72,
+      depthWrite: false,
+    });
+    this.materials.push(this.hitFlashMat, this.shadowMat);
 
-    // Three.js BoxGeometry faces: [+X, -X, +Y, -Y, +Z (front), -Z]
-    this.bodyMaterials = [
-      this.sideMat,
-      this.sideMat,
-      this.topMat,
-      this.darkMat,
-      this.frontMat,
-      this.sideMat,
-    ];
+    const makeTier = (
+      level: SlimeLevel,
+      outerColor: string,
+      coreColor: string,
+      emissiveColor: string,
+      accentColor: string,
+    ): TierVisualSet => {
+      const faceTex = createSlimeCoreFaceTexture(level);
+      this.textures.push(faceTex);
+
+      const outerGelMat = new THREE.MeshPhysicalMaterial({
+        color: outerColor,
+        roughness: 0.08,
+        metalness: 0.04,
+        clearcoat: 1.0,
+        clearcoatRoughness: 0.06,
+        ior: 1.38,
+        transparent: true,
+        opacity: 0.62,
+        depthWrite: false,
+      });
+
+      const coreSideMat = new THREE.MeshStandardMaterial({
+        color: coreColor,
+        emissive: emissiveColor,
+        emissiveIntensity: level === 3 ? 0.42 : level === 2 ? 0.34 : 0.24,
+        roughness: 0.3,
+        metalness: 0.08,
+      });
+
+      const coreFaceMat = new THREE.MeshStandardMaterial({
+        map: faceTex,
+        emissive: emissiveColor,
+        emissiveIntensity: 0.22,
+        roughness: 0.28,
+        metalness: 0.06,
+      });
+
+      const accentMat = new THREE.MeshStandardMaterial({
+        color: accentColor,
+        emissive: accentColor,
+        emissiveIntensity: level === 3 ? 0.35 : 0.2,
+        roughness: 0.22,
+        metalness: level === 3 ? 0.72 : 0.15,
+      });
+
+      this.materials.push(outerGelMat, coreSideMat, coreFaceMat, accentMat);
+
+      return {
+        outerGelMat,
+        coreSideMat,
+        coreFaceMat,
+        accentMat,
+        coreMaterials: [
+          coreSideMat,
+          coreSideMat,
+          coreSideMat,
+          coreSideMat,
+          coreFaceMat,
+          coreSideMat,
+        ],
+      };
+    };
+
+    this.tierVisuals = {
+      1: makeTier(1, '#34d399', '#047857', '#10b981', '#a7f3d0'),
+      2: makeTier(2, '#38bdf8', '#0369a1', '#0ea5e9', '#7dd3fc'),
+      3: makeTier(3, '#fbbf24', '#c2410c', '#f59e0b', '#fde047'),
+    };
 
     this.buildPinkZones();
     this.spawnAllSlimes();
@@ -228,7 +275,7 @@ export class SlimeManager {
     const discMat = new THREE.MeshBasicMaterial({
       color: '#ec4899',
       transparent: true,
-      opacity: 0.22,
+      opacity: 0.18,
       depthWrite: false,
       side: THREE.DoubleSide,
     });
@@ -242,11 +289,9 @@ export class SlimeManager {
     this.materials.push(discMat, ringMat);
 
     for (const zone of SLIME_ZONE_SPECS) {
-      // 1. Vùng phủ màu hồng bám địa hình parabol
       const discMesh = this.buildTerrainDiscMesh(zone.x, zone.z, 0, zone.radius, 8, 40, 0.05, discMat);
       this.zoneRoot.add(discMesh);
 
-      // 2. Đường viền tròn màu hồng đậm nổi bật ranh giới vùng hoạt động
       const ringMesh = this.buildTerrainDiscMesh(
         zone.x,
         zone.z,
@@ -319,33 +364,40 @@ export class SlimeManager {
     if (existing) return existing;
 
     const canvas = document.createElement('canvas');
-    canvas.width = 160;
-    canvas.height = 54;
+    canvas.width = 224;
+    canvas.height = 72;
     const ctx = canvas.getContext('2d')!;
 
-    ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
-    ctx.fillRect(6, 4, 148, 46);
+    ctx.fillStyle = 'rgba(10, 18, 34, 0.88)';
+    ctx.beginPath();
+    ctx.roundRect(6, 6, 212, 60, 12);
+    ctx.fill();
+
     ctx.strokeStyle = level === 3 ? '#f59e0b' : level === 2 ? '#38bdf8' : '#34d399';
     ctx.lineWidth = 3;
-    ctx.strokeRect(6, 4, 148, 46);
+    ctx.beginPath();
+    ctx.roundRect(6, 6, 212, 60, 12);
+    ctx.stroke();
 
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillStyle = level === 3 ? '#fcd34d' : level === 2 ? '#7dd3fc' : '#6ee7b7';
-    ctx.font = 'bold 20px monospace';
-    ctx.fillText(`Slime Lv.${level}`, 80, 19);
+    ctx.fillStyle = level === 3 ? '#fde68a' : level === 2 ? '#bae6fd' : '#a7f3d0';
+    ctx.font = 'bold 24px sans-serif';
+    ctx.fillText(level === 3 ? `★ Slime Lv.${level}` : `Slime Lv.${level}`, 112, 24);
 
-    // Thanh máu chia vạch theo số lần chém Katana
-    const barW = 124;
-    const barX = 18;
-    const barY = 33;
-    const barH = 10;
-    const gap = 3;
+    // Thanh máu chia vạch bo tròn
+    const barW = 176;
+    const barX = 24;
+    const barY = 42;
+    const barH = 12;
+    const gap = 4;
     const segW = (barW - gap * (maxHp - 1)) / maxHp;
 
     for (let i = 0; i < maxHp; i++) {
       ctx.fillStyle = i < hp ? '#fb7185' : '#334155';
-      ctx.fillRect(barX + i * (segW + gap), barY, segW, barH);
+      ctx.beginPath();
+      ctx.roundRect(barX + i * (segW + gap), barY, segW, barH, 3);
+      ctx.fill();
     }
 
     const tex = new THREE.CanvasTexture(canvas);
@@ -363,12 +415,32 @@ export class SlimeManager {
   }
 
   private spawnAllSlimes(): void {
-    // Geometry dùng chung cho thân slime kiểu dome pixel 3D
-    const skirtGeo = new THREE.BoxGeometry(1.06, 0.2, 1.06);
-    const bodyGeo = new THREE.BoxGeometry(0.92, 0.56, 0.92);
-    const domeGeo = new THREE.BoxGeometry(0.7, 0.2, 0.7);
-    const capGeo = new THREE.BoxGeometry(0.44, 0.1, 0.44);
-    this.geometries.push(skirtGeo, bodyGeo, domeGeo, capGeo);
+    // Vỏ gel trong suốt nhiều tầng + lõi nhân phát sáng + bọt khí + vương miện/sừng theo cấp
+    const outerSkirtGeo = new THREE.BoxGeometry(1.06, 0.22, 1.06);
+    const outerBodyGeo = new THREE.BoxGeometry(0.94, 0.56, 0.94);
+    const outerDomeGeo = new THREE.BoxGeometry(0.74, 0.2, 0.74);
+    const outerCapGeo = new THREE.BoxGeometry(0.48, 0.1, 0.48);
+
+    const coreGeo = new THREE.BoxGeometry(0.56, 0.44, 0.56);
+    const bubbleGeo = new THREE.IcosahedronGeometry(0.085, 1);
+    const finGeo = new THREE.ConeGeometry(0.14, 0.36, 4);
+    const crownBandGeo = new THREE.CylinderGeometry(0.24, 0.22, 0.1, 6);
+    const crownSpikeGeo = new THREE.ConeGeometry(0.065, 0.2, 4);
+    const shadowGeo = new THREE.PlaneGeometry(1.45, 1.45);
+    shadowGeo.rotateX(-Math.PI / 2);
+
+    this.geometries.push(
+      outerSkirtGeo,
+      outerBodyGeo,
+      outerDomeGeo,
+      outerCapGeo,
+      coreGeo,
+      bubbleGeo,
+      finGeo,
+      crownBandGeo,
+      crownSpikeGeo,
+      shadowGeo,
+    );
 
     let globalIdx = 0;
 
@@ -380,7 +452,7 @@ export class SlimeManager {
         globalIdx++;
         const maxHp = level === 3 ? 6 : level === 2 ? 4 : 2;
         const xpReward = level === 3 ? 100 : level === 2 ? 50 : 10;
-        const scale = level === 3 ? 1.48 : level === 2 ? 1.08 : 0.76;
+        const scale = level === 3 ? 1.52 : level === 2 ? 1.12 : 0.78;
         const radius = 0.52 * scale;
         const moveSpeed = level === 3 ? 3.25 : level === 2 ? 2.95 : 2.65;
         const aggroRadius = level === 3 ? 15.0 : level === 2 ? 13.5 : 12.0;
@@ -388,31 +460,82 @@ export class SlimeManager {
         const spawnPos = this.pickPointInZone(zone, radius, this.seed + globalIdx * 37);
         const groundY = this.outside.getHeightAt(spawnPos.x, spawnPos.z);
 
+        const visuals = this.tierVisuals[level];
         const group = new THREE.Group();
         group.position.set(spawnPos.x, groundY, spawnPos.z);
 
         const bodyGroup = new THREE.Group();
         bodyGroup.scale.set(scale, scale, scale);
 
-        const skirtMesh = new THREE.Mesh(skirtGeo, this.darkMat);
-        skirtMesh.position.set(0, 0.1, 0);
+        const bodyParts: SlimeMeshPart[] = [];
+        const addPart = (
+          geo: THREE.BufferGeometry,
+          mat: THREE.Material | THREE.Material[],
+          px: number,
+          py: number,
+          pz: number,
+          renderOrder: number,
+          castShadow = false,
+          rx = 0,
+          ry = 0,
+          rz = 0,
+        ): THREE.Mesh => {
+          const mesh = new THREE.Mesh(geo, mat);
+          mesh.position.set(px, py, pz);
+          mesh.rotation.set(rx, ry, rz);
+          mesh.renderOrder = renderOrder;
+          mesh.castShadow = castShadow;
+          mesh.receiveShadow = true;
+          bodyGroup.add(mesh);
+          bodyParts.push({ mesh, origMat: mat });
+          return mesh;
+        };
 
-        const mainMesh = new THREE.Mesh(bodyGeo, this.bodyMaterials);
-        mainMesh.position.set(0, 0.42, 0);
+        // 1. Lõi nhân bên trong kèm khuôn mặt sắc nét
+        addPart(coreGeo, visuals.coreMaterials, 0, 0.42, 0.04, 1, true);
 
-        const domeMesh = new THREE.Mesh(domeGeo, this.topMat);
-        domeMesh.position.set(0, 0.78, 0);
+        // Bọt khí lơ lửng trong khối thạch
+        addPart(bubbleGeo, visuals.accentMat, -0.28, 0.62, 0.18, 1, false);
+        addPart(bubbleGeo, visuals.accentMat, 0.25, 0.28, -0.22, 1, false);
 
-        const capMesh = new THREE.Mesh(capGeo, this.topMat);
-        capMesh.position.set(0, 0.92, 0);
+        // Chi tiết nhận diện riêng cho Slime cấp 2 và cấp 3
+        if (level === 2) {
+          addPart(finGeo, visuals.accentMat, -0.34, 0.85, -0.05, 1, true, -0.2, 0, 0.45);
+          addPart(finGeo, visuals.accentMat, 0.34, 0.85, -0.05, 1, true, -0.2, 0, -0.45);
+        } else if (level === 3) {
+          addPart(crownBandGeo, visuals.accentMat, 0, 1.02, 0, 3, true);
+          for (let s = 0; s < 4; s++) {
+            const ang = (s * Math.PI) / 2;
+            addPart(
+              crownSpikeGeo,
+              visuals.accentMat,
+              Math.cos(ang) * 0.18,
+              1.15,
+              Math.sin(ang) * 0.18,
+              3,
+              true,
+            );
+          }
+        }
 
-        bodyGroup.add(skirtMesh, mainMesh, domeMesh, capMesh);
+        // 2. Lớp vỏ thạch trong suốt bóng loáng bao bọc bên ngoài
+        addPart(outerSkirtGeo, visuals.outerGelMat, 0, 0.11, 0, 2, false);
+        addPart(outerBodyGeo, visuals.outerGelMat, 0, 0.43, 0, 2, true);
+        addPart(outerDomeGeo, visuals.outerGelMat, 0, 0.78, 0, 2, false);
+        addPart(outerCapGeo, visuals.outerGelMat, 0, 0.92, 0, 2, false);
+
         group.add(bodyGroup);
+
+        // Bóng tiếp xúc mềm dưới chân slime (đứng yên trên mặt đất khi slime nhảy)
+        const shadowMesh = new THREE.Mesh(shadowGeo, this.shadowMat);
+        shadowMesh.position.set(spawnPos.x, groundY + 0.03, spawnPos.z);
+        shadowMesh.scale.set(scale, 1, scale);
+        this.slimeRoot.add(shadowMesh);
 
         const labelMat = this.getLabelMaterial(level, maxHp, maxHp);
         const labelSprite = new THREE.Sprite(labelMat);
-        labelSprite.position.set(0, 1.18 * scale + 0.32, 0);
-        labelSprite.scale.set(1.35, 0.46, 1);
+        labelSprite.position.set(0, 1.32 * scale + 0.36, 0);
+        labelSprite.scale.set(1.5, 0.48, 1);
         group.add(labelSprite);
 
         this.slimeRoot.add(group);
@@ -444,13 +567,15 @@ export class SlimeManager {
           alive: true,
           respawnTimer: 0,
           group,
-          bodyMeshes: [skirtMesh, mainMesh, domeMesh, capMesh],
+          bodyGroup,
+          shadowMesh,
+          bodyParts,
           labelSprite,
         };
 
-        for (const m of slime.bodyMeshes) {
-          m.userData.slime = slime;
-          this.hitMeshes.push(m);
+        for (const part of bodyParts) {
+          part.mesh.userData.slime = slime;
+          this.hitMeshes.push(part.mesh);
         }
 
         this.slimes.push(slime);
@@ -485,17 +610,8 @@ export class SlimeManager {
   }
 
   private setSlimeFlash(slime: SlimeEntity, flashing: boolean): void {
-    const [skirt, main, dome, cap] = slime.bodyMeshes;
-    if (flashing) {
-      skirt.material = this.hitFlashMat;
-      main.material = this.hitFlashMat;
-      dome.material = this.hitFlashMat;
-      cap.material = this.hitFlashMat;
-    } else {
-      skirt.material = this.darkMat;
-      main.material = this.bodyMaterials;
-      dome.material = this.topMat;
-      cap.material = this.topMat;
+    for (const part of slime.bodyParts) {
+      part.mesh.material = flashing ? this.hitFlashMat : part.origMat;
     }
   }
 
@@ -522,13 +638,11 @@ export class SlimeManager {
     forwardDir: THREE.Vector3,
     maxRange = 3.8,
   ): SlimeAttackResult {
-    // 1. Ưu tiên tia nhìn trực tiếp
     let target: SlimeEntity | null = null;
     const rayHit = this.raycastSlime(cameraPos, forwardDir, maxRange);
     if (rayHit) {
       target = rayHit.slime;
     } else {
-      // 2. Hỗ trợ tầm chém vòng cung phía trước mặt để dễ trúng Slime thấp ở gần chân
       let bestScore = Infinity;
       for (const slime of this.slimes) {
         if (!slime.alive) continue;
@@ -567,7 +681,6 @@ export class SlimeManager {
     target.hitFlashTimer = 0.14;
     this.setSlimeFlash(target, true);
 
-    // Đẩy lùi slime đúng 0.5 block khi bị chém (vẫn giữ chặt trong vòng màu hồng)
     const kx = target.x - cameraPos.x;
     const kz = target.z - cameraPos.z;
     const kLen = Math.hypot(kx, kz) || 1;
@@ -580,6 +693,7 @@ export class SlimeManager {
       target.isChasing = false;
       target.respawnTimer = SLIME_RESPAWN_SECONDS;
       target.group.visible = false;
+      target.shadowMesh.visible = false;
       this.setSlimeFlash(target, false);
       return {
         hit: true,
@@ -649,6 +763,8 @@ export class SlimeManager {
           );
           slime.group.position.set(slime.x, slime.y, slime.z);
           slime.group.visible = true;
+          slime.shadowMesh.position.set(slime.x, slime.y + 0.03, slime.z);
+          slime.shadowMesh.visible = true;
         }
         continue;
       }
@@ -664,7 +780,6 @@ export class SlimeManager {
         }
       }
 
-      // Kiểm tra người chơi có nằm trong vùng màu hồng của slime hay không
       const pZoneDistSq =
         (playerX - slime.zone.x) * (playerX - slime.zone.x) +
         (playerZ - slime.zone.z) * (playerZ - slime.zone.z);
@@ -674,8 +789,6 @@ export class SlimeManager {
       const toPlayerZ = playerZ - slime.z;
       const distToPlayer = Math.hypot(toPlayerX, toPlayerZ);
 
-      // Khi người chơi ở trong vòng màu hồng và bước vào vòng an toàn của slime -> dí theo;
-      // hễ ra khỏi vòng màu hồng -> ngừng dí ngay lập tức.
       if (playerInsidePinkZone && distToPlayer <= slime.aggroRadius) {
         slime.isChasing = true;
       } else if (!playerInsidePinkZone || distToPlayer > slime.aggroRadius + 2.5) {
@@ -706,7 +819,6 @@ export class SlimeManager {
         speed = slime.moveSpeed * 0.34;
       }
 
-      // Tách nhẹ các con slime gần nhau để không dồn chồng 1 điểm
       let sepX = 0;
       let sepZ = 0;
       for (let j = 0; j < this.slimes.length; j++) {
@@ -756,18 +868,17 @@ export class SlimeManager {
       slime.group.position.set(slime.x, slime.y, slime.z);
       slime.group.rotation.y = slime.yaw;
 
-      // Hiệu ứng nhún dẻo khi nhảy
-      const squash = 1 + Math.sin(slime.hopPhase * 2) * 0.06;
-      const bodyGroup = slime.group.children[0];
-      if (bodyGroup) {
-        bodyGroup.scale.set(
-          slime.scale / Math.sqrt(squash),
-          slime.scale * squash,
-          slime.scale / Math.sqrt(squash),
-        );
-      }
+      const shadowScale = slime.scale * (1 - Math.min(0.32, hopHeight * 0.7));
+      slime.shadowMesh.position.set(slime.x, groundY + 0.03, slime.z);
+      slime.shadowMesh.scale.set(shadowScale, 1, shadowScale);
 
-      // Kiểm tra va chạm tấn công người chơi (chỉ khi người chơi vẫn trong vùng màu hồng)
+      const squash = 1 + Math.sin(slime.hopPhase * 2) * 0.075;
+      slime.bodyGroup.scale.set(
+        slime.scale / Math.sqrt(squash),
+        slime.scale * squash,
+        slime.scale / Math.sqrt(squash),
+      );
+
       if (
         playerInsidePinkZone &&
         slime.attackCooldown <= 0 &&
@@ -776,7 +887,6 @@ export class SlimeManager {
       ) {
         slime.attackCooldown = 1.15;
 
-        // Sát thương theo cấp slime: Lv1 = 0.5 tim, Lv2 = 1 tim, Lv3 = 1.5 tim
         const damage = slime.level === 3 ? 1.5 : slime.level === 2 ? 1.0 : 0.5;
         let dirToSlimeX = -playerFwdX;
         let dirToSlimeZ = -playerFwdZ;
@@ -787,13 +897,11 @@ export class SlimeManager {
         const frontDot = dirToSlimeX * playerFwdX + dirToSlimeZ * playerFwdZ;
 
         if (shieldRaised && frontDot > 0.15) {
-          // Đỡ được phía trước bằng khiên: đẩy lùi slime 1 block
           slime.knockRemX = dirToSlimeX * 1.0;
           slime.knockRemZ = dirToSlimeZ * 1.0;
           slime.knockTimer = 0.14;
           callbacks?.onShieldBlocked?.(slime.level);
         } else {
-          // Bị đánh (kể cả lúc lo đỡ phía trước mà hở sau lưng): đẩy người chơi đi 0.5 block theo hướng đòn đánh
           callbacks?.onPlayerHit?.(damage, slime.level, -dirToSlimeX, -dirToSlimeZ);
         }
       }

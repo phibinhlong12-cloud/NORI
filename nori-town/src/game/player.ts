@@ -27,6 +27,8 @@ export class FirstPersonPlayer {
 
   keys: Record<string, boolean> = {};
   sensitivity = 0.00225;
+  private joystickMoveX = 0;
+  private joystickMoveY = 0;
 
   private knockRemX = 0;
   private knockRemZ = 0;
@@ -125,6 +127,17 @@ export class FirstPersonPlayer {
     this.knockTimer = Math.max(0.05, duration);
   }
 
+  setJoystickVector(x: number, y: number): void {
+    const len = Math.hypot(x, y);
+    if (len > 1) {
+      this.joystickMoveX = x / len;
+      this.joystickMoveY = y / len;
+    } else {
+      this.joystickMoveX = x;
+      this.joystickMoveY = y;
+    }
+  }
+
   rotate(dx: number, dy: number): void {
     this.yaw -= dx * this.sensitivity;
     this.pitch -= dy * this.sensitivity;
@@ -200,19 +213,22 @@ export class FirstPersonPlayer {
     const rightX = Math.cos(this.yaw);
     const rightZ = -Math.sin(this.yaw);
 
-    let moveForward = 0;
-    let moveRight = 0;
+    let moveForward = this.joystickMoveY;
+    let moveRight = this.joystickMoveX;
     if (this.keys['KeyW'] || this.keys['ArrowUp']) moveForward += 1;
     if (this.keys['KeyS'] || this.keys['ArrowDown']) moveForward -= 1;
     if (this.keys['KeyD'] || this.keys['ArrowRight']) moveRight += 1;
     if (this.keys['KeyA'] || this.keys['ArrowLeft']) moveRight -= 1;
 
-    let wishX = forwardX * moveForward + rightX * moveRight;
-    let wishZ = forwardZ * moveForward + rightZ * moveRight;
-    const wishLen = Math.hypot(wishX, wishZ);
-    if (wishLen > 0) {
-      wishX /= wishLen;
-      wishZ /= wishLen;
+    const rawMag = Math.hypot(moveForward, moveRight);
+    let wishX = 0;
+    let wishZ = 0;
+    if (rawMag > 0.001) {
+      const throttle = Math.min(1, rawMag);
+      const normForward = moveForward / rawMag;
+      const normRight = moveRight / rawMag;
+      wishX = (forwardX * normForward + rightX * normRight) * throttle;
+      wishZ = (forwardZ * normForward + rightZ * normRight) * throttle;
     }
 
     const isSprinting = Boolean(this.keys['ShiftLeft'] || this.keys['ShiftRight']);

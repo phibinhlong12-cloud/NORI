@@ -46,24 +46,24 @@ export const MoneyTracker = memo(function MoneyTracker({ engine }: MoneyTrackerP
   }, []);
 
   return (
-    <div className="bg-slate-950/85 border border-emerald-400/25 text-white px-4 py-2.5 rounded-xl shadow-lg pointer-events-none flex items-center gap-3">
-      <div className="w-8 h-8 rounded-lg bg-emerald-500/20 border border-emerald-400/30 flex items-center justify-center shrink-0">
-        <Banknote className="w-4 h-4 text-emerald-300" />
+    <div className="bg-slate-950/85 border border-emerald-400/25 text-white px-2.5 py-1.5 sm:px-4 sm:py-2.5 rounded-xl shadow-lg pointer-events-none flex items-center gap-2 sm:gap-3">
+      <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-lg bg-emerald-500/20 border border-emerald-400/30 flex items-center justify-center shrink-0">
+        <Banknote className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-300" />
       </div>
       <div className="leading-tight">
-        <div className="text-[11px] uppercase tracking-wider text-slate-400 font-medium">
+        <div className="hidden sm:block text-[11px] uppercase tracking-wider text-slate-400 font-medium">
           Tiền kiếm được
         </div>
-        <div className="flex items-baseline gap-2">
+        <div className="flex items-baseline gap-1.5 sm:gap-2">
           <span
             ref={moneyRef}
-            className="font-mono-tech text-sm sm:text-base font-bold text-amber-300 tabular-nums"
+            className="font-mono-tech text-xs sm:text-base font-bold text-amber-300 tabular-nums whitespace-nowrap"
           >
             0 VNĐ
           </span>
           <span
             ref={deltaRef}
-            className="font-mono-tech text-xs font-semibold text-emerald-300 transition-opacity duration-300 opacity-0 tabular-nums"
+            className="font-mono-tech text-[10px] sm:text-xs font-semibold text-emerald-300 transition-opacity duration-300 opacity-0 tabular-nums whitespace-nowrap"
           />
         </div>
       </div>

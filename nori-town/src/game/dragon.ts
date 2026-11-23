@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { createKatanaMeshGroup, KatanaAssetHandles } from './katana';
 import { OutsideGenerator } from './outside';
 import { DRAGON_ZONE_SPEC } from './slimeZones';
+import { createDragonScaleTexture, createSoftShadowTexture } from './textures';
 
 export type DragonSkillId = 1 | 2 | 3;
 
@@ -91,6 +92,8 @@ export class DragonBossManager {
   private readonly hitMeshes: THREE.Object3D[] = [];
   private readonly bodyColorMeshes: Array<{ mesh: THREE.Mesh; origMat: THREE.Material }> = [];
   private readonly hitFlashMat = new THREE.MeshBasicMaterial({ color: '#ffffff' });
+  private readonly dragonAuraLight: THREE.PointLight;
+  private readonly contactShadowMesh: THREE.Mesh;
   private readonly labelSprite: THREE.Sprite;
   private readonly labelMaterials = new Map<string, THREE.SpriteMaterial>();
 
@@ -149,18 +152,37 @@ export class DragonBossManager {
   private readonly mouthWorldPos = new THREE.Vector3();
   private readonly breathTargetVec = new THREE.Vector3();
 
-  constructor(scene: THREE.Scene, outside: OutsideGenerator) {
+  constructor(scene: THREE.Scene, outside: OutsideGenerator, maxAnisotropy = 4) {
     this.scene = scene;
     this.outside = outside;
 
     this.materials.push(this.hitFlashMat);
 
+    this.dragonAuraLight = new THREE.PointLight('#38bdf8', 5.5, 19, 1.4);
+    this.dragonAuraLight.position.set(0, 3.2, 0.8);
+    this.dragonRoot.add(this.dragonAuraLight);
+
+    const shadowTex = createSoftShadowTexture();
+    this.textures.push(shadowTex);
+    const contactShadowGeo = new THREE.PlaneGeometry(7.2, 7.6);
+    contactShadowGeo.rotateX(-Math.PI / 2);
+    const contactShadowMat = new THREE.MeshBasicMaterial({
+      map: shadowTex,
+      transparent: true,
+      opacity: 0.78,
+      depthWrite: false,
+    });
+    this.geometries.push(contactShadowGeo);
+    this.materials.push(contactShadowMat);
+    this.contactShadowMesh = new THREE.Mesh(contactShadowGeo, contactShadowMat);
+    this.vfxRoot.add(this.contactShadowMesh);
+
     this.buildBlueZone();
-    this.buildDragonModel();
+    this.buildDragonModel(maxAnisotropy);
 
     this.labelSprite = new THREE.Sprite(this.getLabelMaterial(DRAGON_MAX_HP));
-    this.labelSprite.position.set(0, 6.2, 0);
-    this.labelSprite.scale.set(4.8, 1.35, 1);
+    this.labelSprite.position.set(0, 6.45, 0);
+    this.labelSprite.scale.set(4.9, 1.38, 1);
     this.dragonRoot.add(this.labelSprite);
 
     const warnFillMat = new THREE.MeshBasicMaterial({
@@ -539,10 +561,13 @@ export class DragonBossManager {
     ry = 0,
     rz = 0,
     registerHit = true,
+    castShadow = true,
   ): THREE.Mesh {
     const mesh = new THREE.Mesh(geo, mat);
     mesh.position.set(x, y, z);
     mesh.rotation.set(rx, ry, rz);
+    mesh.castShadow = castShadow;
+    mesh.receiveShadow = true;
     parent.add(mesh);
     if (registerHit) {
       mesh.userData.isDragon = true;
@@ -552,25 +577,80 @@ export class DragonBossManager {
     return mesh;
   }
 
-  private buildDragonModel(): void {
-    // Bảng màu bám sát hình mẫu: xanh dương thẫm, xanh lam rực, trắng bạc ánh băng & lửa xanh lam
-    const deepNavyMat = new THREE.MeshLambertMaterial({ color: '#082542' });
-    const scaleAzureMat = new THREE.MeshLambertMaterial({ color: '#0b4a7a' });
-    const brightBlueMat = new THREE.MeshLambertMaterial({ color: '#0284c7' });
-    const electricCyanMat = new THREE.MeshBasicMaterial({ color: '#0ea5e9' });
-    const silverScaleMat = new THREE.MeshLambertMaterial({ color: '#dbeafe' });
-    const frostWhiteMat = new THREE.MeshLambertMaterial({ color: '#f0f9ff' });
-    const crystalMat = new THREE.MeshBasicMaterial({ color: '#7dd3fc' });
-    const eyeMat = new THREE.MeshBasicMaterial({ color: '#38bdf8' });
+  private buildDragonModel(maxAnisotropy = 4): void {
+    // Vảy rồng procedurally textured + vật liệu PBR ánh kim băng giá + tinh thể phát sáng
+    const navyScaleTex = createDragonScaleTexture('#09294a', '#041427', '#2678b8', maxAnisotropy);
+    const azureScaleTex = createDragonScaleTexture('#0d5084', '#062c4d', '#54c5f8', maxAnisotropy);
+    this.textures.push(navyScaleTex, azureScaleTex);
+
+    const deepNavyMat = new THREE.MeshStandardMaterial({
+      map: navyScaleTex,
+      roughness: 0.44,
+      metalness: 0.24,
+    });
+    const scaleAzureMat = new THREE.MeshStandardMaterial({
+      map: azureScaleTex,
+      roughness: 0.36,
+      metalness: 0.28,
+    });
+    const brightBlueMat = new THREE.MeshStandardMaterial({
+      color: '#0284c7',
+      roughness: 0.34,
+      metalness: 0.24,
+    });
+    const electricCyanMat = new THREE.MeshStandardMaterial({
+      color: '#0ea5e9',
+      emissive: '#0284c7',
+      emissiveIntensity: 0.72,
+      roughness: 0.2,
+      metalness: 0.35,
+    });
+    const silverScaleMat = new THREE.MeshPhysicalMaterial({
+      color: '#dbeafe',
+      roughness: 0.26,
+      metalness: 0.28,
+      clearcoat: 0.75,
+      clearcoatRoughness: 0.15,
+    });
+    const frostWhiteMat = new THREE.MeshPhysicalMaterial({
+      color: '#f0f9ff',
+      roughness: 0.22,
+      metalness: 0.22,
+      clearcoat: 0.85,
+      clearcoatRoughness: 0.1,
+    });
+    const crystalMat = new THREE.MeshStandardMaterial({
+      color: '#7dd3fc',
+      emissive: '#38bdf8',
+      emissiveIntensity: 0.85,
+      roughness: 0.15,
+      metalness: 0.3,
+    });
+    const eyeMat = new THREE.MeshStandardMaterial({
+      color: '#bae6fd',
+      emissive: '#38bdf8',
+      emissiveIntensity: 1.8,
+      roughness: 0.1,
+    });
+    const wingMembraneMat = new THREE.MeshPhysicalMaterial({
+      color: '#075985',
+      emissive: '#0284c7',
+      emissiveIntensity: 0.28,
+      roughness: 0.28,
+      metalness: 0.1,
+      transparent: true,
+      opacity: 0.8,
+      side: THREE.DoubleSide,
+    });
     const flameMat = new THREE.MeshBasicMaterial({
       color: '#00a8ff',
       transparent: true,
       opacity: 0.88,
     });
     const flameCoreMat = new THREE.MeshBasicMaterial({
-      color: '#bae6fd',
+      color: '#e0f2fe',
       transparent: true,
-      opacity: 0.94,
+      opacity: 0.95,
     });
     this.materials.push(
       deepNavyMat,
@@ -581,20 +661,24 @@ export class DragonBossManager {
       frostWhiteMat,
       crystalMat,
       eyeMat,
+      wingMembraneMat,
       flameMat,
       flameCoreMat,
     );
 
-    // 1. Thân rồng uốn lượn + giáp vảy bụng trắng bạc xếp lớp + bờm gai sống lưng xanh lam
-    const torsoGeo = new THREE.BoxGeometry(2.1, 1.7, 3.8);
-    const chestGeo = new THREE.BoxGeometry(2.4, 1.8, 2.0);
+    // 1. Thân rồng uốn lượn + giáp vai + vảy bụng trắng bạc xếp lớp + bờm gai sống lưng băng phát sáng
+    const torsoGeo = new THREE.BoxGeometry(2.12, 1.72, 3.8);
+    const chestGeo = new THREE.BoxGeometry(2.48, 1.85, 2.05);
+    const pauldronGeo = new THREE.BoxGeometry(0.82, 0.72, 1.35);
     const waistGeo = new THREE.BoxGeometry(1.75, 1.4, 1.4);
-    const bellyPlateGeo = new THREE.BoxGeometry(1.65, 0.34, 0.72);
-    const dorsalBladeGeo = new THREE.ConeGeometry(0.24, 1.15, 4);
-    this.geometries.push(torsoGeo, chestGeo, waistGeo, bellyPlateGeo, dorsalBladeGeo);
+    const bellyPlateGeo = new THREE.BoxGeometry(1.68, 0.34, 0.72);
+    const dorsalBladeGeo = new THREE.ConeGeometry(0.24, 1.24, 5);
+    this.geometries.push(torsoGeo, chestGeo, pauldronGeo, waistGeo, bellyPlateGeo, dorsalBladeGeo);
 
     this.addDragonPart(this.bodyGroup, torsoGeo, deepNavyMat, 0, 2.45, -0.1, -0.06, 0, 0);
     this.addDragonPart(this.bodyGroup, chestGeo, scaleAzureMat, 0, 2.75, 1.25, -0.18, 0, 0);
+    this.addDragonPart(this.bodyGroup, pauldronGeo, silverScaleMat, -1.24, 3.15, 1.15, -0.15, 0, 0.28);
+    this.addDragonPart(this.bodyGroup, pauldronGeo, silverScaleMat, 1.24, 3.15, 1.15, -0.15, 0, -0.28);
     this.addDragonPart(this.bodyGroup, waistGeo, deepNavyMat, 0, 2.15, -1.75, 0.1, 0, 0);
 
     // Các đốt vảy bụng trắng bạc xếp lớp dưới ngực & bụng
@@ -757,12 +841,15 @@ export class DragonBossManager {
     this.addDragonPart(this.headGroup, snoutGeo, scaleAzureMat, 0, 0.12, 1.55);
     this.addDragonPart(this.headGroup, snoutTipGeo, silverScaleMat, 0, 0.18, 2.25);
 
-    // Sừng chính dài vươn ra sau + sừng phụ chẻ nhánh + bờm lông gáy
+    // Sừng chính dài vươn ra sau + sừng phụ chẻ nhánh + sừng mũi uy lực
     this.addDragonPart(this.headGroup, mainHornGeo, silverScaleMat, -0.5, 1.15, -0.25, -0.95, 0, 0.24);
     this.addDragonPart(this.headGroup, mainHornGeo, silverScaleMat, 0.5, 1.15, -0.25, -0.95, 0, -0.24);
     this.addDragonPart(this.headGroup, sideHornGeo, electricCyanMat, -0.72, 0.62, -0.15, -1.1, 0, 0.52);
     this.addDragonPart(this.headGroup, sideHornGeo, electricCyanMat, 0.72, 0.62, -0.15, -1.1, 0, -0.52);
     this.addDragonPart(this.headGroup, sideHornGeo, crystalMat, 0, 0.85, -0.35, -1.0, 0, 0);
+    const nasalHornGeo = new THREE.ConeGeometry(0.11, 0.55, 5);
+    this.geometries.push(nasalHornGeo);
+    this.addDragonPart(this.headGroup, nasalHornGeo, crystalMat, 0, 0.55, 2.24, 0.55, 0, 0);
 
     // Mắt xanh phát sáng + răng nanh
     this.addDragonPart(this.headGroup, eyeGeo, eyeMat, -0.72, 0.32, 0.88);
@@ -779,22 +866,36 @@ export class DragonBossManager {
     this.neckGroup.add(this.headGroup);
     this.bodyGroup.add(this.neckGroup);
 
-    // 4. Đôi cánh lông vũ sắc nhọn 2 tầng giống hệt mẫu rồng xanh-trắng
+    // 4. Đôi cánh lông vũ & màng cánh băng giá 2 tầng
     const innerBoneGeo = new THREE.BoxGeometry(2.9, 0.28, 0.32);
     innerBoneGeo.translate(1.45, 0, 0);
     const outerBoneGeo = new THREE.BoxGeometry(3.2, 0.22, 0.26);
     outerBoneGeo.translate(1.6, 0, 0);
-    const innerFeatherGeo = new THREE.ConeGeometry(0.42, 3.1, 4);
+    const innerMembraneGeo = new THREE.PlaneGeometry(2.75, 2.15);
+    innerMembraneGeo.rotateX(-Math.PI / 2);
+    innerMembraneGeo.translate(1.45, -0.02, -1.15);
+    const outerMembraneGeo = new THREE.PlaneGeometry(2.95, 2.45);
+    outerMembraneGeo.rotateX(-Math.PI / 2);
+    outerMembraneGeo.translate(1.5, -0.02, -1.35);
+    const innerFeatherGeo = new THREE.ConeGeometry(0.42, 3.1, 5);
     innerFeatherGeo.rotateX(-Math.PI / 2);
     innerFeatherGeo.translate(0, 0, -1.55);
-    const outerFeatherGeo = new THREE.ConeGeometry(0.38, 3.8, 4);
+    const outerFeatherGeo = new THREE.ConeGeometry(0.38, 3.8, 5);
     outerFeatherGeo.rotateX(-Math.PI / 2);
     outerFeatherGeo.translate(0, 0, -1.9);
-    this.geometries.push(innerBoneGeo, outerBoneGeo, innerFeatherGeo, outerFeatherGeo);
+    this.geometries.push(
+      innerBoneGeo,
+      outerBoneGeo,
+      innerMembraneGeo,
+      outerMembraneGeo,
+      innerFeatherGeo,
+      outerFeatherGeo,
+    );
 
     const buildWingFeathers = (wingInner: THREE.Group, wingOuter: THREE.Group) => {
-      // Khung xương cánh trắng bạc
+      // Khung xương cánh trắng bạc + màng cánh phát sáng xanh băng
       this.addDragonPart(wingInner, innerBoneGeo, frostWhiteMat, 0, 0, 0, 0, -0.12, 0);
+      this.addDragonPart(wingInner, innerMembraneGeo, wingMembraneMat, 0, 0, 0, 0, -0.12, 0, false, false);
       // 4 lông cánh tầng trong xanh lam đậm xen xanh sáng
       for (let f = 0; f < 4; f++) {
         const fx = 0.55 + f * 0.72;
@@ -814,6 +915,7 @@ export class DragonBossManager {
 
       wingOuter.position.set(2.85, 0, -0.34);
       this.addDragonPart(wingOuter, outerBoneGeo, silverScaleMat, 0, 0, 0, 0, -0.18, 0);
+      this.addDragonPart(wingOuter, outerMembraneGeo, wingMembraneMat, 0, 0, 0, 0, -0.22, 0, false, false);
       // 5 mũi cánh nhọn vươn dài ra sau như đôi cánh phượng rồng
       for (let f = 0; f < 5; f++) {
         const fx = 0.4 + f * 0.68;
@@ -1175,6 +1277,8 @@ export class DragonBossManager {
       this.skillPhase = 'idle';
       this.respawnTimer = DRAGON_RESPAWN_SECONDS;
       this.dragonRoot.visible = false;
+      this.contactShadowMesh.visible = false;
+      this.dragonAuraLight.intensity = 0;
       this.setDragonFlash(false);
       this.hideAllVfx();
 
@@ -1419,6 +1523,8 @@ export class DragonBossManager {
         this.dragonRoot.position.set(this.x, this.y, this.z);
         this.dragonRoot.rotation.y = this.yaw;
         this.dragonRoot.visible = true;
+        this.contactShadowMesh.visible = true;
+        this.dragonAuraLight.intensity = 5.5;
       }
       return;
     }
@@ -1672,11 +1778,19 @@ export class DragonBossManager {
       }
     }
 
-    // Cập nhật vị trí mặt đất và hoạt ảnh vỗ cánh / uốn đuôi / bước chân
+    // Cập nhật vị trí mặt đất, bóng tiếp xúc, hào quang băng & hoạt ảnh vỗ cánh
     const groundY = this.outside.getHeightAt(this.x, this.z);
     this.y = groundY + jumpOffsetY;
     this.dragonRoot.position.set(this.x, this.y, this.z);
     this.dragonRoot.rotation.y = this.yaw;
+
+    const shadowScale = Math.max(0.45, 1 - jumpOffsetY * 0.06);
+    this.contactShadowMesh.visible = true;
+    this.contactShadowMesh.position.set(this.x, groundY + 0.05, this.z);
+    this.contactShadowMesh.scale.set(shadowScale, 1, shadowScale);
+
+    const auraBoost = this.skillPhase === 'telegraph' || this.skillPhase === 'execute' ? 3.2 : 0;
+    this.dragonAuraLight.intensity = 5.2 + auraBoost + Math.sin(this.animTime * 4.5) * 0.8;
 
     this.bodyGroup.rotation.x = bodyPitch;
     const flap = Math.sin(this.animTime * wingFlapSpeed) * wingAmp;

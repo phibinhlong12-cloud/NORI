@@ -1,10 +1,11 @@
 import { memo, useEffect, useState } from 'react';
-import { Backpack, FlaskConical, Shield, Sword, TreePine } from 'lucide-react';
+import { Backpack, FlaskConical, Shield, Sword, TreePine, X } from 'lucide-react';
 import { HudStats, VoxelEngine } from '../game/engine';
 import { BACKPACK_CAPACITY, BackpackItem, MAX_POTION_STACK } from '../game/trees';
 
 interface BackpackHudProps {
   engine: VoxelEngine | null;
+  touchMode?: boolean;
 }
 
 interface BackpackViewState {
@@ -33,7 +34,10 @@ const INITIAL_STATE: BackpackViewState = {
   items: Array.from({ length: BACKPACK_CAPACITY }, () => null),
 };
 
-export const BackpackHud = memo(function BackpackHud({ engine }: BackpackHudProps) {
+export const BackpackHud = memo(function BackpackHud({
+  engine,
+  touchMode = false,
+}: BackpackHudProps) {
   const [state, setState] = useState<BackpackViewState>(INITIAL_STATE);
 
   useEffect(() => {
@@ -84,8 +88,8 @@ export const BackpackHud = memo(function BackpackHud({ engine }: BackpackHudProp
 
   return (
     <>
-      <div className="flex flex-col items-start gap-2 pointer-events-none">
-        {state.hasBackpack && (
+      <div className="flex flex-col items-start gap-1.5 sm:gap-2 pointer-events-none">
+        {!touchMode && state.hasBackpack && (
           <div
             className={`px-3.5 py-2 rounded-xl shadow-lg border flex items-center gap-3 transition-colors ${
               isFull
@@ -125,22 +129,24 @@ export const BackpackHud = memo(function BackpackHud({ engine }: BackpackHudProp
         )}
 
         {state.holdingPotionSlot !== null && state.holdingPotionCount > 0 && (
-          <div className="px-3.5 py-2 rounded-xl shadow-lg border bg-rose-950/90 border-rose-400/70 text-white flex items-center gap-3 transition-colors">
-            <div className="w-8 h-8 rounded-lg border bg-rose-500/25 border-rose-400/60 text-rose-300 flex items-center justify-center shrink-0">
-              <FlaskConical className="w-4 h-4" />
+          <div className="px-2.5 py-1.5 sm:px-3.5 sm:py-2 rounded-xl shadow-lg border bg-rose-950/90 border-rose-400/70 text-white flex items-center gap-2 sm:gap-3 transition-colors">
+            <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-lg border bg-rose-500/25 border-rose-400/60 text-rose-300 flex items-center justify-center shrink-0">
+              <FlaskConical className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </div>
             <div className="leading-tight">
-              <div className="text-[11px] uppercase tracking-wider font-medium text-rose-200">
-                Thuốc hồi máu (Ô {state.holdingPotionSlot + 1})
+              <div className="text-[10px] sm:text-[11px] uppercase tracking-wider font-medium text-rose-200">
+                Thuốc máu (Ô {state.holdingPotionSlot + 1})
               </div>
-              <div className="text-xs font-semibold text-rose-300">
-                Đang cầm (x{state.holdingPotionCount}) · Chuột phải uống (+2 tim)
+              <div className="text-[11px] sm:text-xs font-semibold text-rose-300">
+                {touchMode
+                  ? `Cầm x${state.holdingPotionCount} · Bấm Uống (+2 tim)`
+                  : `Đang cầm (x${state.holdingPotionCount}) · Chuột phải uống (+2 tim)`}
               </div>
             </div>
           </div>
         )}
 
-        {state.hasKatana && (
+        {!touchMode && state.hasKatana && (
           <div
             className={`px-3.5 py-2 rounded-xl shadow-lg border flex items-center gap-3 transition-colors ${
               state.hasIceKatana
@@ -188,7 +194,7 @@ export const BackpackHud = memo(function BackpackHud({ engine }: BackpackHudProp
           </div>
         )}
 
-        {state.hasShield && (
+        {!touchMode && state.hasShield && (
           <div
             className={`px-3.5 py-2 rounded-xl shadow-lg border flex items-center gap-3 transition-colors ${
               state.shieldRaised
@@ -222,12 +228,16 @@ export const BackpackHud = memo(function BackpackHud({ engine }: BackpackHudProp
       </div>
 
       {state.hasBackpack && state.backpackOpen && (
-        <div className="fixed bottom-[268px] md:bottom-24 left-1/2 -translate-x-1/2 z-20 pointer-events-none w-[min(94vw,640px)]">
+        <div
+          className={`fixed left-1/2 -translate-x-1/2 z-30 pointer-events-auto w-[min(94vw,640px)] ${
+            touchMode ? 'bottom-[238px] sm:bottom-24' : 'bottom-24'
+          }`}
+        >
           <div
-            className={`rounded-2xl border p-3 sm:p-4 shadow-2xl ${
+            className={`rounded-2xl border p-3 sm:p-4 shadow-2xl max-h-[54dvh] overflow-y-auto ${
               isFull
                 ? 'bg-rose-950/95 border-rose-500/80 text-white'
-                : 'bg-slate-950/90 border-white/15 text-white'
+                : 'bg-slate-950/95 border-white/15 text-white'
             }`}
           >
             <div className="flex flex-wrap items-center justify-between gap-2 mb-2.5">
@@ -237,17 +247,29 @@ export const BackpackHud = memo(function BackpackHud({ engine }: BackpackHudProp
                   Balo ({count}/{BACKPACK_CAPACITY})
                 </span>
               </div>
-              <span
-                className={`text-[11px] font-mono-tech font-semibold px-2 py-0.5 rounded ${
-                  isFull
-                    ? 'bg-rose-600 text-white'
-                    : 'bg-slate-800 text-slate-300 border border-white/10'
-                }`}
-              >
-                {isFull
-                  ? 'BALO ĐẦY · Phím 1–9 chọn ô'
-                  : 'Phím 1–9: Cầm/Lấy ô · F: Lấy gỗ nhanh'}
-              </span>
+              <div className="flex items-center gap-1.5">
+                <span
+                  className={`text-[10px] sm:text-[11px] font-mono-tech font-semibold px-2 py-0.5 rounded ${
+                    isFull
+                      ? 'bg-rose-600 text-white'
+                      : 'bg-slate-800 text-slate-300 border border-white/10'
+                  }`}
+                >
+                  {touchMode
+                    ? 'Chạm ô 1–9 để chọn/cầm'
+                    : isFull
+                      ? 'BALO ĐẦY · Phím 1–9 chọn ô'
+                      : 'Phím 1–9: Cầm/Lấy ô · F: Lấy gỗ nhanh'}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => engine?.toggleBackpack()}
+                  aria-label="Đóng Balo"
+                  className="w-7 h-7 rounded-lg bg-slate-800 hover:bg-slate-700 active:scale-95 border border-white/15 flex items-center justify-center text-slate-300 cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
 
             <div className="grid grid-cols-3 sm:grid-cols-9 gap-1.5 sm:gap-2">
@@ -258,17 +280,19 @@ export const BackpackHud = memo(function BackpackHud({ engine }: BackpackHudProp
                   item?.kind === 'potion' && state.holdingPotionSlot === index;
 
                 return (
-                  <div
+                  <button
                     key={index}
-                    className={`relative h-16 sm:h-[70px] rounded-xl border flex flex-col items-center justify-center px-1 text-center ${
+                    type="button"
+                    onClick={() => engine?.retrieveBackpackSlot(index)}
+                    className={`relative h-14 sm:h-[70px] rounded-xl border flex flex-col items-center justify-center px-1 text-center transition active:scale-95 cursor-pointer ${
                       item?.kind === 'potion'
                         ? isHeldPotion
                           ? 'bg-rose-950/95 border-rose-400 text-rose-100 ring-1 ring-rose-400/50'
-                          : 'bg-rose-950/70 border-rose-500/45 text-rose-100'
+                          : 'bg-rose-950/70 border-rose-500/45 text-rose-100 hover:border-rose-400'
                         : item
                           ? isNextQuickWood
-                            ? 'bg-amber-950/85 border-emerald-400/80 text-amber-100'
-                            : 'bg-amber-950/60 border-amber-500/40 text-amber-100'
+                            ? 'bg-amber-950/85 border-emerald-400/80 text-amber-100 hover:border-emerald-300'
+                            : 'bg-amber-950/60 border-amber-500/40 text-amber-100 hover:border-amber-400'
                           : 'bg-slate-900/75 border-white/10 text-slate-500'
                     }`}
                   >
@@ -291,7 +315,7 @@ export const BackpackHud = memo(function BackpackHud({ engine }: BackpackHudProp
                     {item ? (
                       item.kind === 'potion' ? (
                         <>
-                          <FlaskConical className="w-4 h-4 text-rose-400 mt-3 shrink-0" />
+                          <FlaskConical className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-rose-400 mt-3 shrink-0" />
                           <span className="text-[10px] font-bold text-white leading-tight mt-0.5">
                             Thuốc máu
                           </span>
@@ -301,7 +325,7 @@ export const BackpackHud = memo(function BackpackHud({ engine }: BackpackHudProp
                         </>
                       ) : (
                         <>
-                          <TreePine className="w-4 h-4 text-amber-300 mt-3 shrink-0" />
+                          <TreePine className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-300 mt-3 shrink-0" />
                           <span className="font-mono-tech text-[10px] font-bold text-white leading-tight mt-0.5">
                             {item.length.toFixed(1)}m
                           </span>
@@ -313,7 +337,7 @@ export const BackpackHud = memo(function BackpackHud({ engine }: BackpackHudProp
                     ) : (
                       <span className="text-[10px] text-slate-600 mt-2">Trống</span>
                     )}
-                  </div>
+                  </button>
                 );
               })}
             </div>

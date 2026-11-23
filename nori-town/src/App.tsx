@@ -1,12 +1,23 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { BackpackHud } from './components/BackpackHud';
 import { BossHealthBar } from './components/BossHealthBar';
+import { EssentialShopModal } from './components/EssentialShopModal';
 import { HudOverlay } from './components/HudOverlay';
 import { MobileControls } from './components/MobileControls';
 import { MoneyTracker } from './components/MoneyTracker';
 import { PauseMenu } from './components/PauseMenu';
 import { PlayerStatusBars } from './components/PlayerStatusBars';
 import { VoxelEngine } from './game/engine';
+
+function detectTouchDevice(): boolean {
+  if (typeof window === 'undefined') return false;
+  return (
+    window.matchMedia?.('(pointer: coarse)').matches ||
+    'ontouchstart' in window ||
+    navigator.maxTouchPoints > 0 ||
+    window.innerWidth < 768
+  );
+}
 
 export default function App() {
   const canvasMountRef = useRef<HTMLDivElement | null>(null);
@@ -18,6 +29,9 @@ export default function App() {
   const [hasStarted, setHasStarted] = useState(false);
   const [renderDistance, setRenderDistance] = useState(4);
   const [sensitivity, setSensitivity] = useState(5);
+  const [touchControlsEnabled, setTouchControlsEnabled] = useState<boolean>(() =>
+    detectTouchDevice()
+  );
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [webglError, setWebglError] = useState<string>('');
 
@@ -77,12 +91,16 @@ export default function App() {
     engineRef.current?.setSensitivity(value);
   }, []);
 
+  const handleToggleTouchControls = useCallback(() => {
+    setTouchControlsEnabled((prev) => !prev);
+  }, []);
+
   const handleVirtualKey = useCallback((code: string, pressed: boolean) => {
     engineRef.current?.setVirtualKey(code, pressed);
   }, []);
 
-  const handleBreak = useCallback(() => {
-    engineRef.current?.breakTargetBlock();
+  const handleJoystickMove = useCallback((x: number, y: number) => {
+    engineRef.current?.setVirtualJoystick(x, y);
   }, []);
 
   const handlePlace = useCallback(() => {
@@ -97,36 +115,46 @@ export default function App() {
         engine={engineInstance}
         isPlaying={isPlaying}
         onPause={handlePause}
+        moneySlot={<MoneyTracker engine={engineInstance} />}
         leftSlot={
-          <>
-            <MoneyTracker engine={engineInstance} />
-            <BackpackHud engine={engineInstance} />
-          </>
+          <BackpackHud
+            engine={engineInstance}
+            touchMode={touchControlsEnabled}
+          />
         }
       />
 
       <BossHealthBar engine={engineInstance} />
 
-      <PlayerStatusBars engine={engineInstance} />
+      <PlayerStatusBars
+        engine={engineInstance}
+        touchMode={touchControlsEnabled}
+      />
 
       <MobileControls
+        visible={isPlaying && touchControlsEnabled}
+        engine={engineInstance}
         onVirtualKey={handleVirtualKey}
-        onBreak={handleBreak}
+        onJoystickMove={handleJoystickMove}
         onPlace={handlePlace}
       />
+
+      <EssentialShopModal engine={engineInstance} />
 
       <PauseMenu
         visible={!isPlaying}
         hasStarted={hasStarted}
         renderDistance={renderDistance}
         sensitivity={sensitivity}
+        touchControlsEnabled={touchControlsEnabled}
         onRenderDistanceChange={handleRenderDistanceChange}
         onSensitivityChange={handleSensitivityChange}
+        onToggleTouchControls={handleToggleTouchControls}
         onPlay={handlePlay}
       />
 
       {toastMessage && (
-        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-40 bg-slate-950/90 border border-white/15 text-white text-xs sm:text-sm font-medium px-4 py-2 rounded-lg shadow-xl pointer-events-none whitespace-nowrap">
+        <div className="fixed top-24 sm:top-20 left-1/2 -translate-x-1/2 z-50 bg-slate-950/90 border border-white/15 text-white text-xs sm:text-sm font-medium px-3.5 sm:px-4 py-2 rounded-lg shadow-xl pointer-events-none max-w-[92vw] text-center whitespace-normal sm:whitespace-nowrap">
           {toastMessage}
         </div>
       )}

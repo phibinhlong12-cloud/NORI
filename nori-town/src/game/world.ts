@@ -8,6 +8,7 @@ import {
   DragonBossManager,
   DragonUpdateCallbacks,
 } from './dragon';
+import { GrassManager } from './grass';
 import { OutsideGenerator } from './outside';
 import {
   SlimeAttackResult,
@@ -56,7 +57,9 @@ export class WorldManager {
   private readonly blockRgb: BlockRgbTable;
   private readonly greedyMask = new Int16Array(CHUNK_SIZE * CHUNK_HEIGHT);
   private readonly outside: OutsideGenerator;
+  private readonly maxAnisotropy: number;
   private trees: TreeManager;
+  private grass: GrassManager;
   private cashier: CashierStation;
   private weaponShop: WeaponShop;
   private slimes: SlimeManager;
@@ -71,29 +74,32 @@ export class WorldManager {
   private lastRenderDistance = -1;
   private pendingCoords: Array<{ cx: number; cz: number; distSq: number }> = [];
 
-  constructor(scene: THREE.Scene, solidMaterial: THREE.Material) {
+  constructor(scene: THREE.Scene, solidMaterial: THREE.Material, maxAnisotropy = 4) {
     this.scene = scene;
     this.solidMaterial = solidMaterial;
+    this.maxAnisotropy = maxAnisotropy;
     this.blockRgb = createBlockRgbTable();
 
     this.seed = Math.floor(Math.random() * 100000) + 1;
     this.outside = new OutsideGenerator(this.seed);
-    this.trees = new TreeManager(this.scene, this.outside, this.seed);
+    this.trees = new TreeManager(this.scene, this.outside, this.seed, this.maxAnisotropy);
+    this.grass = new GrassManager(this.scene, this.outside, this.seed);
     this.cashier = new CashierStation(this.scene);
     this.weaponShop = new WeaponShop(this.scene);
     this.slimes = new SlimeManager(this.scene, this.outside, this.seed);
-    this.dragon = new DragonBossManager(this.scene, this.outside);
+    this.dragon = new DragonBossManager(this.scene, this.outside, this.maxAnisotropy);
   }
 
   resetSeed(newSeed: number): void {
     this.disposeAll();
     this.seed = newSeed;
     this.outside.resetSeed(newSeed);
-    this.trees = new TreeManager(this.scene, this.outside, this.seed);
+    this.trees = new TreeManager(this.scene, this.outside, this.seed, this.maxAnisotropy);
+    this.grass = new GrassManager(this.scene, this.outside, this.seed);
     this.cashier = new CashierStation(this.scene);
     this.weaponShop = new WeaponShop(this.scene);
     this.slimes = new SlimeManager(this.scene, this.outside, this.seed);
-    this.dragon = new DragonBossManager(this.scene, this.outside);
+    this.dragon = new DragonBossManager(this.scene, this.outside, this.maxAnisotropy);
     this.lastPlayerCx = Number.NaN;
     this.lastPlayerCz = Number.NaN;
     this.pendingCoords = [];
@@ -148,12 +154,12 @@ export class WorldManager {
     return this.cashier.raycastConveyor(origin, direction, maxDistance);
   }
 
-  raycastShopItem(
+  raycastShop(
     origin: THREE.Vector3,
     direction: THREE.Vector3,
     maxDistance = 7.0,
-  ): { itemId: ShopItemId; point: THREE.Vector3 } | null {
-    return this.weaponShop.raycastItem(origin, direction, maxDistance);
+  ): { point: THREE.Vector3 } | null {
+    return this.weaponShop.raycastShop(origin, direction, maxDistance);
   }
 
   isShopItemOwned(itemId: ShopItemId): boolean {
@@ -296,6 +302,7 @@ export class WorldManager {
     dragonCallbacks?: DragonUpdateCallbacks,
   ): void {
     this.trees.update(dt, onTreeLanded);
+    this.grass.update(dt, playerX, playerZ);
     this.slimes.update(dt, playerX, playerY, playerZ, playerYaw, shieldRaised, slimeCallbacks);
     this.dragon.update(dt, playerX, playerY, playerZ, playerYaw, shieldRaised, dragonCallbacks);
 
@@ -349,8 +356,9 @@ export class WorldManager {
     // 1. Dựng cấu trúc Trong Thành (tường thành 50x50x50, cổng 6x6x6, viền đá)
     const citadelInfo = applyCitadelToChunk(data, cx, cz);
 
-    // 2. Sinh cây tương tác ở khu vực Ngoài Thành
+    // 2. Sinh cây tương tác và thảm cỏ lú ở khu vực Ngoài Thành
     this.trees.generateTreesForChunk(cx, cz, key);
+    this.grass.generateGrassForChunk(cx, cz, key);
 
     const chunk: Chunk = {
       cx,
@@ -540,6 +548,8 @@ export class WorldManager {
     geo.computeBoundingSphere();
 
     const mesh = new THREE.Mesh(geo, material);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
     mesh.matrixAutoUpdate = false;
     mesh.updateMatrix();
     this.scene.add(mesh);
@@ -899,6 +909,7 @@ export class WorldManager {
         if (dx * dx + dz * dz > unloadDistSq) {
           this.disposeChunkMeshes(chunk);
           this.trees.removeTreesForChunk(key);
+          this.grass.removeGrassForChunk(key);
           this.chunks.delete(key);
           this.dirtyChunks.delete(key);
         }
@@ -959,6 +970,7 @@ export class WorldManager {
       this.disposeChunkMeshes(chunk);
     }
     this.trees.disposeAll();
+    this.grass.disposeAll();
     this.cashier.dispose();
     this.weaponShop.dispose();
     this.slimes.dispose();

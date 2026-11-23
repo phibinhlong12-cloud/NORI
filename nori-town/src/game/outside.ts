@@ -20,7 +20,11 @@ const FLAT_PAD_MAX_Z = WALL_MAX + 3;
 const MACRO_CELL = 20;
 const DETAIL_CELL = 11;
 
-const tempGrassColor = new THREE.Color(BLOCK_COLORS[BlockId.GRASS]);
+const baseGrassColor = new THREE.Color('#4f9e2b');
+const sunlitGrassColor = new THREE.Color('#73c43c');
+const hollowMossColor = new THREE.Color('#397d22');
+const slopeEarthColor = new THREE.Color('#6a8530');
+const tempBlendedColor = new THREE.Color();
 
 function smoothstep(edge0: number, edge1: number, x: number): number {
   const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
@@ -30,6 +34,20 @@ function smoothstep(edge0: number, edge1: number, x: number): number {
 function hash2D(ix: number, iz: number, seed: number): number {
   const n = Math.sin(ix * 127.1 + iz * 311.7 + seed * 17.13) * 43758.5453123;
   return n - Math.floor(n);
+}
+
+function valueNoise2D(wx: number, wz: number, seed: number): number {
+  const ix = Math.floor(wx);
+  const iz = Math.floor(wz);
+  const fx = wx - ix;
+  const fz = wz - iz;
+  const ux = fx * fx * (3 - 2 * fx);
+  const uz = fz * fz * (3 - 2 * fz);
+  const a = hash2D(ix, iz, seed);
+  const b = hash2D(ix + 1, iz, seed);
+  const c = hash2D(ix, iz + 1, seed);
+  const d = hash2D(ix + 1, iz + 1, seed);
+  return a + (b - a) * ux + (c - a) * uz + (a - b - c + d) * ux * uz;
 }
 
 /**
@@ -137,6 +155,27 @@ export class OutsideGenerator {
     return true;
   }
 
+  isGrassAllowedAt(wx: number, wz: number): boolean {
+    // Không mọc cỏ bên trong thành, trên nền tường thành hoặc lối vào cổng
+    if (
+      wx >= WALL_MIN - 1.5 &&
+      wx <= WALL_MAX + 1.5 &&
+      wz >= GATE_MIN_Z - 2.5 &&
+      wz <= WALL_MAX + 1.5
+    ) {
+      return false;
+    }
+    if (
+      wx >= GATE_BORDER_MIN_X - 2.5 &&
+      wx <= GATE_BORDER_MAX_X + 2.5 &&
+      wz >= GATE_MIN_Z - 7 &&
+      wz <= GATE_MIN_Z
+    ) {
+      return false;
+    }
+    return true;
+  }
+
   buildChunkGroundMesh(
     cx: number,
     cz: number,
@@ -154,10 +193,6 @@ export class OutsideGenerator {
     const baseX = cx * CHUNK_SIZE;
     const baseZ = cz * CHUNK_SIZE;
     const eps = 0.35;
-
-    const gr = tempGrassColor.r;
-    const gg = tempGrassColor.g;
-    const gb = tempGrassColor.b;
 
     let vPtr = 0;
     for (let lz = 0; lz <= grid; lz++) {
@@ -188,9 +223,29 @@ export class OutsideGenerator {
         normals[idx3 + 1] = ny;
         normals[idx3 + 2] = nz;
 
-        colors[idx3] = gr;
-        colors[idx3 + 1] = gg;
-        colors[idx3 + 2] = gb;
+        // Pha màu cỏ hữu cơ theo độ cao đồi, độ dốc và thảm rêu tự nhiên
+        const outsideDist = this.getDistanceOutsideFlatApron(wx, wz);
+        const outsideBlend = smoothstep(0, 6, outsideDist);
+        const meadowNoise = valueNoise2D(wx * 0.085, wz * 0.085, this.seed + 77);
+        const patchNoise = valueNoise2D(wx * 0.24, wz * 0.24, this.seed + 211);
+
+        tempBlendedColor.copy(baseGrassColor);
+        if (outsideBlend > 0.01) {
+          const sunMix = smoothstep(0.42, 0.85, meadowNoise) * 0.58 + smoothstep(4.2, 8.2, h) * 0.35;
+          const mossMix = smoothstep(0.55, 0.9, 1 - patchNoise) * 0.42 + smoothstep(4.0, 2.3, h) * 0.45;
+          const slopeMix = smoothstep(0.92, 0.72, ny) * 0.55;
+
+          tempBlendedColor.lerp(sunlitGrassColor, Math.min(0.82, sunMix) * outsideBlend);
+          tempBlendedColor.lerp(hollowMossColor, Math.min(0.68, mossMix) * outsideBlend);
+          tempBlendedColor.lerp(slopeEarthColor, Math.min(0.6, slopeMix) * outsideBlend);
+        } else {
+          // Sân cỏ trong thành giữ sắc xanh đều sạch mắt, điểm gợn cỏ rất nhẹ
+          tempBlendedColor.set(BLOCK_COLORS[BlockId.GRASS]).lerp(sunlitGrassColor, patchNoise * 0.14);
+        }
+
+        colors[idx3] = tempBlendedColor.r;
+        colors[idx3 + 1] = tempBlendedColor.g;
+        colors[idx3 + 2] = tempBlendedColor.b;
 
         vPtr++;
       }
@@ -222,6 +277,8 @@ export class OutsideGenerator {
     geo.computeBoundingSphere();
 
     const mesh = new THREE.Mesh(geo, material);
+    mesh.receiveShadow = true;
+    mesh.castShadow = false;
     mesh.matrixAutoUpdate = false;
     mesh.updateMatrix();
     return mesh;

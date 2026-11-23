@@ -1,7 +1,12 @@
 import * as THREE from 'three';
-import { BLOCK_COLORS, BlockId, CHUNK_SIZE } from './constants';
+import { CHUNK_SIZE } from './constants';
 import { VND_PER_BLOCK } from './counter';
 import { OutsideGenerator } from './outside';
+import {
+  createBarkTexture,
+  createHeartwoodTexture,
+  createLeafCanopyTexture,
+} from './textures';
 
 export type TreeState = 'standing' | 'fallen';
 export type DetachedLogState = 'falling' | 'fallen' | 'carried';
@@ -27,6 +32,19 @@ type InternalBackpackSlot =
   | { kind: 'wood'; log: DetachedLog }
   | { kind: 'potion'; id: string; count: number };
 
+export interface TreeBranchSpec {
+  localY: number;
+  yaw: number;
+  tilt: number;
+  lengthScale: number;
+  radiusScale: number;
+  twigOffset: number;
+  twigYaw: number;
+  hasLeaves: boolean;
+  leafScale: number;
+  leafVariant: 0 | 1 | 2;
+}
+
 export interface InteractiveTree {
   id: string;
   chunkKey: string;
@@ -37,10 +55,14 @@ export interface InteractiveTree {
   remainingHeight: number;
   trunkRadius: number;
   canopyScale: number;
+  canopyRotation: number;
+  variantSeed: number;
   hasCanopy: boolean;
   state: TreeState;
+  branches: TreeBranchSpec[];
   standingGroup: THREE.Group | null;
   trunkHitMesh: THREE.Mesh | null;
+  trunkBranchGroup: THREE.Group | null;
   canopyGroup: THREE.Group | null;
 }
 
@@ -86,14 +108,28 @@ export class TreeManager {
   private readonly outside: OutsideGenerator;
   private readonly seed: number;
 
-  private readonly trunkMaterial: THREE.MeshLambertMaterial;
-  private readonly canopyMaterialDark: THREE.MeshLambertMaterial;
-  private readonly canopyMaterialLight: THREE.MeshLambertMaterial;
+  private readonly barkTexture: THREE.CanvasTexture;
+  private readonly heartwoodTexture: THREE.CanvasTexture;
+  private readonly leafTextureDark: THREE.CanvasTexture;
+  private readonly leafTextureMid: THREE.CanvasTexture;
+  private readonly leafTextureLight: THREE.CanvasTexture;
+
+  private readonly barkMaterial: THREE.MeshStandardMaterial;
+  private readonly heartwoodMaterial: THREE.MeshStandardMaterial;
+  private readonly trunkMaterials: THREE.Material[];
+  private readonly canopyMaterialDark: THREE.MeshStandardMaterial;
+  private readonly canopyMaterialMid: THREE.MeshStandardMaterial;
+  private readonly canopyMaterialLight: THREE.MeshStandardMaterial;
 
   // Dùng chung geometry đơn vị (height = 1, radius = 1) để tiết kiệm bộ nhớ GPU
   private readonly unitCylinderGeo: THREE.CylinderGeometry;
+  private readonly rootFlareGeo: THREE.CylinderGeometry;
+  private readonly branchGeo: THREE.CylinderGeometry;
+  private readonly twigGeo: THREE.CylinderGeometry;
+  private readonly leafTuftGeo: THREE.IcosahedronGeometry;
   private readonly canopyMainGeo: THREE.IcosahedronGeometry;
   private readonly canopyTopGeo: THREE.IcosahedronGeometry;
+  private readonly canopyAccentGeo: THREE.IcosahedronGeometry;
 
   private readonly chunkTrees = new Map<string, InteractiveTree[]>();
   private readonly detachedLogs = new Set<DetachedLog>();
@@ -117,46 +153,255 @@ export class TreeManager {
   );
   private readonly tempCarryWorldPos = new THREE.Vector3();
 
-  constructor(scene: THREE.Scene, outside: OutsideGenerator, seed: number) {
+  constructor(
+    scene: THREE.Scene,
+    outside: OutsideGenerator,
+    seed: number,
+    maxAnisotropy = 4,
+  ) {
     this.scene = scene;
     this.outside = outside;
     this.seed = seed;
 
-    this.trunkMaterial = new THREE.MeshLambertMaterial({
-      color: BLOCK_COLORS[BlockId.WOOD],
+    this.barkTexture = createBarkTexture(maxAnisotropy);
+    this.heartwoodTexture = createHeartwoodTexture(maxAnisotropy);
+    this.leafTextureDark = createLeafCanopyTexture('#2b6f1e', '#3e9229', '#1d4d14', maxAnisotropy);
+    this.leafTextureMid = createLeafCanopyTexture('#3e8e28', '#5bb838', '#2a661a', maxAnisotropy);
+    this.leafTextureLight = createLeafCanopyTexture('#58ae35', '#7fd44a', '#3d8625', maxAnisotropy);
+
+    this.barkMaterial = new THREE.MeshStandardMaterial({
+      map: this.barkTexture,
+      roughness: 0.92,
+      metalness: 0.02,
     });
-    this.canopyMaterialDark = new THREE.MeshLambertMaterial({
-      color: BLOCK_COLORS[BlockId.LEAVES],
+    this.heartwoodMaterial = new THREE.MeshStandardMaterial({
+      map: this.heartwoodTexture,
+      roughness: 0.84,
+      metalness: 0.02,
     });
-    this.canopyMaterialLight = new THREE.MeshLambertMaterial({
-      color: '#48962c',
+    this.trunkMaterials = [this.barkMaterial, this.heartwoodMaterial, this.heartwoodMaterial];
+
+    this.canopyMaterialDark = new THREE.MeshStandardMaterial({
+      map: this.leafTextureDark,
+      roughness: 0.78,
+      metalness: 0.02,
+    });
+    this.canopyMaterialMid = new THREE.MeshStandardMaterial({
+      map: this.leafTextureMid,
+      roughness: 0.72,
+      metalness: 0.02,
+    });
+    this.canopyMaterialLight = new THREE.MeshStandardMaterial({
+      map: this.leafTextureLight,
+      roughness: 0.68,
+      metalness: 0.02,
     });
 
-    // Cylinder cao 1 (tâm tại y = 0.5 để scale theo chiều cao dễ dàng)
-    this.unitCylinderGeo = new THREE.CylinderGeometry(0.88, 1.0, 1.0, 8);
+    // Cylinder 12 cạnh hơi thon lên ngọn cho thân cây sắc nét hơn
+    this.unitCylinderGeo = new THREE.CylinderGeometry(0.84, 1.02, 1.0, 12);
     this.unitCylinderGeo.translate(0, 0.5, 0);
 
-    this.canopyMainGeo = new THREE.IcosahedronGeometry(1.65, 1);
-    this.canopyTopGeo = new THREE.IcosahedronGeometry(1.18, 1);
+    // Gốc rễ xòe nhẹ giúp cây bám chắc vào sườn đồi
+    this.rootFlareGeo = new THREE.CylinderGeometry(0.92, 1.56, 0.56, 8);
+    this.rootFlareGeo.translate(0, 0.2, 0);
+
+    this.branchGeo = new THREE.CylinderGeometry(0.09, 0.16, 1.15, 7);
+    this.branchGeo.translate(0, 0.55, 0);
+
+    this.twigGeo = new THREE.CylinderGeometry(0.045, 0.085, 0.72, 6);
+    this.twigGeo.translate(0, 0.34, 0);
+
+    this.leafTuftGeo = new THREE.IcosahedronGeometry(0.46, 1);
+
+    this.canopyMainGeo = new THREE.IcosahedronGeometry(1.52, 2);
+    this.canopyTopGeo = new THREE.IcosahedronGeometry(1.12, 2);
+    this.canopyAccentGeo = new THREE.IcosahedronGeometry(0.86, 1);
   }
 
-  private createCanopyGroup(scale: number): THREE.Group {
-    const group = new THREE.Group();
+  private getCanopyMaterial(variant: number): THREE.MeshStandardMaterial {
+    if (variant === 0) return this.canopyMaterialDark;
+    if (variant === 1) return this.canopyMaterialMid;
+    return this.canopyMaterialLight;
+  }
 
-    const mainCrown = new THREE.Mesh(this.canopyMainGeo, this.canopyMaterialDark);
-    mainCrown.position.set(0, 0.55 * scale, 0);
-    mainCrown.scale.set(scale, 0.85 * scale, scale);
-    group.add(mainCrown);
+  private buildBranchMeshGroup(
+    spec: TreeBranchSpec,
+    trunkRadius: number,
+    baseOffsetY = 0,
+  ): THREE.Group {
+    const branchHolder = new THREE.Group();
+    branchHolder.position.set(0, spec.localY - baseOffsetY, 0);
+    branchHolder.rotation.y = spec.yaw;
+
+    const limbPivot = new THREE.Group();
+    limbPivot.rotation.z = spec.tilt;
+    branchHolder.add(limbPivot);
+
+    const thickness = Math.max(0.55, trunkRadius * spec.radiusScale * 2.35);
+    const limbMesh = new THREE.Mesh(this.branchGeo, this.barkMaterial);
+    limbMesh.scale.set(thickness, spec.lengthScale, thickness);
+    limbMesh.castShadow = true;
+    limbMesh.receiveShadow = true;
+    limbPivot.add(limbMesh);
+
+    const twigMesh = new THREE.Mesh(this.twigGeo, this.barkMaterial);
+    twigMesh.position.set(0, spec.lengthScale * spec.twigOffset, 0);
+    twigMesh.rotation.set(0.32, spec.twigYaw, 0.58);
+    twigMesh.scale.set(thickness * 0.85, spec.lengthScale * 0.74, thickness * 0.85);
+    twigMesh.castShadow = true;
+    twigMesh.receiveShadow = true;
+    limbPivot.add(twigMesh);
+
+    if (spec.hasLeaves) {
+      const matMain = this.getCanopyMaterial(spec.leafVariant);
+      const matSub = this.getCanopyMaterial((spec.leafVariant + 1) % 3);
+
+      const mainTuft = new THREE.Mesh(this.leafTuftGeo, matMain);
+      mainTuft.position.set(0, spec.lengthScale * 1.12, 0);
+      mainTuft.scale.set(spec.leafScale * 1.12, spec.leafScale * 0.86, spec.leafScale * 1.05);
+      mainTuft.castShadow = true;
+      mainTuft.receiveShadow = true;
+      limbPivot.add(mainTuft);
+
+      const twigTuft = new THREE.Mesh(this.leafTuftGeo, matSub);
+      const twigTip = new THREE.Vector3(0, spec.lengthScale * 0.7, 0).applyEuler(twigMesh.rotation);
+      twigTuft.position.set(
+        twigMesh.position.x + twigTip.x,
+        twigMesh.position.y + twigTip.y,
+        twigMesh.position.z + twigTip.z,
+      );
+      twigTuft.scale.set(spec.leafScale * 0.76, spec.leafScale * 0.62, spec.leafScale * 0.74);
+      twigTuft.castShadow = true;
+      twigTuft.receiveShadow = true;
+      limbPivot.add(twigTuft);
+    }
+
+    return branchHolder;
+  }
+
+  private createCanopyGroup(scale: number, rotY = 0, variantSeed = 0): THREE.Group {
+    const group = new THREE.Group();
+    group.rotation.y = rotY;
+
+    const rand = (slot: number) => seededRand(variantSeed * 0.37 + slot * 17.3, slot * 29.1, this.seed + 1307);
+
+    // 4-6 nhánh gỗ ngẫu nhiên tỏa vào tán lá giúp mỗi cây một dáng
+    const crownBranchCount = 4 + Math.floor(rand(1) * 3);
+    for (let i = 0; i < crownBranchCount; i++) {
+      const yaw = (i / crownBranchCount) * Math.PI * 2 + (rand(10 + i) - 0.5) * 0.65;
+      const tilt = 0.42 + rand(20 + i) * 0.52;
+      const bLen = (0.78 + rand(30 + i) * 0.52) * scale;
+      const bThick = (0.85 + rand(40 + i) * 0.45) * scale;
+
+      const holder = new THREE.Group();
+      holder.rotation.y = yaw;
+      holder.position.set(0, (-0.42 + rand(50 + i) * 0.34) * scale, 0);
+
+      const bMesh = new THREE.Mesh(this.branchGeo, this.barkMaterial);
+      bMesh.rotation.z = tilt;
+      bMesh.scale.set(bThick, bLen, bThick);
+      bMesh.castShadow = true;
+      bMesh.receiveShadow = true;
+      holder.add(bMesh);
+
+      if (rand(60 + i) > 0.35) {
+        const subTwig = new THREE.Mesh(this.twigGeo, this.barkMaterial);
+        subTwig.position.set(0, bLen * 0.58, 0);
+        subTwig.rotation.set((rand(70 + i) - 0.5) * 0.5, rand(80 + i) * Math.PI, 0.55);
+        subTwig.scale.set(bThick * 0.75, bLen * 0.72, bThick * 0.75);
+        subTwig.castShadow = true;
+        subTwig.receiveShadow = true;
+        bMesh.add(subTwig);
+      }
+
+      group.add(holder);
+    }
+
+    // Cụm tán lá chính + các cụm phụ bất đối xứng theo seed từng cây
+    const crownTiltX = (rand(2) - 0.5) * 0.24 * scale;
+    const crownTiltZ = (rand(3) - 0.5) * 0.24 * scale;
+    const heightBias = 0.85 + rand(4) * 0.32;
+
+    const mainCrown = new THREE.Mesh(this.canopyMainGeo, this.canopyMaterialMid);
+    mainCrown.position.set(crownTiltX * 0.5, (0.52 + rand(5) * 0.16) * scale, crownTiltZ * 0.5);
+    mainCrown.scale.set(
+      (0.96 + rand(6) * 0.22) * scale,
+      (0.76 + rand(7) * 0.2) * scale * heightBias,
+      (0.96 + rand(8) * 0.22) * scale,
+    );
 
     const upperCrown = new THREE.Mesh(this.canopyTopGeo, this.canopyMaterialLight);
-    upperCrown.position.set(0.15 * scale, 1.55 * scale, -0.1 * scale);
-    upperCrown.scale.set(scale, 0.9 * scale, scale);
-    group.add(upperCrown);
+    upperCrown.position.set(
+      (0.16 + (rand(9) - 0.5) * 0.45) * scale,
+      (1.38 + rand(11) * 0.36) * scale * heightBias,
+      (-0.08 + (rand(12) - 0.5) * 0.45) * scale,
+    );
+    upperCrown.scale.set(
+      (0.92 + rand(13) * 0.22) * scale,
+      (0.8 + rand(14) * 0.2) * scale,
+      (0.9 + rand(15) * 0.22) * scale,
+    );
 
-    const sideCrown = new THREE.Mesh(this.canopyTopGeo, this.canopyMaterialDark);
-    sideCrown.position.set(-0.65 * scale, 0.35 * scale, 0.45 * scale);
-    sideCrown.scale.set(0.75 * scale, 0.72 * scale, 0.75 * scale);
-    group.add(sideCrown);
+    const sideCrownA = new THREE.Mesh(this.canopyTopGeo, this.canopyMaterialDark);
+    sideCrownA.position.set(
+      (-0.68 - rand(16) * 0.36) * scale,
+      (0.28 + rand(17) * 0.35) * scale,
+      (0.38 + (rand(18) - 0.5) * 0.45) * scale,
+    );
+    sideCrownA.scale.set(0.84 * scale, 0.72 * scale, 0.84 * scale);
+
+    const sideCrownB = new THREE.Mesh(this.canopyTopGeo, this.canopyMaterialMid);
+    sideCrownB.position.set(
+      (0.68 + rand(19) * 0.36) * scale,
+      (0.34 + rand(21) * 0.35) * scale,
+      (-0.36 + (rand(22) - 0.5) * 0.45) * scale,
+    );
+    sideCrownB.scale.set(0.82 * scale, 0.74 * scale, 0.82 * scale);
+
+    const lowerAccent = new THREE.Mesh(this.canopyAccentGeo, this.canopyMaterialDark);
+    lowerAccent.position.set(
+      (0.25 + (rand(23) - 0.5) * 0.5) * scale,
+      (0.14 + rand(24) * 0.22) * scale,
+      (0.72 + rand(25) * 0.28) * scale,
+    );
+    lowerAccent.scale.set(0.88 * scale, 0.72 * scale, 0.88 * scale);
+
+    const topAccent = new THREE.Mesh(this.canopyAccentGeo, this.canopyMaterialLight);
+    topAccent.position.set(
+      (-0.3 + (rand(26) - 0.5) * 0.45) * scale,
+      (1.06 + rand(27) * 0.28) * scale,
+      (0.38 + (rand(28) - 0.5) * 0.35) * scale,
+    );
+    topAccent.scale.set(0.8 * scale, 0.74 * scale, 0.8 * scale);
+
+    const crownMeshes: THREE.Mesh[] = [
+      mainCrown,
+      upperCrown,
+      sideCrownA,
+      sideCrownB,
+      lowerAccent,
+      topAccent,
+    ];
+
+    // 1-3 cụm tán phụ vươn lệch ngẫu nhiên tạo dáng tự nhiên riêng biệt cho từng cây
+    const extraPuffs = 1 + Math.floor(rand(29) * 3);
+    for (let e = 0; e < extraPuffs; e++) {
+      const puffAngle = rand(90 + e) * Math.PI * 2;
+      const puffDist = (0.78 + rand(100 + e) * 0.58) * scale;
+      const puffY = (0.1 + rand(110 + e) * 1.15) * scale;
+      const puffScale = (0.62 + rand(120 + e) * 0.42) * scale;
+      const mat = this.getCanopyMaterial(Math.floor(rand(130 + e) * 3));
+      const puff = new THREE.Mesh(this.canopyAccentGeo, mat);
+      puff.position.set(Math.cos(puffAngle) * puffDist, puffY, Math.sin(puffAngle) * puffDist);
+      puff.scale.set(puffScale, puffScale * 0.82, puffScale);
+      crownMeshes.push(puff);
+    }
+
+    for (const m of crownMeshes) {
+      m.castShadow = true;
+      m.receiveShadow = true;
+      group.add(m);
+    }
 
     return group;
   }
@@ -383,20 +628,61 @@ export class TreeManager {
 
         const baseY = this.outside.getHeightAt(wx, wz);
         const hRand = seededRand(cellX + 43, cellZ + 61, this.seed + 911);
-        const trunkHeight = 4.6 + hRand * 2.2;
-        const trunkRadius = 0.33 + hRand * 0.1;
-        const canopyScale = 0.95 + hRand * 0.35;
+        const sRand = seededRand(cellX + 59, cellZ + 97, this.seed + 1123);
+        const trunkHeight = 4.3 + hRand * 3.1;
+        const trunkRadius = 0.29 + sRand * 0.16;
+        const canopyScale = 0.88 + sRand * 0.48;
+        const canopyRotation = seededRand(cellX + 71, cellZ + 83, this.seed + 1013) * Math.PI * 2;
+        const variantSeed = Math.floor(seededRand(cellX + 19, cellZ + 53, this.seed + 1451) * 100000);
+
+        const branchCount = 3 + Math.floor(seededRand(cellX + 5, cellZ + 89, this.seed + 1601) * 4);
+        const branches: TreeBranchSpec[] = [];
+        const baseBranchYaw = canopyRotation + 0.5;
+
+        for (let b = 0; b < branchCount; b++) {
+          const bRand = (k: number) =>
+            seededRand(variantSeed + b * 23 + k * 7, b * 41 + k * 13, this.seed + 1777);
+          const heightFrac = 0.36 + (b / Math.max(1, branchCount)) * 0.52 + bRand(1) * 0.08;
+          branches.push({
+            localY: THREE.MathUtils.clamp(trunkHeight * heightFrac, 1.55, trunkHeight - 0.45),
+            yaw: baseBranchYaw + b * 2.39996 + (bRand(2) - 0.5) * 0.75,
+            tilt: 0.58 + bRand(3) * 0.58,
+            lengthScale: 0.75 + bRand(4) * 0.82,
+            radiusScale: 0.46 + bRand(5) * 0.24,
+            twigOffset: 0.4 + bRand(6) * 0.26,
+            twigYaw: (bRand(7) - 0.5) * 2.2,
+            hasLeaves: bRand(8) > 0.22,
+            leafScale: 0.78 + bRand(9) * 0.58,
+            leafVariant: (Math.floor(bRand(10) * 3) % 3) as 0 | 1 | 2,
+          });
+        }
 
         const standingGroup = new THREE.Group();
         standingGroup.position.set(wx, baseY, wz);
 
-        const trunkMesh = new THREE.Mesh(this.unitCylinderGeo, this.trunkMaterial);
+        const trunkMesh = new THREE.Mesh(this.unitCylinderGeo, this.trunkMaterials);
         trunkMesh.position.set(0, -EMBED_DEPTH, 0);
         trunkMesh.scale.set(trunkRadius, trunkHeight + EMBED_DEPTH, trunkRadius);
+        trunkMesh.castShadow = true;
+        trunkMesh.receiveShadow = true;
         standingGroup.add(trunkMesh);
 
-        const canopyGroup = this.createCanopyGroup(canopyScale);
-        canopyGroup.position.set(0, trunkHeight - 0.1, 0);
+        const rootMesh = new THREE.Mesh(this.rootFlareGeo, this.barkMaterial);
+        rootMesh.position.set(0, -0.14, 0);
+        rootMesh.scale.set(trunkRadius, 0.95, trunkRadius);
+        rootMesh.rotation.y = canopyRotation;
+        rootMesh.castShadow = true;
+        rootMesh.receiveShadow = true;
+        standingGroup.add(rootMesh);
+
+        const trunkBranchGroup = new THREE.Group();
+        for (const spec of branches) {
+          trunkBranchGroup.add(this.buildBranchMeshGroup(spec, trunkRadius, 0));
+        }
+        standingGroup.add(trunkBranchGroup);
+
+        const canopyGroup = this.createCanopyGroup(canopyScale, canopyRotation, variantSeed);
+        canopyGroup.position.set(0, trunkHeight - 0.12, 0);
         standingGroup.add(canopyGroup);
 
         this.scene.add(standingGroup);
@@ -411,10 +697,14 @@ export class TreeManager {
           remainingHeight: trunkHeight,
           trunkRadius,
           canopyScale,
+          canopyRotation,
+          variantSeed,
           hasCanopy: true,
           state: 'standing',
+          branches,
           standingGroup,
           trunkHitMesh: trunkMesh,
+          trunkBranchGroup,
           canopyGroup,
         };
 
@@ -434,6 +724,7 @@ export class TreeManager {
           this.scene.remove(tree.standingGroup);
           tree.standingGroup = null;
           tree.trunkHitMesh = null;
+          tree.trunkBranchGroup = null;
           tree.canopyGroup = null;
         }
       }
@@ -576,6 +867,16 @@ export class TreeManager {
     if (upperHeight <= 0.05) return false;
 
     const includeCanopy = tree.hasCanopy;
+    const remainingBranches: TreeBranchSpec[] = [];
+    const fallenBranches: TreeBranchSpec[] = [];
+    for (const b of tree.branches) {
+      if (b.localY >= actualCut - 0.08) {
+        fallenBranches.push(b);
+      } else {
+        remainingBranches.push(b);
+      }
+    }
+    tree.branches = remainingBranches;
 
     // 1. Cập nhật phần thân còn lại (hoặc xóa sạch nếu cắt tận chân thân)
     if (actualCut <= 0) {
@@ -583,6 +884,7 @@ export class TreeManager {
         this.scene.remove(tree.standingGroup);
         tree.standingGroup = null;
         tree.trunkHitMesh = null;
+        tree.trunkBranchGroup = null;
         tree.canopyGroup = null;
       }
       tree.remainingHeight = 0;
@@ -592,6 +894,15 @@ export class TreeManager {
       if (tree.standingGroup && tree.canopyGroup) {
         tree.standingGroup.remove(tree.canopyGroup);
         tree.canopyGroup = null;
+      }
+      if (tree.standingGroup && tree.trunkBranchGroup) {
+        tree.standingGroup.remove(tree.trunkBranchGroup);
+        const keptGroup = new THREE.Group();
+        for (const b of remainingBranches) {
+          keptGroup.add(this.buildBranchMeshGroup(b, tree.trunkRadius, 0));
+        }
+        tree.trunkBranchGroup = keptGroup;
+        tree.standingGroup.add(keptGroup);
       }
       tree.hasCanopy = false;
       tree.remainingHeight = actualCut;
@@ -604,23 +915,41 @@ export class TreeManager {
       }
     }
 
-    // 2. Tách rời đoạn thân phía trên (kèm tán lá nếu là lần chặt phần ngọn) cho đổ và rớt đất
+    // 2. Tách rời đoạn thân phía trên (kèm nhánh & tán lá nếu là lần chặt phần ngọn) cho đổ và rớt đất
     const logRadius = tree.trunkRadius * 0.94;
     const group = new THREE.Group();
     const hitMeshes: THREE.Object3D[] = [];
 
-    const upperTrunk = new THREE.Mesh(this.unitCylinderGeo, this.trunkMaterial);
+    const upperTrunk = new THREE.Mesh(this.unitCylinderGeo, this.trunkMaterials);
     upperTrunk.scale.set(logRadius, upperHeight, logRadius);
+    upperTrunk.castShadow = true;
+    upperTrunk.receiveShadow = true;
     group.add(upperTrunk);
     hitMeshes.push(upperTrunk);
 
+    for (const b of fallenBranches) {
+      const branchObj = this.buildBranchMeshGroup(
+        { ...b, localY: Math.max(actualCut + 0.14, b.localY) },
+        logRadius,
+        actualCut,
+      );
+      group.add(branchObj);
+      branchObj.traverse((child) => {
+        if (child instanceof THREE.Mesh) {
+          hitMeshes.push(child);
+        }
+      });
+    }
+
     if (includeCanopy) {
-      const canopy = this.createCanopyGroup(tree.canopyScale);
-      canopy.position.set(0, upperHeight - 0.1, 0);
+      const canopy = this.createCanopyGroup(tree.canopyScale, tree.canopyRotation, tree.variantSeed);
+      canopy.position.set(0, upperHeight - 0.12, 0);
       group.add(canopy);
-      for (const child of canopy.children) {
-        hitMeshes.push(child);
-      }
+      canopy.traverse((child) => {
+        if (child instanceof THREE.Mesh) {
+          hitMeshes.push(child);
+        }
+      });
     }
 
     let dx = playerX - tree.x;
@@ -901,10 +1230,22 @@ export class TreeManager {
     this.backpackSnapshot = Array.from({ length: BACKPACK_CAPACITY }, () => null);
     this.carriedLog = null;
     this.unitCylinderGeo.dispose();
+    this.rootFlareGeo.dispose();
+    this.branchGeo.dispose();
+    this.twigGeo.dispose();
+    this.leafTuftGeo.dispose();
     this.canopyMainGeo.dispose();
     this.canopyTopGeo.dispose();
-    this.trunkMaterial.dispose();
+    this.canopyAccentGeo.dispose();
+    this.barkMaterial.dispose();
+    this.heartwoodMaterial.dispose();
     this.canopyMaterialDark.dispose();
+    this.canopyMaterialMid.dispose();
     this.canopyMaterialLight.dispose();
+    this.barkTexture.dispose();
+    this.heartwoodTexture.dispose();
+    this.leafTextureDark.dispose();
+    this.leafTextureMid.dispose();
+    this.leafTextureLight.dispose();
   }
 }

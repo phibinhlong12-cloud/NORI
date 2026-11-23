@@ -8,15 +8,39 @@ export interface PotionAssetHandles {
 export function createPotionMeshGroup(handles: PotionAssetHandles): THREE.Group {
   const group = new THREE.Group();
 
-  const glassMat = new THREE.MeshLambertMaterial({
+  const glassMat = new THREE.MeshPhysicalMaterial({
     color: '#e0f2fe',
     transparent: true,
-    opacity: 0.55,
+    opacity: 0.42,
+    roughness: 0.08,
+    metalness: 0.05,
+    clearcoat: 1.0,
+    clearcoatRoughness: 0.05,
+    depthWrite: false,
   });
-  const liquidMat = new THREE.MeshBasicMaterial({ color: '#ef4444' });
-  const liquidGlowMat = new THREE.MeshBasicMaterial({ color: '#fb7185' });
-  const collarMat = new THREE.MeshLambertMaterial({ color: '#fbbf24' });
-  const corkMat = new THREE.MeshLambertMaterial({ color: '#92400e' });
+  const liquidMat = new THREE.MeshStandardMaterial({
+    color: '#ef4444',
+    emissive: '#dc2626',
+    emissiveIntensity: 0.55,
+    roughness: 0.2,
+    metalness: 0.05,
+  });
+  const liquidGlowMat = new THREE.MeshStandardMaterial({
+    color: '#fda4af',
+    emissive: '#fb7185',
+    emissiveIntensity: 1.15,
+    roughness: 0.15,
+  });
+  const collarMat = new THREE.MeshStandardMaterial({
+    color: '#fbbf24',
+    roughness: 0.24,
+    metalness: 0.86,
+  });
+  const corkMat = new THREE.MeshStandardMaterial({
+    color: '#92400e',
+    roughness: 0.88,
+    metalness: 0.02,
+  });
   handles.materials.push(glassMat, liquidMat, liquidGlowMat, collarMat, corkMat);
 
   // Thân bình thủy tinh bầu tròn 8 cạnh

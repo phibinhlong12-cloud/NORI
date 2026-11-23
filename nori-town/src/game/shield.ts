@@ -55,10 +55,26 @@ export function createShieldMeshGroup(handles: ShieldAssetHandles): THREE.Group 
   const faceTex = createShieldTexture();
   handles.textures.push(faceTex);
 
-  const bodyMat = new THREE.MeshLambertMaterial({ map: faceTex });
-  const rimMat = new THREE.MeshLambertMaterial({ color: '#785530' });
-  const rivetMat = new THREE.MeshLambertMaterial({ color: '#a8814c' });
-  const handleMat = new THREE.MeshLambertMaterial({ color: '#2b1e14' });
+  const bodyMat = new THREE.MeshStandardMaterial({
+    map: faceTex,
+    roughness: 0.56,
+    metalness: 0.42,
+  });
+  const rimMat = new THREE.MeshStandardMaterial({
+    color: '#8c6236',
+    roughness: 0.32,
+    metalness: 0.72,
+  });
+  const rivetMat = new THREE.MeshStandardMaterial({
+    color: '#c49a5c',
+    roughness: 0.24,
+    metalness: 0.85,
+  });
+  const handleMat = new THREE.MeshStandardMaterial({
+    color: '#2b1e14',
+    roughness: 0.85,
+    metalness: 0.08,
+  });
   handles.materials.push(bodyMat, rimMat, rivetMat, handleMat);
 
   // 1. Thân khiên chính (dáng khiên vát nhọn đáy, hơi võng nhẹ cạnh trên)

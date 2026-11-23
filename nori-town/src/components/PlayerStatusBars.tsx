@@ -5,6 +5,7 @@ import { getXpForNextLevel, MAX_LEVEL, MAX_PLAYER_HP } from '../game/slimeZones'
 
 interface PlayerStatusBarsProps {
   engine: VoxelEngine | null;
+  touchMode?: boolean;
 }
 
 interface StatusState {
@@ -23,7 +24,10 @@ const INITIAL_STATUS: StatusState = {
   xpToNext: getXpForNextLevel(1),
 };
 
-export const PlayerStatusBars = memo(function PlayerStatusBars({ engine }: PlayerStatusBarsProps) {
+export const PlayerStatusBars = memo(function PlayerStatusBars({
+  engine,
+  touchMode = false,
+}: PlayerStatusBarsProps) {
   const [status, setStatus] = useState<StatusState>(INITIAL_STATUS);
 
   useEffect(() => {
@@ -66,14 +70,20 @@ export const PlayerStatusBars = memo(function PlayerStatusBars({ engine }: Playe
     : status.hp.toFixed(1).replace('.', ',');
 
   return (
-    <div className="fixed bottom-44 md:bottom-3 left-1/2 -translate-x-1/2 z-20 pointer-events-none w-[min(92vw,420px)]">
-      <div className="bg-slate-950/90 border border-white/15 rounded-2xl px-3.5 py-2.5 shadow-xl space-y-2">
+    <div
+      className={`fixed left-1/2 -translate-x-1/2 z-20 pointer-events-none ${
+        touchMode
+          ? 'bottom-[164px] w-[min(90vw,360px)] sm:bottom-2.5 sm:w-[min(40vw,340px)]'
+          : 'bottom-3 w-[min(92vw,420px)]'
+      }`}
+    >
+      <div className="bg-slate-950/90 border border-white/15 rounded-2xl px-2.5 py-1.5 sm:px-3.5 sm:py-2.5 shadow-xl space-y-1.5 sm:space-y-2">
         {/* Thanh trên: Thanh kinh nghiệm + Level */}
         <div className="space-y-1">
-          <div className="flex items-center justify-between text-[11px] font-mono-tech">
-            <span className="flex items-center gap-1.5 font-bold text-emerald-300">
-              <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Level {status.level}</span>
+          <div className="flex items-center justify-between text-[10px] sm:text-[11px] font-mono-tech">
+            <span className="flex items-center gap-1 sm:gap-1.5 font-bold text-emerald-300">
+              <Sparkles className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-emerald-400" />
+              <span>Lv.{status.level}</span>
               {isMaxLevel && (
                 <span className="px-1.5 py-0.5 rounded bg-amber-500 text-slate-950 text-[9px] font-bold">
                   MAX
@@ -82,12 +92,12 @@ export const PlayerStatusBars = memo(function PlayerStatusBars({ engine }: Playe
             </span>
             <span className="text-slate-300 tabular-nums">
               {isMaxLevel
-                ? 'Cấp tối đa (30)'
+                ? 'Tối đa (30)'
                 : `${status.xp.toLocaleString('vi-VN')} / ${status.xpToNext.toLocaleString('vi-VN')} XP`}
             </span>
           </div>
 
-          <div className="h-2.5 w-full rounded-full bg-slate-800 border border-white/10 overflow-hidden">
+          <div className="h-2 sm:h-2.5 w-full rounded-full bg-slate-800 border border-white/10 overflow-hidden">
             <div
               className="h-full bg-emerald-400 transition-[width] duration-200"
               style={{ width: `${xpPercent}%` }}
@@ -96,16 +106,16 @@ export const PlayerStatusBars = memo(function PlayerStatusBars({ engine }: Playe
         </div>
 
         {/* Thanh dưới: Thanh máu (10 trái tim, hỗ trợ nửa tim 0,5) */}
-        <div className="flex items-center justify-between gap-2 pt-0.5">
+        <div className="flex items-center justify-between gap-1.5 sm:gap-2 pt-0.5">
           <div
-            className="flex items-center gap-1 sm:gap-1.5"
+            className="flex items-center gap-0.5 sm:gap-1.5"
             aria-label={`Máu ${hpDisplay} trên ${status.maxHp}`}
           >
             {Array.from({ length: status.maxHp }, (_, idx) => {
               const isFull = status.hp >= idx + 1;
               const isHalf = !isFull && status.hp >= idx + 0.5;
               return (
-                <span key={idx} className="relative inline-flex w-4 h-4 sm:w-5 sm:h-5 shrink-0">
+                <span key={idx} className="relative inline-flex w-3.5 h-3.5 sm:w-5 sm:h-5 shrink-0">
                   <Heart
                     className={`w-full h-full transition-colors ${
                       isFull
@@ -115,14 +125,14 @@ export const PlayerStatusBars = memo(function PlayerStatusBars({ engine }: Playe
                   />
                   {isHalf && (
                     <span className="absolute inset-y-0 left-0 w-1/2 overflow-hidden">
-                      <Heart className="w-4 h-4 sm:w-5 sm:h-5 fill-rose-500 text-rose-400" />
+                      <Heart className="w-3.5 h-3.5 sm:w-5 sm:h-5 fill-rose-500 text-rose-400" />
                     </span>
                   )}
                 </span>
               );
             })}
           </div>
-          <span className="font-mono-tech text-[11px] font-bold text-rose-300 tabular-nums shrink-0">
+          <span className="font-mono-tech text-[10px] sm:text-[11px] font-bold text-rose-300 tabular-nums shrink-0">
             {hpDisplay}/{status.maxHp}
           </span>
         </div>

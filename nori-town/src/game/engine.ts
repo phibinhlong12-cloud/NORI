@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { VoxelAudio } from './audio';
 import { getCitadelZoneAt } from './citadel';
 import {
@@ -39,15 +40,22 @@ export interface HudStats {
   hasIceKatana: boolean;
   hasShield: boolean;
   backpackOpen: boolean;
+  shopOpen: boolean;
   holdingKatana: boolean;
   holdingPotionSlot: number | null;
   holdingPotionCount: number;
   shieldRaised: boolean;
+  carryingLog: boolean;
+  isShopTarget: boolean;
+  isConveyorTarget: boolean;
+  chopProgress: number;
   backpackItems: Array<BackpackItem | null>;
   bossHud: DragonBossHudState;
   targetName: string | null;
   targetCoords: [number, number, number] | null;
 }
+
+const TREE_HAND_CHOP_DURATION = 5.0;
 
 export interface VoxelEngineCallbacks {
   onPlayingChange: (isPlaying: boolean, hasStarted: boolean) => void;
@@ -82,6 +90,89 @@ function detectSoftwareWebGL(): boolean {
   }
 }
 
+function createSkyDome(sunDir: THREE.Vector3): THREE.Mesh {
+  const geo = new THREE.SphereGeometry(1, 32, 20);
+  const mat = new THREE.ShaderMaterial({
+    side: THREE.BackSide,
+    depthWrite: false,
+    fog: false,
+    uniforms: {
+      uSunDir: { value: sunDir.clone().normalize() },
+      uZenithColor: { value: new THREE.Color(0x1f64c8) },
+      uMidSkyColor: { value: new THREE.Color(0x64a8f8) },
+      uHorizonColor: { value: new THREE.Color(0xbbe0ff) },
+      uGroundColor: { value: new THREE.Color(0x8bb6d6) },
+      uSunColor: { value: new THREE.Color(0xfff5d6) },
+    },
+    vertexShader: `
+      varying vec3 vWorldDir;
+      void main() {
+        vWorldDir = position;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      varying vec3 vWorldDir;
+      uniform vec3 uSunDir;
+      uniform vec3 uZenithColor;
+      uniform vec3 uMidSkyColor;
+      uniform vec3 uHorizonColor;
+      uniform vec3 uGroundColor;
+      uniform vec3 uSunColor;
+
+      float hash21(vec2 p) {
+        p = fract(p * vec2(123.34, 456.21));
+        p += dot(p, p + 45.32);
+        return fract(p.x * p.y);
+      }
+
+      float noise2D(vec2 p) {
+        vec2 i = floor(p);
+        vec2 f = fract(p);
+        f = f * f * (3.0 - 2.0 * f);
+        float a = hash21(i);
+        float b = hash21(i + vec2(1.0, 0.0));
+        float c = hash21(i + vec2(0.0, 1.0));
+        float d = hash21(i + vec2(1.0, 1.0));
+        return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+      }
+
+      void main() {
+        vec3 dir = normalize(vWorldDir);
+        float h = clamp(dir.y, -1.0, 1.0);
+
+        vec3 sky = mix(uHorizonColor, uMidSkyColor, smoothstep(0.0, 0.34, max(h, 0.0)));
+        sky = mix(sky, uZenithColor, smoothstep(0.28, 0.92, max(h, 0.0)));
+        if (h < 0.0) {
+          sky = mix(uHorizonColor, uGroundColor, smoothstep(0.0, -0.35, h));
+        }
+
+        // Mây mỏng nhẹ trên bầu trời
+        if (dir.y > 0.04) {
+          vec2 cloudUv = dir.xz / (dir.y + 0.24) * 1.45;
+          float n = noise2D(cloudUv) * 0.62 + noise2D(cloudUv * 2.15 + 3.7) * 0.38;
+          float cloudMask = smoothstep(0.57, 0.84, n) * smoothstep(0.04, 0.26, dir.y);
+          sky = mix(sky, vec3(0.97, 0.99, 1.0), cloudMask * 0.45);
+        }
+
+        // Quầng nắng ấm & đĩa mặt trời
+        float sunDot = max(dot(dir, uSunDir), 0.0);
+        float halo = pow(sunDot, 12.0) * 0.36 + pow(sunDot, 64.0) * 0.42;
+        float disc = smoothstep(0.9983, 0.9994, sunDot);
+        sky += uSunColor * halo;
+        sky = mix(sky, vec3(1.0, 0.99, 0.94), disc * 0.95);
+
+        gl_FragColor = vec4(sky, 1.0);
+      }
+    `,
+  });
+
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.frustumCulled = false;
+  mesh.renderOrder = -10;
+  return mesh;
+}
+
 export class VoxelEngine {
   private readonly container: HTMLElement;
   private readonly callbacks: VoxelEngineCallbacks;
@@ -95,10 +186,19 @@ export class VoxelEngine {
   private readonly shieldView: ShieldViewModel;
   private readonly potionView: PotionViewModel;
 
-  private readonly solidMaterial: THREE.MeshLambertMaterial;
+  private readonly solidMaterial: THREE.MeshStandardMaterial;
+  private readonly envRenderTarget: THREE.WebGLRenderTarget;
+  private readonly skyDome: THREE.Mesh;
+  private readonly sunLight: THREE.DirectionalLight;
+  private readonly sunOffset = new THREE.Vector3(46, 78, 32);
+  private readonly sunShadowHalfExtent = 38;
+  private readonly sunShadowMapSize: number;
   private readonly selectionBox: THREE.LineSegments;
   private readonly treeCutIndicator: THREE.Mesh;
-  private readonly skyColor = new THREE.Color(0x82b6ff);
+  private readonly treeCutRingMat: THREE.MeshBasicMaterial;
+  private readonly treeRingIdleColor = new THREE.Color(0xfbbf24);
+  private readonly treeRingActiveColor = new THREE.Color(0x34d399);
+  private readonly skyColor = new THREE.Color(0xb6dcff);
   private readonly rayDir = new THREE.Vector3();
   private readonly wallCheckDir = new THREE.Vector3();
   private readonly isSoftwareGl: boolean;
@@ -110,8 +210,25 @@ export class VoxelEngine {
   private isPlaying = false;
   private hasStarted = false;
   private isMouseDragging = false;
+  private isLeftMouseDown = false;
+  private isTouchBreakHeld = false;
+  private chopTreeId: string | null = null;
+  private chopCutLocalY = 0;
+  private chopElapsed = 0;
+  private chopSoundTimer = 0;
+  private chopCompletedWaitingRelease = false;
+  private lastChopHintAt = 0;
+  private lastHudChopProgress = 0;
+  private lookTouchId: number | null = null;
   private lastTouchX = 0;
   private lastTouchY = 0;
+  private touchClientX = 0;
+  private touchClientY = 0;
+  private touchTotalMove = 0;
+  private touchTreeHoldActive = false;
+  private lastTouchTimestamp = 0;
+  private readonly touchRaycaster = new THREE.Raycaster();
+  private readonly touchNdc = new THREE.Vector2();
   private isDisposed = false;
   private isContextLost = false;
   private readonly isTouchDevice: boolean;
@@ -129,6 +246,7 @@ export class VoxelEngine {
   private hurtInvulnTimer = 0;
   private safeHealTimer = 0;
   private backpackOpen = false;
+  private shopOpen = false;
   private holdingKatana = false;
   private holdingPotionSlot: number | null = null;
   private hasIceKatana = false;
@@ -137,7 +255,7 @@ export class VoxelEngine {
   private currentTreeTarget: TreeTarget | null = null;
   private currentLogTarget: DetachedLogTarget | null = null;
   private currentConveyorTarget: { point: THREE.Vector3 } | null = null;
-  private currentShopTarget: { itemId: ShopItemId; point: THREE.Vector3 } | null = null;
+  private currentShopTarget: { point: THREE.Vector3 } | null = null;
   private currentSlimeTarget: { slime: SlimeEntity; point: THREE.Vector3 } | null = null;
   private currentDragonTarget: { point: THREE.Vector3; hp: number; maxHp: number } | null = null;
   private currentIceKatanaDropTarget: { point: THREE.Vector3 } | null = null;
@@ -158,10 +276,15 @@ export class VoxelEngine {
     hasIceKatana: false,
     hasShield: false,
     backpackOpen: false,
+    shopOpen: false,
     holdingKatana: false,
     holdingPotionSlot: null,
     holdingPotionCount: 0,
     shieldRaised: false,
+    carryingLog: false,
+    isShopTarget: false,
+    isConveyorTarget: false,
+    chopProgress: 0,
     backpackItems: Array.from({ length: 9 }, () => null),
     bossHud: {
       visible: false,
@@ -186,13 +309,17 @@ export class VoxelEngine {
     this.isSoftwareGl = detectSoftwareWebGL();
 
     this.renderer = new THREE.WebGLRenderer({
-      antialias: false,
+      antialias: !this.isSoftwareGl,
       powerPreference: 'high-performance',
     });
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.06;
     this.renderer.setPixelRatio(
-      this.isSoftwareGl ? 1 : Math.min(window.devicePixelRatio, 1.5),
+      this.isSoftwareGl ? 1 : Math.min(window.devicePixelRatio, this.isTouchDevice ? 1.5 : 2),
     );
+    this.renderer.shadowMap.enabled = !this.isSoftwareGl;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.setSize(
       container.clientWidth || window.innerWidth,
       container.clientHeight || window.innerHeight,
@@ -200,15 +327,25 @@ export class VoxelEngine {
     this.renderer.domElement.style.display = 'block';
     this.renderer.domElement.style.width = '100%';
     this.renderer.domElement.style.height = '100%';
+    this.renderer.domElement.style.touchAction = 'none';
     container.appendChild(this.renderer.domElement);
 
     this.scene = new THREE.Scene();
     this.scene.background = this.skyColor.clone();
     this.scene.fog = new THREE.Fog(
       this.skyColor.getHex(),
-      this.renderDistance * CHUNK_SIZE * 0.45,
-      this.renderDistance * CHUNK_SIZE * 0.98,
+      this.renderDistance * CHUNK_SIZE * 0.48,
+      this.renderDistance * CHUNK_SIZE * 1.02,
     );
+
+    const pmremGenerator = new THREE.PMREMGenerator(this.renderer);
+    pmremGenerator.compileEquirectangularShader();
+    const roomEnv = new RoomEnvironment();
+    this.envRenderTarget = pmremGenerator.fromScene(roomEnv, 0.04);
+    roomEnv.dispose();
+    pmremGenerator.dispose();
+    this.scene.environment = this.envRenderTarget.texture;
+    this.scene.environmentIntensity = 0.55;
 
     const width = container.clientWidth || window.innerWidth;
     const height = container.clientHeight || window.innerHeight;
@@ -216,21 +353,46 @@ export class VoxelEngine {
       72,
       width / height,
       0.1,
-      Math.max(128, this.renderDistance * CHUNK_SIZE * 1.4),
+      Math.max(140, this.renderDistance * CHUNK_SIZE * 1.45),
     );
 
-    const hemiLight = new THREE.HemisphereLight(0xffffff, 0x5c6e58, 0.85);
+    this.skyDome = createSkyDome(this.sunOffset);
+    this.skyDome.scale.setScalar(Math.max(105, this.renderDistance * CHUNK_SIZE * 1.2));
+    this.scene.add(this.skyDome);
+
+    const hemiLight = new THREE.HemisphereLight(0xd6ecff, 0x3b5930, 0.92);
     this.scene.add(hemiLight);
 
-    const sunLight = new THREE.DirectionalLight(0xfff5e0, 0.45);
-    sunLight.position.set(60, 120, 40);
-    this.scene.add(sunLight);
+    this.sunShadowMapSize = this.isTouchDevice ? 1024 : 2048;
+    this.sunLight = new THREE.DirectionalLight(0xfff1d6, 1.95);
+    this.sunLight.position.copy(this.sunOffset);
+    this.sunLight.castShadow = !this.isSoftwareGl;
+    this.sunLight.shadow.mapSize.set(this.sunShadowMapSize, this.sunShadowMapSize);
+    this.sunLight.shadow.camera.left = -this.sunShadowHalfExtent;
+    this.sunLight.shadow.camera.right = this.sunShadowHalfExtent;
+    this.sunLight.shadow.camera.top = this.sunShadowHalfExtent;
+    this.sunLight.shadow.camera.bottom = -this.sunShadowHalfExtent;
+    this.sunLight.shadow.camera.near = 5;
+    this.sunLight.shadow.camera.far = 180;
+    this.sunLight.shadow.bias = -0.0004;
+    this.sunLight.shadow.normalBias = 0.035;
+    this.sunLight.shadow.radius = 2.5;
+    this.scene.add(this.sunLight);
+    this.scene.add(this.sunLight.target);
+
+    const rimLight = new THREE.DirectionalLight(0x93c5fd, 0.48);
+    rimLight.position.set(-50, 45, -60);
+    this.scene.add(rimLight);
 
     this.solidMaterial = createSolidVoxelMaterial();
 
-    this.world = new WorldManager(this.scene, this.solidMaterial);
+    const maxAnisotropy = this.isSoftwareGl
+      ? 1
+      : Math.min(8, this.renderer.capabilities.getMaxAnisotropy());
+    this.world = new WorldManager(this.scene, this.solidMaterial, maxAnisotropy);
     this.player = new FirstPersonPlayer(this.camera, this.world);
     this.player.spawnAtSafeHeight(0.5, 0.5);
+    this.updateSunShadowTarget();
     this.world.prewarmAround(this.player.position.x, this.player.position.z, this.renderDistance);
     this.audio = new VoxelAudio();
     this.katanaView = new KatanaViewModel(this.scene);
@@ -245,8 +407,8 @@ export class VoxelEngine {
 
     const ringGeo = new THREE.TorusGeometry(1.0, 0.06, 6, 16);
     ringGeo.rotateX(Math.PI / 2);
-    const ringMat = new THREE.MeshBasicMaterial({ color: 0xfbbf24 });
-    this.treeCutIndicator = new THREE.Mesh(ringGeo, ringMat);
+    this.treeCutRingMat = new THREE.MeshBasicMaterial({ color: 0xfbbf24 });
+    this.treeCutIndicator = new THREE.Mesh(ringGeo, this.treeCutRingMat);
     this.treeCutIndicator.visible = false;
     this.scene.add(this.treeCutIndicator);
 
@@ -284,8 +446,16 @@ export class VoxelEngine {
 
   pauseGame(): void {
     this.isPlaying = false;
+    this.shopOpen = false;
     this.player.keys = {};
+    this.player.setJoystickVector(0, 0);
     this.isMouseDragging = false;
+    this.isLeftMouseDown = false;
+    this.isTouchBreakHeld = false;
+    this.touchTreeHoldActive = false;
+    this.lookTouchId = null;
+    this.chopCompletedWaitingRelease = false;
+    this.resetChopHold();
     this.callbacks.onPlayingChange(false, this.hasStarted);
 
     const canvas = this.renderer.domElement;
@@ -294,14 +464,114 @@ export class VoxelEngine {
     }
   }
 
+  openShop(): void {
+    if (this.shopOpen) return;
+    this.shopOpen = true;
+    this.backpackOpen = false;
+    this.player.keys = {};
+    this.player.setJoystickVector(0, 0);
+    this.isMouseDragging = false;
+    this.isLeftMouseDown = false;
+    this.isTouchBreakHeld = false;
+    this.touchTreeHoldActive = false;
+    this.lookTouchId = null;
+    this.chopCompletedWaitingRelease = false;
+    this.resetChopHold();
+
+    const canvas = this.renderer.domElement;
+    if (document.pointerLockElement === canvas && document.exitPointerLock) {
+      document.exitPointerLock();
+    }
+    this.emitStats();
+  }
+
+  closeShop(): void {
+    if (!this.shopOpen) return;
+    this.shopOpen = false;
+    const canvas = this.renderer.domElement;
+    if (!this.isTouchDevice && this.isPlaying && canvas.requestPointerLock) {
+      try {
+        canvas.requestPointerLock();
+      } catch {
+        // Fallback nếu môi trường nhúng hạn chế Pointer Lock
+      }
+    }
+    this.emitStats();
+  }
+
+  buyShopItem(itemId: ShopItemId): void {
+    if (itemId === 'potion') {
+      if (!this.world.isShopItemOwned('backpack')) {
+        this.callbacks.onToast('Cần mua Balo (500 VNĐ) trước để chứa Lọ thuốc hồi máu!');
+        return;
+      }
+      const price = SHOP_ITEM_PRICES.potion;
+      if (this.money < price) {
+        this.callbacks.onToast(
+          `Chưa đủ ${price.toLocaleString('vi-VN')} VNĐ để mua ${SHOP_ITEM_NAMES.potion}!`,
+        );
+        return;
+      }
+      const res = this.world.addPotionToBackpack();
+      if (!res.added) {
+        this.callbacks.onToast('Balo đã đầy (tối đa 50 lọ/ô)! Không thể mua thêm thuốc.');
+        return;
+      }
+      this.money -= price;
+      this.audio.playCashSound();
+      this.emitStats();
+      this.callbacks.onToast(
+        `Đã mua ${SHOP_ITEM_NAMES.potion} (Ô ${res.slotIndex + 1}: ${res.count}/50 · -${price.toLocaleString('vi-VN')} VNĐ)!`,
+      );
+      return;
+    }
+
+    const owned = this.world.isShopItemOwned(itemId);
+    if (owned) {
+      this.callbacks.onToast(`Bạn đã sở hữu ${SHOP_ITEM_NAMES[itemId]}!`);
+      return;
+    }
+
+    const price = SHOP_ITEM_PRICES[itemId];
+    if (this.money < price) {
+      this.callbacks.onToast(
+        `Chưa đủ ${price.toLocaleString('vi-VN')} VNĐ để mua ${SHOP_ITEM_NAMES[itemId]}!`,
+      );
+      return;
+    }
+
+    this.money -= price;
+    this.world.markShopItemOwned(itemId);
+    this.audio.playCashSound();
+    this.emitStats();
+    this.callbacks.onToast(
+      `Đã mua ${SHOP_ITEM_NAMES[itemId]} (-${price.toLocaleString('vi-VN')} VNĐ)!`,
+    );
+  }
+
   setRenderDistance(distance: number): void {
     this.renderDistance = distance;
     if (this.scene.fog instanceof THREE.Fog) {
-      this.scene.fog.near = distance * CHUNK_SIZE * 0.45;
-      this.scene.fog.far = distance * CHUNK_SIZE * 0.98;
+      this.scene.fog.near = distance * CHUNK_SIZE * 0.48;
+      this.scene.fog.far = distance * CHUNK_SIZE * 1.02;
     }
-    this.camera.far = Math.max(128, distance * CHUNK_SIZE * 1.4);
+    this.camera.far = Math.max(140, distance * CHUNK_SIZE * 1.45);
     this.camera.updateProjectionMatrix();
+    this.skyDome.scale.setScalar(Math.max(105, distance * CHUNK_SIZE * 1.2));
+  }
+
+  private updateSunShadowTarget(): void {
+    const texelWorldSize = (this.sunShadowHalfExtent * 2) / this.sunShadowMapSize;
+    const snapX = Math.round(this.player.position.x / texelWorldSize) * texelWorldSize;
+    const snapZ = Math.round(this.player.position.z / texelWorldSize) * texelWorldSize;
+    const py = this.player.position.y;
+    this.sunLight.target.position.set(snapX, py, snapZ);
+    this.sunLight.target.updateMatrixWorld();
+    this.sunLight.position.set(
+      snapX + this.sunOffset.x,
+      py + this.sunOffset.y,
+      snapZ + this.sunOffset.z,
+    );
   }
 
   setSensitivity(level: number): void {
@@ -316,6 +586,52 @@ export class VoxelEngine {
 
   setVirtualKey(code: string, pressed: boolean): void {
     this.player.keys[code] = pressed;
+  }
+
+  setVirtualJoystick(x: number, y: number): void {
+    this.player.setJoystickVector(x, y);
+  }
+
+  private resetChopHold(): void {
+    const hadProgress = this.chopElapsed > 0 || this.chopTreeId !== null;
+    this.chopTreeId = null;
+    this.chopCutLocalY = 0;
+    this.chopElapsed = 0;
+    this.chopSoundTimer = 0;
+    if (hadProgress) {
+      this.emitStats();
+    }
+  }
+
+  private handleBreakRelease(): void {
+    if (
+      this.chopTreeId !== null &&
+      this.chopElapsed > 0 &&
+      this.chopElapsed < TREE_HAND_CHOP_DURATION
+    ) {
+      const now = performance.now();
+      if (this.chopElapsed < 0.45 && now - this.lastChopHintAt > 4000) {
+        this.lastChopHintAt = now;
+        this.callbacks.onToast(
+          'Chưa dùng Katana: hãy giữ chuột trái tại vị trí chặt 5 giây để cây đổ!',
+        );
+      }
+    }
+    this.chopCompletedWaitingRelease = false;
+    this.resetChopHold();
+  }
+
+  setBreakHeld(pressed: boolean): void {
+    if (pressed) {
+      if (!this.isPlaying) return;
+      if (!this.isTouchBreakHeld) {
+        this.isTouchBreakHeld = true;
+        this.breakTargetBlock();
+      }
+    } else if (this.isTouchBreakHeld) {
+      this.isTouchBreakHeld = false;
+      this.handleBreakRelease();
+    }
   }
 
   breakTargetBlock(): void {
@@ -381,11 +697,24 @@ export class VoxelEngine {
 
     if (this.currentTreeTarget) {
       const { tree, cutLocalY } = this.currentTreeTarget;
-      if (this.world.cutTree(tree, cutLocalY, this.player.position.x, this.player.position.z)) {
-        this.audio.playBlockSound('break');
-        this.currentTreeTarget = null;
-        this.treeCutIndicator.visible = false;
+      // Dùng Katana tương tác: 1 click chuột trái chặt đổ cây ngay lập tức
+      if (this.holdingKatana && !this.world.isCarryingLog()) {
+        if (this.world.cutTree(tree, cutLocalY, this.player.position.x, this.player.position.z)) {
+          this.audio.playBlockSound('break');
+          this.currentTreeTarget = null;
+          this.treeCutIndicator.visible = false;
+          this.resetChopHold();
+        }
+        return;
       }
+
+      // Chưa dùng Katana: bắt đầu giữ tại vị trí chặt đủ 5 giây mới đổ
+      this.chopTreeId = tree.id;
+      this.chopCutLocalY = cutLocalY;
+      this.chopElapsed = 0;
+      this.chopSoundTimer = 0;
+      this.chopCompletedWaitingRelease = false;
+      this.audio.playBlockSound('break');
       return;
     }
 
@@ -412,56 +741,9 @@ export class VoxelEngine {
       }
     }
 
-    if (this.currentShopTarget) {
-      const { itemId } = this.currentShopTarget;
-      if (itemId === 'potion') {
-        if (!this.world.isShopItemOwned('backpack')) {
-          this.callbacks.onToast('Cần mua Balo (500 VNĐ) trước để chứa Lọ thuốc hồi máu!');
-          return;
-        }
-        const price = SHOP_ITEM_PRICES.potion;
-        if (this.money < price) {
-          this.callbacks.onToast(
-            `Chưa đủ ${price.toLocaleString('vi-VN')} VNĐ để mua ${SHOP_ITEM_NAMES.potion}!`,
-          );
-          return;
-        }
-        const res = this.world.addPotionToBackpack();
-        if (!res.added) {
-          this.callbacks.onToast('Balo đã đầy (tối đa 50 lọ/ô)! Không thể mua thêm thuốc.');
-          return;
-        }
-        this.money -= price;
-        this.audio.playCashSound();
-        this.emitStats();
-        this.callbacks.onToast(
-          `Đã mua ${SHOP_ITEM_NAMES.potion} (Ô ${res.slotIndex + 1}: ${res.count}/50 · -${price.toLocaleString('vi-VN')} VNĐ)!`,
-        );
-        return;
-      }
-
-      const owned = this.world.isShopItemOwned(itemId);
-      if (!owned) {
-        const price = SHOP_ITEM_PRICES[itemId];
-        if (this.money < price) {
-          this.callbacks.onToast(
-            `Chưa đủ ${price.toLocaleString('vi-VN')} VNĐ để mua ${SHOP_ITEM_NAMES[itemId]}!`,
-          );
-          return;
-        }
-        this.money -= price;
-        this.world.markShopItemOwned(itemId);
-        this.audio.playCashSound();
-        this.emitStats();
-        this.callbacks.onToast(
-          `Đã mua ${SHOP_ITEM_NAMES[itemId]} (-${price.toLocaleString('vi-VN')} VNĐ)!`,
-        );
-        return;
-      }
-      if (!this.world.isCarryingLog()) {
-        this.callbacks.onToast(`Bạn đã sở hữu ${SHOP_ITEM_NAMES[itemId]}!`);
-        return;
-      }
+    if (this.currentShopTarget && !this.world.isCarryingLog()) {
+      this.openShop();
+      return;
     }
 
     if (this.holdingPotionSlot !== null && !this.world.isCarryingLog()) {
@@ -741,6 +1023,7 @@ export class VoxelEngine {
     this.latestStats.hasIceKatana = this.hasIceKatana;
     this.latestStats.hasShield = this.world.isShopItemOwned('shield');
     this.latestStats.backpackOpen = this.backpackOpen;
+    this.latestStats.shopOpen = this.shopOpen;
     this.latestStats.holdingKatana = this.holdingKatana;
     if (
       this.holdingPotionSlot !== null &&
@@ -754,6 +1037,16 @@ export class VoxelEngine {
         ? this.world.getPotionCountAtSlot(this.holdingPotionSlot)
         : 0;
     this.latestStats.shieldRaised = this.shieldRaised;
+    this.latestStats.carryingLog = this.world.isCarryingLog();
+    this.latestStats.isShopTarget = Boolean(this.currentShopTarget);
+    this.latestStats.isConveyorTarget =
+      this.latestStats.carryingLog && Boolean(this.currentConveyorTarget);
+    const chopProgress =
+      this.chopTreeId !== null && !(this.holdingKatana && !this.world.isCarryingLog())
+        ? Math.min(1, Math.max(0, this.chopElapsed / TREE_HAND_CHOP_DURATION))
+        : 0;
+    this.latestStats.chopProgress = chopProgress;
+    this.lastHudChopProgress = chopProgress;
     this.latestStats.backpackItems = this.world.getBackpackItems();
     this.latestStats.bossHud = this.world.getBossHudState(
       this.player.position.x,
@@ -779,24 +1072,9 @@ export class VoxelEngine {
         Math.round(point.y * 10) / 10,
         Math.round(point.z),
       ];
-    } else if (
-      this.currentShopTarget &&
-      (!this.world.isCarryingLog() || !this.world.isShopItemOwned(this.currentShopTarget.itemId))
-    ) {
-      const { itemId, point } = this.currentShopTarget;
-      const owned = this.world.isShopItemOwned(itemId);
-      const price = SHOP_ITEM_PRICES[itemId];
-      const prefix =
-        itemId === 'backpack'
-          ? 'Khung 1'
-          : itemId === 'katana'
-            ? 'Khung 2'
-            : itemId === 'shield'
-              ? 'Khung 3'
-              : 'Khung 4';
-      this.latestStats.targetName = owned
-        ? `${prefix}: ${SHOP_ITEM_NAMES[itemId]} · Đã sở hữu`
-        : `${prefix}: ${SHOP_ITEM_NAMES[itemId]} · ${price.toLocaleString('vi-VN')} VNĐ (Chuột phải mua)`;
+    } else if (this.currentShopTarget && !this.world.isCarryingLog()) {
+      const { point } = this.currentShopTarget;
+      this.latestStats.targetName = 'Cửa hàng thiết yếu · Chuột phải để mở';
       this.latestStats.targetCoords = [
         Math.round(point.x),
         Math.round(point.y * 10) / 10,
@@ -835,9 +1113,10 @@ export class VoxelEngine {
         Math.round(this.currentLogTarget.log.z),
       ];
     } else if (this.currentTreeTarget) {
-      this.latestStats.targetName = this.holdingKatana
-        ? 'Thân Cây · Chuột trái chém chặt'
-        : 'Thân Cây · Chuột trái chặt';
+      this.latestStats.targetName =
+        this.holdingKatana && !this.world.isCarryingLog()
+          ? 'Thân Cây · Chuột trái chém chặt (1 phát)'
+          : 'Thân Cây · Giữ chuột trái 5 giây tại vị trí chặt';
       this.latestStats.targetCoords = [
         Math.round(this.currentTreeTarget.tree.x),
         Math.round(
@@ -864,20 +1143,21 @@ export class VoxelEngine {
       this.hasStarted = true;
       this.isPlaying = true;
       this.callbacks.onPlayingChange(true, true);
-    } else if (!this.isTouchDevice && this.isPlaying) {
+    } else if (!this.isTouchDevice && this.isPlaying && !this.shopOpen) {
       this.pauseGame();
     }
   };
 
   private readonly onMouseMove = (e: MouseEvent): void => {
-    if (!this.isPlaying) return;
+    if (!this.isPlaying || this.shopOpen) return;
     if (document.pointerLockElement === this.renderer.domElement || this.isMouseDragging) {
       this.player.rotate(e.movementX, e.movementY);
     }
   };
 
   private readonly onMouseDown = (e: MouseEvent): void => {
-    if (!this.isPlaying) return;
+    if (!this.isPlaying || this.shopOpen) return;
+    if (performance.now() - this.lastTouchTimestamp < 500) return;
     const canvas = this.renderer.domElement;
     if (document.pointerLockElement !== canvas && !this.isTouchDevice) {
       try {
@@ -888,14 +1168,30 @@ export class VoxelEngine {
       this.isMouseDragging = true;
     }
     if (e.button === 0) {
+      this.isLeftMouseDown = true;
       this.breakTargetBlock();
     } else if (e.button === 2) {
       this.placeTargetBlock();
     }
   };
 
-  private readonly onMouseUp = (): void => {
+  private readonly onMouseUp = (e: MouseEvent): void => {
     this.isMouseDragging = false;
+    if (e.button === 0 && this.isLeftMouseDown) {
+      this.isLeftMouseDown = false;
+      this.handleBreakRelease();
+    }
+  };
+
+  private readonly onWindowBlur = (): void => {
+    this.isMouseDragging = false;
+    this.isLeftMouseDown = false;
+    this.isTouchBreakHeld = false;
+    this.touchTreeHoldActive = false;
+    this.lookTouchId = null;
+    this.player.setJoystickVector(0, 0);
+    this.chopCompletedWaitingRelease = false;
+    this.resetChopHold();
   };
 
   private readonly onContextMenu = (e: MouseEvent): void => {
@@ -903,6 +1199,14 @@ export class VoxelEngine {
   };
 
   private readonly onKeyDown = (e: KeyboardEvent): void => {
+    if (this.shopOpen) {
+      if (e.code === 'Escape' && !e.repeat) {
+        e.preventDefault();
+        this.closeShop();
+      }
+      return;
+    }
+
     this.player.keys[e.code] = true;
 
     if (!this.backpackOpen && e.code.startsWith('Digit')) {
@@ -939,7 +1243,7 @@ export class VoxelEngine {
   };
 
   private readonly onWheel = (e: WheelEvent): void => {
-    if (!this.isPlaying) return;
+    if (!this.isPlaying || this.shopOpen) return;
     if (e.deltaY > 0) {
       this.selectSlot(this.selectedSlotIndex + 1);
     } else if (e.deltaY < 0) {
@@ -947,21 +1251,200 @@ export class VoxelEngine {
     }
   };
 
+  private getTouchWorldRay(
+    clientX: number,
+    clientY: number,
+  ): { origin: THREE.Vector3; direction: THREE.Vector3 } | null {
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return null;
+    this.touchNdc.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+    this.touchNdc.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+    this.touchRaycaster.setFromCamera(this.touchNdc, this.camera);
+    return {
+      origin: this.touchRaycaster.ray.origin,
+      direction: this.touchRaycaster.ray.direction,
+    };
+  }
+
+  private raycastUnblockedTreeAtScreen(clientX: number, clientY: number): TreeTarget | null {
+    const ray = this.getTouchWorldRay(clientX, clientY);
+    if (!ray) return null;
+    const hit = this.world.raycastTreeTrunk(ray.origin, ray.direction, 7.5);
+    if (!hit) return null;
+    const dist = hit.point.distanceTo(ray.origin);
+    const wallHit = voxelRaycast(this.world, ray.origin, ray.direction, dist);
+    return wallHit ? null : hit;
+  }
+
+  private performScreenTapInteract(clientX: number, clientY: number): void {
+    const ray = this.getTouchWorldRay(clientX, clientY);
+    if (!ray) return;
+
+    if (this.holdingKatana && !this.world.isCarryingLog()) {
+      this.katanaView.triggerSlash();
+      this.audio.playSlashSound();
+
+      this.camera.getWorldDirection(this.rayDir);
+      let atk = this.world.attackSlimeWithKatana(ray.origin, ray.direction, 4.2);
+      if (!atk.hit) {
+        atk = this.world.attackSlimeWithKatana(this.camera.position, this.rayDir, 3.8);
+      }
+      if (atk.hit) {
+        this.audio.playSlimeHitSound();
+        if (atk.killed) {
+          const prevLevel = this.level;
+          this.grantXp(atk.xpReward);
+          if (this.level === prevLevel && this.level < MAX_LEVEL) {
+            this.callbacks.onToast(`Hạ Slime Lv.${atk.level} (+${atk.xpReward} XP)`);
+          }
+        } else {
+          this.emitStats();
+        }
+        return;
+      }
+
+      const dragonDmg = this.hasIceKatana ? 2 : 1;
+      let dragonAtk = this.world.attackDragonWithKatana(
+        ray.origin,
+        ray.direction,
+        dragonDmg,
+        5.6,
+        this.level,
+      );
+      if (!dragonAtk.hit) {
+        dragonAtk = this.world.attackDragonWithKatana(
+          this.camera.position,
+          this.rayDir,
+          dragonDmg,
+          5.4,
+          this.level,
+        );
+      }
+      if (dragonAtk.hit) {
+        if (dragonAtk.blockedByLevel) {
+          this.audio.playShieldBlockSound();
+          this.callbacks.onToast('Cần đạt Level 20 trở lên mới có thể gây sát thương cho Rồng Băng!');
+          return;
+        }
+        this.audio.playSlimeHitSound();
+        if (dragonAtk.killed) {
+          this.audio.playDragonDefeatSound();
+          this.grantXp(dragonAtk.xpReward);
+          this.callbacks.onToast(
+            'Hạ Rồng Băng Lv.30! (+5.000 XP) Katana Băng đã rơi ra!',
+          );
+        } else {
+          this.emitStats();
+        }
+        return;
+      }
+
+      const treeHit = this.raycastUnblockedTreeAtScreen(clientX, clientY);
+      if (
+        treeHit &&
+        this.world.cutTree(
+          treeHit.tree,
+          treeHit.cutLocalY,
+          this.player.position.x,
+          this.player.position.z,
+        )
+      ) {
+        this.audio.playBlockSound('break');
+        this.currentTreeTarget = null;
+        this.treeCutIndicator.visible = false;
+        this.resetChopHold();
+      }
+      return;
+    }
+
+    const slimeTap = this.world.raycastSlime(ray.origin, ray.direction, 4.5);
+    if (slimeTap) {
+      this.callbacks.onToast('Cần mua và cầm Katana để chém Slime!');
+      return;
+    }
+    const dragonTap = this.world.raycastDragon(ray.origin, ray.direction, 6.0);
+    if (dragonTap) {
+      this.callbacks.onToast('Cần mua và cầm Katana để chém Rồng Băng!');
+    }
+  }
+
   private readonly onTouchStart = (e: TouchEvent): void => {
-    if (e.touches.length === 1) {
-      this.lastTouchX = e.touches[0].clientX;
-      this.lastTouchY = e.touches[0].clientY;
+    this.lastTouchTimestamp = performance.now();
+    if (!this.isPlaying || this.shopOpen) return;
+    if (this.lookTouchId === null && e.changedTouches.length > 0) {
+      const touch = e.changedTouches[0];
+      this.lookTouchId = touch.identifier;
+      this.lastTouchX = touch.clientX;
+      this.lastTouchY = touch.clientY;
+      this.touchClientX = touch.clientX;
+      this.touchClientY = touch.clientY;
+      this.touchTotalMove = 0;
+      this.touchTreeHoldActive = false;
+
+      if (!(this.holdingKatana && !this.world.isCarryingLog())) {
+        const treeHit = this.raycastUnblockedTreeAtScreen(touch.clientX, touch.clientY);
+        if (treeHit) {
+          this.touchTreeHoldActive = true;
+          this.chopTreeId = treeHit.tree.id;
+          this.chopCutLocalY = treeHit.cutLocalY;
+          this.chopElapsed = 0;
+          this.chopSoundTimer = 0;
+          this.chopCompletedWaitingRelease = false;
+          this.audio.playBlockSound('break');
+        }
+      }
     }
   };
 
   private readonly onTouchMove = (e: TouchEvent): void => {
-    if (!this.isPlaying || e.touches.length !== 1) return;
-    const touch = e.touches[0];
-    const dx = touch.clientX - this.lastTouchX;
-    const dy = touch.clientY - this.lastTouchY;
-    this.lastTouchX = touch.clientX;
-    this.lastTouchY = touch.clientY;
-    this.player.rotate(dx * 1.6, dy * 1.6);
+    this.lastTouchTimestamp = performance.now();
+    if (!this.isPlaying || this.shopOpen || this.lookTouchId === null) return;
+    for (let i = 0; i < e.touches.length; i++) {
+      const touch = e.touches[i];
+      if (touch.identifier === this.lookTouchId) {
+        const dx = touch.clientX - this.lastTouchX;
+        const dy = touch.clientY - this.lastTouchY;
+        this.touchTotalMove += Math.hypot(dx, dy);
+        this.lastTouchX = touch.clientX;
+        this.lastTouchY = touch.clientY;
+        this.touchClientX = touch.clientX;
+        this.touchClientY = touch.clientY;
+
+        if (this.touchTreeHoldActive) {
+          if (this.touchTotalMove <= 14) {
+            break;
+          }
+          this.touchTreeHoldActive = false;
+          this.resetChopHold();
+        }
+
+        this.player.rotate(dx * 1.65, dy * 1.65);
+        break;
+      }
+    }
+  };
+
+  private readonly onTouchEnd = (e: TouchEvent): void => {
+    this.lastTouchTimestamp = performance.now();
+    if (this.lookTouchId === null) return;
+    for (let i = 0; i < e.changedTouches.length; i++) {
+      if (e.changedTouches[i].identifier === this.lookTouchId) {
+        const wasTap = this.touchTotalMove <= 16;
+        const wasTreeHold = this.touchTreeHoldActive;
+        const endX = e.changedTouches[i].clientX;
+        const endY = e.changedTouches[i].clientY;
+
+        this.lookTouchId = null;
+        this.touchTreeHoldActive = false;
+
+        if (wasTreeHold) {
+          this.handleBreakRelease();
+        } else if (wasTap && this.isPlaying && !this.shopOpen) {
+          this.performScreenTapInteract(endX, endY);
+        }
+        break;
+      }
+    }
   };
 
   private readonly onResize = (): void => {
@@ -995,7 +1478,10 @@ export class VoxelEngine {
     window.addEventListener('wheel', this.onWheel, { passive: true });
     canvas.addEventListener('touchstart', this.onTouchStart, { passive: true });
     canvas.addEventListener('touchmove', this.onTouchMove, { passive: true });
+    canvas.addEventListener('touchend', this.onTouchEnd, { passive: true });
+    canvas.addEventListener('touchcancel', this.onTouchEnd, { passive: true });
     window.addEventListener('resize', this.onResize);
+    window.addEventListener('blur', this.onWindowBlur);
     canvas.addEventListener('webglcontextlost', this.onContextLost);
     canvas.addEventListener('webglcontextrestored', this.onContextRestored);
   }
@@ -1012,7 +1498,10 @@ export class VoxelEngine {
     window.removeEventListener('wheel', this.onWheel);
     canvas.removeEventListener('touchstart', this.onTouchStart);
     canvas.removeEventListener('touchmove', this.onTouchMove);
+    canvas.removeEventListener('touchend', this.onTouchEnd);
+    canvas.removeEventListener('touchcancel', this.onTouchEnd);
     window.removeEventListener('resize', this.onResize);
+    window.removeEventListener('blur', this.onWindowBlur);
     canvas.removeEventListener('webglcontextlost', this.onContextLost);
     canvas.removeEventListener('webglcontextrestored', this.onContextRestored);
   }
@@ -1065,7 +1554,7 @@ export class VoxelEngine {
       this.fpsTimer = 0;
     }
 
-    if (this.isPlaying) {
+    if (this.isPlaying && !this.shopOpen) {
       const jumpState = this.player.update(dt);
       if (jumpState.jumped) {
         this.audio.playJumpSound();
@@ -1212,7 +1701,7 @@ export class VoxelEngine {
 
     this.camera.getWorldDirection(this.rayDir);
     const dropHit = this.world.raycastDroppedIceKatana(this.camera.position, this.rayDir, 6.5);
-    const shopHit = this.world.raycastShopItem(this.camera.position, this.rayDir, 6.5);
+    const shopHit = this.world.raycastShop(this.camera.position, this.rayDir, 7.0);
     const shopDist = shopHit ? shopHit.point.distanceTo(this.camera.position) : Infinity;
 
     if (dropHit) {
@@ -1298,11 +1787,7 @@ export class VoxelEngine {
       const convHit = this.world.raycastConveyor(this.camera.position, this.rayDir, 7.0);
       const convDist = convHit ? convHit.point.distanceTo(this.camera.position) : Infinity;
 
-      if (shopHit && !this.world.isShopItemOwned(shopHit.itemId) && shopDist <= convDist) {
-        const wallHit = voxelRaycast(this.world, this.camera.position, this.rayDir, shopDist);
-        this.currentShopTarget = wallHit ? null : shopHit;
-        this.currentConveyorTarget = null;
-      } else if (convHit) {
+      if (convHit) {
         const wallHit = voxelRaycast(this.world, this.camera.position, this.rayDir, convDist);
         this.currentConveyorTarget = wallHit ? null : convHit;
         this.currentShopTarget = null;
@@ -1312,13 +1797,77 @@ export class VoxelEngine {
       }
     }
 
-    if (this.currentTreeTarget) {
-      const { tree, cutLocalY } = this.currentTreeTarget;
-      const r = tree.trunkRadius * 1.08;
-      this.treeCutIndicator.position.set(tree.x, tree.baseY + Math.max(0.06, cutLocalY), tree.z);
+    const touchChopTreeTarget =
+      this.isPlaying && this.touchTreeHoldActive && !this.holdingKatana
+        ? this.raycastUnblockedTreeAtScreen(this.touchClientX, this.touchClientY)
+        : null;
+    const activeChopTreeTarget = touchChopTreeTarget ?? this.currentTreeTarget;
+
+    const breakHeld =
+      this.isPlaying &&
+      (this.isLeftMouseDown || this.isTouchBreakHeld || this.touchTreeHoldActive);
+    if (breakHeld && !(this.holdingKatana && !this.world.isCarryingLog())) {
+      if (activeChopTreeTarget) {
+        if (!this.chopCompletedWaitingRelease) {
+          const sameSpot =
+            this.chopTreeId === activeChopTreeTarget.tree.id &&
+            Math.abs(activeChopTreeTarget.cutLocalY - this.chopCutLocalY) <= 0.6;
+          if (sameSpot) {
+            this.chopElapsed += clampedDt;
+            this.chopSoundTimer += clampedDt;
+            if (this.chopSoundTimer >= 0.48) {
+              this.chopSoundTimer = 0;
+              this.audio.playBlockSound('break');
+            }
+            if (this.chopElapsed >= TREE_HAND_CHOP_DURATION) {
+              if (
+                this.world.cutTree(
+                  activeChopTreeTarget.tree,
+                  this.chopCutLocalY,
+                  this.player.position.x,
+                  this.player.position.z,
+                )
+              ) {
+                this.audio.playBlockSound('break');
+                this.currentTreeTarget = null;
+                this.touchTreeHoldActive = false;
+              }
+              this.chopCompletedWaitingRelease = true;
+              this.resetChopHold();
+            }
+          } else {
+            this.chopTreeId = activeChopTreeTarget.tree.id;
+            this.chopCutLocalY = activeChopTreeTarget.cutLocalY;
+            this.chopElapsed = 0;
+            this.chopSoundTimer = 0;
+          }
+        }
+      } else {
+        this.touchTreeHoldActive = false;
+        this.resetChopHold();
+      }
+    } else if (this.chopTreeId !== null || this.chopElapsed > 0) {
+      this.resetChopHold();
+    }
+
+    if (activeChopTreeTarget) {
+      const { tree, cutLocalY } = activeChopTreeTarget;
+      const isChoppingThis =
+        this.chopTreeId === tree.id && !(this.holdingKatana && !this.world.isCarryingLog());
+      const displayCutY = isChoppingThis ? this.chopCutLocalY : cutLocalY;
+      const chopRatio = isChoppingThis
+        ? Math.min(1, this.chopElapsed / TREE_HAND_CHOP_DURATION)
+        : 0;
+      const pulse = chopRatio > 0 ? 1 + Math.sin(this.chopElapsed * 14) * 0.07 : 1;
+      const r = tree.trunkRadius * 1.08 * pulse;
+      this.treeCutRingMat.color
+        .copy(this.treeRingIdleColor)
+        .lerp(this.treeRingActiveColor, chopRatio);
+      this.treeCutIndicator.position.set(tree.x, tree.baseY + Math.max(0.06, displayCutY), tree.z);
       this.treeCutIndicator.scale.set(r, 1, r);
       this.treeCutIndicator.visible = true;
     } else {
+      this.treeCutRingMat.color.copy(this.treeRingIdleColor);
       this.treeCutIndicator.visible = false;
     }
 
@@ -1337,11 +1886,22 @@ export class VoxelEngine {
       this.selectionBox.visible = false;
     }
 
+    const currentChopProgress =
+      this.chopTreeId !== null && !(this.holdingKatana && !this.world.isCarryingLog())
+        ? Math.min(1, Math.max(0, this.chopElapsed / TREE_HAND_CHOP_DURATION))
+        : 0;
+    const chopProgressChanged =
+      Math.abs(currentChopProgress - this.lastHudChopProgress) >= 0.015 ||
+      (currentChopProgress === 0 && this.lastHudChopProgress !== 0);
+
     this.hudSyncTimer += dt;
-    if (this.hudSyncTimer >= 0.1) {
+    if (this.hudSyncTimer >= 0.1 || chopProgressChanged) {
       this.hudSyncTimer = 0;
       this.emitStats();
     }
+
+    this.updateSunShadowTarget();
+    this.skyDome.position.copy(this.camera.position);
 
     if (!this.isContextLost) {
       this.renderer.render(this.scene, this.camera);
@@ -1364,6 +1924,9 @@ export class VoxelEngine {
     (this.selectionBox.material as THREE.Material).dispose();
     this.treeCutIndicator.geometry.dispose();
     (this.treeCutIndicator.material as THREE.Material).dispose();
+    this.skyDome.geometry.dispose();
+    (this.skyDome.material as THREE.Material).dispose();
+    this.envRenderTarget.dispose();
     this.solidMaterial.dispose();
     this.audio.dispose();
     this.renderer.dispose();

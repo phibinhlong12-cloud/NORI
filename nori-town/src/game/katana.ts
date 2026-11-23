@@ -11,20 +11,40 @@ export function createKatanaMeshGroup(
 ): THREE.Group {
   const group = new THREE.Group();
 
-  const hiltMat = new THREE.MeshLambertMaterial({
+  const hiltMat = new THREE.MeshStandardMaterial({
     color: isIce ? '#0c4a6e' : '#1e293b',
+    roughness: 0.72,
+    metalness: 0.15,
   });
-  const wrapMat = new THREE.MeshLambertMaterial({
+  const wrapMat = new THREE.MeshStandardMaterial({
     color: isIce ? '#0284c7' : '#7f1d1d',
+    roughness: 0.8,
+    metalness: 0.08,
   });
-  const goldMat = new THREE.MeshLambertMaterial({
+  const goldMat = new THREE.MeshStandardMaterial({
     color: isIce ? '#7dd3fc' : '#f59e0b',
+    roughness: 0.22,
+    metalness: 0.88,
   });
   const bladeMat = isIce
-    ? new THREE.MeshBasicMaterial({ color: '#bae6fd' })
-    : new THREE.MeshLambertMaterial({ color: '#e2e8f0' });
-  const spineMat = new THREE.MeshLambertMaterial({
+    ? new THREE.MeshPhysicalMaterial({
+        color: '#bae6fd',
+        emissive: '#0284c7',
+        emissiveIntensity: 0.42,
+        roughness: 0.1,
+        metalness: 0.72,
+        clearcoat: 1.0,
+        clearcoatRoughness: 0.08,
+      })
+    : new THREE.MeshStandardMaterial({
+        color: '#e2e8f0',
+        roughness: 0.14,
+        metalness: 0.92,
+      });
+  const spineMat = new THREE.MeshStandardMaterial({
     color: isIce ? '#0ea5e9' : '#94a3b8',
+    roughness: 0.28,
+    metalness: 0.78,
   });
   handles.materials.push(hiltMat, wrapMat, goldMat, bladeMat, spineMat);
 
@@ -83,7 +103,13 @@ export function createKatanaMeshGroup(
 
   // Tinh thể băng phát sáng trên chắn kiếm & sống kiếm cho phiên bản Katana Băng
   if (isIce) {
-    const frostMat = new THREE.MeshBasicMaterial({ color: '#e0f2fe' });
+    const frostMat = new THREE.MeshStandardMaterial({
+      color: '#e0f2fe',
+      emissive: '#38bdf8',
+      emissiveIntensity: 1.25,
+      roughness: 0.12,
+      metalness: 0.2,
+    });
     handles.materials.push(frostMat);
 
     const crystalGeo = new THREE.OctahedronGeometry(0.036, 0);
