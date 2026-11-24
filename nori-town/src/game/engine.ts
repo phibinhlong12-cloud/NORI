@@ -392,8 +392,10 @@ export class VoxelEngine {
     this.world = new WorldManager(this.scene, this.solidMaterial, maxAnisotropy);
     this.player = new FirstPersonPlayer(this.camera, this.world);
     this.player.spawnAtSafeHeight(0.5, 0.5);
-    this.updateSunShadowTarget();
+    this.world.prewarmAround(-46, 12, Math.min(3, this.renderDistance));
     this.world.prewarmAround(this.player.position.x, this.player.position.z, this.renderDistance);
+    this.applyTitleMeadowCamera(performance.now());
+    this.updateSunShadowTarget(this.camera.position.x, this.camera.position.y, this.camera.position.z);
     this.audio = new VoxelAudio();
     this.katanaView = new KatanaViewModel(this.scene);
     this.shieldView = new ShieldViewModel(this.scene);
@@ -432,6 +434,13 @@ export class VoxelEngine {
   enterGame(): void {
     this.hasStarted = true;
     this.isPlaying = true;
+    this.player.updateCameraTransform();
+    this.world.updateChunksAroundPlayer(
+      this.player.position.x,
+      this.player.position.z,
+      this.renderDistance,
+    );
+    this.updateSunShadowTarget();
     this.callbacks.onPlayingChange(true, true);
 
     const canvas = this.renderer.domElement;
@@ -560,16 +569,29 @@ export class VoxelEngine {
     this.skyDome.scale.setScalar(Math.max(105, distance * CHUNK_SIZE * 1.2));
   }
 
-  private updateSunShadowTarget(): void {
+  private applyTitleMeadowCamera(nowMs: number): void {
+    const t = nowMs * 0.00014;
+    const camX = -46 + Math.sin(t) * 5.5;
+    const camZ = 12 + Math.cos(t * 0.75) * 4.5;
+    const groundY = this.world.getGroundHeight(camX, camZ);
+    const camY = Math.max(groundY + 2.8, 6.2);
+    this.camera.position.set(camX, camY, camZ);
+    this.camera.lookAt(camX - 24, camY + 1.9, camZ + 8);
+  }
+
+  private updateSunShadowTarget(
+    targetX = this.player.position.x,
+    targetY = this.player.position.y,
+    targetZ = this.player.position.z,
+  ): void {
     const texelWorldSize = (this.sunShadowHalfExtent * 2) / this.sunShadowMapSize;
-    const snapX = Math.round(this.player.position.x / texelWorldSize) * texelWorldSize;
-    const snapZ = Math.round(this.player.position.z / texelWorldSize) * texelWorldSize;
-    const py = this.player.position.y;
-    this.sunLight.target.position.set(snapX, py, snapZ);
+    const snapX = Math.round(targetX / texelWorldSize) * texelWorldSize;
+    const snapZ = Math.round(targetZ / texelWorldSize) * texelWorldSize;
+    this.sunLight.target.position.set(snapX, targetY, snapZ);
     this.sunLight.target.updateMatrixWorld();
     this.sunLight.position.set(
       snapX + this.sunOffset.x,
-      py + this.sunOffset.y,
+      targetY + this.sunOffset.y,
       snapZ + this.sunOffset.z,
     );
   }
@@ -1671,33 +1693,42 @@ export class VoxelEngine {
         },
       },
     );
-    this.world.updateCarried(this.camera);
-    const viewMotion = this.player.getViewmodelMotion();
-    this.katanaView.update(
-      this.camera,
-      clampedDt,
-      this.holdingKatana && !this.world.isCarryingLog(),
-      viewMotion,
-    );
-    this.shieldView.update(
-      this.camera,
-      clampedDt,
-      this.world.isShopItemOwned('shield'),
-      this.shieldRaised,
-      viewMotion,
-    );
-    this.potionView.update(
-      this.camera,
-      clampedDt,
-      this.holdingPotionSlot !== null && !this.holdingKatana && !this.world.isCarryingLog(),
-      viewMotion,
-    );
+    if (!this.hasStarted && !this.isPlaying) {
+      this.applyTitleMeadowCamera(now);
+      this.world.updateChunksAroundPlayer(
+        this.camera.position.x,
+        this.camera.position.z,
+        this.renderDistance,
+      );
+    } else {
+      this.world.updateCarried(this.camera);
+      const viewMotion = this.player.getViewmodelMotion();
+      this.katanaView.update(
+        this.camera,
+        clampedDt,
+        this.holdingKatana && !this.world.isCarryingLog(),
+        viewMotion,
+      );
+      this.shieldView.update(
+        this.camera,
+        clampedDt,
+        this.world.isShopItemOwned('shield'),
+        this.shieldRaised,
+        viewMotion,
+      );
+      this.potionView.update(
+        this.camera,
+        clampedDt,
+        this.holdingPotionSlot !== null && !this.holdingKatana && !this.world.isCarryingLog(),
+        viewMotion,
+      );
 
-    this.world.updateChunksAroundPlayer(
-      this.player.position.x,
-      this.player.position.z,
-      this.renderDistance,
-    );
+      this.world.updateChunksAroundPlayer(
+        this.player.position.x,
+        this.player.position.z,
+        this.renderDistance,
+      );
+    }
 
     this.camera.getWorldDirection(this.rayDir);
     const dropHit = this.world.raycastDroppedIceKatana(this.camera.position, this.rayDir, 6.5);
@@ -1900,7 +1931,15 @@ export class VoxelEngine {
       this.emitStats();
     }
 
-    this.updateSunShadowTarget();
+    if (!this.hasStarted && !this.isPlaying) {
+      this.updateSunShadowTarget(
+        this.camera.position.x,
+        this.camera.position.y,
+        this.camera.position.z,
+      );
+    } else {
+      this.updateSunShadowTarget();
+    }
     this.skyDome.position.copy(this.camera.position);
 
     if (!this.isContextLost) {

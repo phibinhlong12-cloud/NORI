@@ -1,0 +1,1216 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KATANA: NEON OVERDRIVE | 刀・極彩</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Orbitron, Rajdhani, Noto Serif JP & Space Grotesk -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@700;900&family=Orbitron:wght@600;800;900&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --primary: #ff007f;
+            --secondary: #00f3ff;
+            --accent: #ffe600;
+            --bg-glow: rgba(255, 0, 127, 0.35);
+            --bg-glow-2: rgba(0, 243, 255, 0.3);
+            --blade-grad-1: #ff007f;
+            --blade-grad-2: #00f3ff;
+            --blade-grad-3: #ffe600;
+        }
+
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #05030a;
+            font-family: 'Rajdhani', sans-serif;
+            color: #ffffff;
+        }
+
+        .font-cyber {
+            font-family: 'Orbitron', sans-serif;
+        }
+
+        .font-jp {
+            font-family: 'Noto Serif JP', serif;
+        }
+
+        /* Nền Cyberpunk rực rỡ động */
+        .cyber-bg {
+            position: fixed;
+            inset: 0;
+            background: 
+                radial-gradient(circle at 20% 20%, var(--bg-glow) 0%, transparent 45%),
+                radial-gradient(circle at 80% 80%, var(--bg-glow-2) 0%, transparent 45%),
+                radial-gradient(circle at 50% 50%, #140826 0%, #040208 100%);
+            transition: background 0.6s ease;
+            z-index: 0;
+        }
+
+        /* Lưới tọa độ 3D Cyberpunk phía dưới */
+        .cyber-grid {
+            position: fixed;
+            bottom: -20%;
+            left: -50%;
+            width: 200%;
+            height: 75%;
+            background-image: 
+                linear-gradient(to right, rgba(255, 255, 255, 0.08) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(255, 255, 255, 0.08) 1px, transparent 1px);
+            background-size: 60px 60px;
+            transform: perspective(500px) rotateX(65deg);
+            animation: gridMove 8s linear infinite;
+            mask-image: linear-gradient(to top, rgba(0,0,0,1) 10%, transparent 90%);
+            -webkit-mask-image: linear-gradient(to top, rgba(0,0,0,1) 10%, transparent 90%);
+            z-index: 1;
+            pointer-events: none;
+        }
+
+        @keyframes gridMove {
+            0% { background-position: 0 0; }
+            100% { background-position: 0 60px; }
+        }
+
+        /* Scanlines màn hình retro-futuristic */
+        .scanlines {
+            position: fixed;
+            inset: 0;
+            background: linear-gradient(
+                rgba(18, 16, 16, 0) 50%, 
+                rgba(0, 0, 0, 0.25) 50%
+            );
+            background-size: 100% 4px;
+            z-index: 40;
+            pointer-events: none;
+            opacity: 0.45;
+        }
+
+        /* Hiệu ứng Glitch & Neon cho Tiêu đề Game */
+        .game-title {
+            position: relative;
+            text-shadow: 
+                0 0 10px var(--primary),
+                0 0 25px var(--primary),
+                0 0 50px var(--secondary);
+            animation: titlePulse 3s infinite alternate;
+        }
+
+        .game-title::before,
+        .game-title::after {
+            content: attr(data-text);
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            opacity: 0.8;
+        }
+
+        .game-title::before {
+            color: var(--secondary);
+            z-index: -1;
+            animation: glitch-1 2.5s infinite linear alternate-reverse;
+        }
+
+        .game-title::after {
+            color: var(--accent);
+            z-index: -2;
+            animation: glitch-2 3.2s infinite linear alternate-reverse;
+        }
+
+        @keyframes glitch-1 {
+            0%, 92% { transform: translate(0); clip-path: inset(0 0 0 0); }
+            93% { transform: translate(-4px, 2px); clip-path: inset(15% 0 60% 0); }
+            95% { transform: translate(4px, -2px); clip-path: inset(45% 0 20% 0); }
+            97% { transform: translate(-2px, 1px); clip-path: inset(70% 0 5% 0); }
+            100% { transform: translate(0); clip-path: inset(0 0 0 0); }
+        }
+
+        @keyframes glitch-2 {
+            0%, 94% { transform: translate(0); clip-path: inset(0 0 0 0); }
+            95% { transform: translate(3px, -1px); clip-path: inset(10% 0 70% 0); }
+            98% { transform: translate(-3px, 2px); clip-path: inset(50% 0 15% 0); }
+            100% { transform: translate(0); clip-path: inset(0 0 0 0); }
+        }
+
+        @keyframes titlePulse {
+            0% { filter: brightness(1) drop-shadow(0 0 12px var(--primary)); }
+            100% { filter: brightness(1.25) drop-shadow(0 0 25px var(--secondary)); }
+        }
+
+        /* Hiệu ứng thanh Katana bay lơ lửng */
+        .katana-float {
+            animation: katanaHover 4s ease-in-out infinite;
+            filter: drop-shadow(0 0 22px var(--primary)) drop-shadow(0 0 45px var(--secondary));
+            transition: filter 0.5s ease, transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        @keyframes katanaHover {
+            0%, 100% { transform: translateY(0px) rotate(-14deg); }
+            50% { transform: translateY(-16px) rotate(-11deg); }
+        }
+
+        /* Vòng tròn ma pháp / công nghệ sau thanh kiếm */
+        .magic-ring {
+            animation: spinRing 24s linear infinite;
+            border: 2px dashed var(--secondary);
+            box-shadow: 0 0 30px var(--bg-glow), inset 0 0 30px var(--bg-glow-2);
+        }
+
+        .magic-ring-reverse {
+            animation: spinRingReverse 18s linear infinite;
+            border: 1px solid var(--primary);
+        }
+
+        @keyframes spinRing {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        @keyframes spinRingReverse {
+            from { transform: rotate(360deg); }
+            to { transform: rotate(0deg); }
+        }
+
+        /* Nút bấm Menu phong cách Katana Slash */
+        .katana-btn {
+            position: relative;
+            background: rgba(15, 10, 28, 0.72);
+            backdrop-filter: blur(10px);
+            border-left: 4px solid var(--primary);
+            border-top: 1px solid rgba(255, 255, 255, 0.12);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+            border-right: 1px solid rgba(255, 255, 255, 0.08);
+            clip-path: polygon(0 0, 94% 0, 100% 32%, 100% 100%, 6% 100%, 0 68%);
+            transition: all 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+            overflow: hidden;
+        }
+
+        .katana-btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -120%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, var(--primary), var(--secondary), transparent);
+            opacity: 0.35;
+            transform: skewX(-25deg);
+            transition: left 0.45s ease;
+            z-index: 0;
+        }
+
+        /* Vệt chém ngang sáng rực khi hover nút */
+        .katana-btn::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: -10%;
+            width: 0%;
+            height: 2px;
+            background: #ffffff;
+            box-shadow: 0 0 12px #fff, 0 0 24px var(--secondary);
+            transform: translateY(-50%);
+            transition: width 0.25s ease-out;
+            z-index: 2;
+        }
+
+        .katana-btn:hover {
+            transform: translateX(14px) scale(1.03);
+            border-left-color: var(--secondary);
+            box-shadow: 0 0 25px var(--bg-glow), inset 0 0 15px var(--bg-glow-2);
+            background: rgba(25, 16, 48, 0.9);
+        }
+
+        .katana-btn:hover::before {
+            left: 120%;
+        }
+
+        .katana-btn:hover::after {
+            width: 120%;
+            opacity: 0;
+            transition: width 0.25s ease-out, opacity 0.35s ease-out 0.1s;
+        }
+
+        .katana-btn:active {
+            transform: translateX(8px) scale(0.98);
+        }
+
+        /* Hiệu ứng chớp màn hình khi tung tuyệt kỹ / nhấp chuột */
+        @keyframes screenFlash {
+            0% { opacity: 0.55; }
+            100% { opacity: 0; }
+        }
+        .flash-active {
+            animation: screenFlash 0.35s ease-out forwards;
+        }
+
+        /* Nút chọn nguyên tố */
+        .element-pill {
+            transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        .element-pill.active {
+            transform: scale(1.12);
+            box-shadow: 0 0 20px var(--primary), 0 0 10px #fff;
+            border-color: #ffffff;
+        }
+
+        /* Modal Glassmorphism */
+        .cyber-modal {
+            background: rgba(10, 6, 22, 0.88);
+            backdrop-filter: blur(18px);
+            border: 1px solid var(--secondary);
+            box-shadow: 0 0 40px var(--bg-glow), inset 0 0 25px rgba(0, 243, 255, 0.15);
+            clip-path: polygon(0 16px, 16px 0, 100% 0, 100% calc(100% - 16px), calc(100% - 16px) 100%, 0 100%);
+        }
+
+        /* Rainbow Animation cho chế độ Cầu Vồng */
+        @keyframes rainbowHue {
+            0% { filter: hue-rotate(0deg); }
+            100% { filter: hue-rotate(360deg); }
+        }
+        .rainbow-mode-active {
+            animation: rainbowHue 4s linear infinite;
+        }
+    </style>
+</head>
+<body class="relative select-none">
+
+    <!-- 1. Lớp nền Neon động -->
+    <div id="cyberBg" class="cyber-bg"></div>
+    <div class="cyber-grid"></div>
+    <div class="scanlines"></div>
+
+    <!-- Lớp chớp sáng khi chém mạnh -->
+    <div id="flashOverlay" class="fixed inset-0 bg-white opacity-0 pointer-events-none z-30"></div>
+
+    <!-- 2. Canvas Hệ thống Hạt (Hoa anh đào phát sáng, tia sét, vệt chém chuột & tia lửa) -->
+    <canvas id="fxCanvas" class="fixed inset-0 w-full h-full z-10 pointer-events-none"></canvas>
+
+    <!-- 3. Khung Giao Diện Chính (UI Overlay) -->
+    <div id="mainContainer" class="relative z-20 w-full h-full flex flex-col justify-between p-4 sm:p-8 lg:p-10 pointer-events-none">
+        
+        <!-- THANH TRÊN (TOP BAR): Thông tin phiên bản, Âm thanh & Hướng dẫn tương tác -->
+        <header class="flex flex-wrap items-center justify-between gap-4 pointer-events-auto">
+            <!-- Huy hiệu hệ thống -->
+            <div class="flex items-center gap-3 bg-black/50 backdrop-blur-md px-4 py-2 rounded-full border border-white/15 shadow-lg">
+                <span class="w-2.5 h-2.5 rounded-full animate-ping" style="background-color: var(--secondary);"></span>
+                <span class="font-cyber text-xs sm:text-sm tracking-widest text-white/90">VER 4.2 // <span style="color: var(--secondary);">OVERDRIVE</span></span>
+                <span class="hidden md:inline text-white/30">|</span>
+                <span class="hidden md:inline text-xs text-pink-300/90 font-semibold tracking-wider">⚡ DI CHUỘT HOẶC CLICK ĐỂ CHÉM KIẾM</span>
+            </div>
+
+            <!-- Bộ điều khiển nhanh: Âm thanh & Tuyệt kỹ -->
+            <div class="flex items-center gap-3">
+                <button id="unleashBtn" class="px-4 py-2 rounded-full font-cyber text-xs sm:text-sm font-bold tracking-wider uppercase border border-white/30 bg-white/10 hover:bg-white/25 backdrop-blur-md transition-all flex items-center gap-2 shadow-lg cursor-pointer active:scale-95" style="box-shadow: 0 0 15px var(--bg-glow);">
+                    <span>⚡</span>
+                    <span class="hidden sm:inline">KHAI MỞ CỰC HẠN</span>
+                </button>
+
+                <button id="soundToggleBtn" class="px-4 py-2 rounded-full font-cyber text-xs sm:text-sm font-bold tracking-wider uppercase border border-white/25 bg-black/60 hover:bg-white/15 backdrop-blur-md transition-all flex items-center gap-2 cursor-pointer">
+                    <span id="soundIcon">🔇</span>
+                    <span id="soundText">ÂM THANH: TẮT</span>
+                </button>
+            </div>
+        </header>
+
+        <!-- KHU VỰC TRUNG TÂM: Tiêu đề Game + Thanh Katana Phát Sáng + Menu Chính -->
+        <main class="relative flex-1 flex flex-col lg:flex-row items-center justify-between my-auto gap-6 lg:gap-4 max-w-7xl w-full mx-auto">
+            
+            <!-- CỘT TRÁI: TIÊU ĐỀ & MENU CHÍNH -->
+            <div class="w-full lg:w-5/12 flex flex-col items-center lg:items-start text-center lg:text-left z-20 pointer-events-auto">
+                <!-- Chữ Nhật phụ đề -->
+                <div class="flex items-center gap-3 mb-2">
+                    <span class="px-2.5 py-0.5 text-xs font-cyber font-bold tracking-widest uppercase rounded bg-white/10 border border-white/20" style="color: var(--accent);">
+                        CYBER SAMURAI ACTION
+                    </span>
+                    <span class="font-jp text-lg sm:text-xl font-black tracking-[0.25em] text-white/90 drop-shadow-[0_0_10px_rgba(255,255,255,0.8)]">
+                        刀・極彩
+                    </span>
+                </div>
+
+                <!-- Tiêu đề chính siêu ngầu -->
+                <h1 class="game-title font-cyber text-5xl sm:text-6xl xl:text-7xl font-black tracking-tighter leading-none uppercase italic mb-2" data-text="KATANA">
+                    KATANA
+                </h1>
+                <div class="font-cyber text-xl sm:text-2xl xl:text-3xl font-extrabold tracking-[0.22em] uppercase mb-6 bg-clip-text text-transparent bg-gradient-to-r from-white via-cyan-200 to-pink-400 drop-shadow-[0_0_12px_rgba(0,243,255,0.6)]">
+                    NEON OVERDRIVE
+                </div>
+
+                <!-- Hệ thống Menu Game chuẩn -->
+                <nav class="w-full max-w-sm flex flex-col gap-3.5">
+                    <button onclick="handleMenuClick('start')" class="katana-btn group w-full px-6 py-3.5 text-left flex items-center justify-between cursor-pointer">
+                        <div class="relative z-10">
+                            <div class="font-cyber text-lg sm:text-xl font-extrabold tracking-wider text-white group-hover:text-cyan-200 transition-colors">
+                                BẮT ĐẦU CHƠI
+                            </div>
+                            <div class="text-xs font-semibold tracking-[0.2em] text-white/60 uppercase">START GAME // CHẾ ĐỘ CỐT TRUYỆN</div>
+                        </div>
+                        <span class="relative z-10 font-jp text-xl font-bold opacity-60 group-hover:opacity-100 group-hover:translate-x-1 transition-all" style="color: var(--secondary);">斬撃</span>
+                    </button>
+
+                    <button onclick="handleMenuClick('armory')" class="katana-btn group w-full px-6 py-3 text-left flex items-center justify-between cursor-pointer">
+                        <div class="relative z-10">
+                            <div class="font-cyber text-base sm:text-lg font-bold tracking-wider text-white group-hover:text-pink-200 transition-colors">
+                                KHO VŨ KHÍ
+                            </div>
+                            <div class="text-xs font-semibold tracking-[0.2em] text-white/60 uppercase">ARMORY // RÈN & TÙY BIẾN KIẾM</div>
+                        </div>
+                        <span class="relative z-10 font-jp text-lg font-bold opacity-60 group-hover:opacity-100 transition-all" style="color: var(--primary);">名刀</span>
+                    </button>
+
+                    <button onclick="handleMenuClick('skills')" class="katana-btn group w-full px-6 py-3 text-left flex items-center justify-between cursor-pointer">
+                        <div class="relative z-10">
+                            <div class="font-cyber text-base sm:text-lg font-bold tracking-wider text-white group-hover:text-yellow-200 transition-colors">
+                                KỸ NĂNG
+                            </div>
+                            <div class="text-xs font-semibold tracking-[0.2em] text-white/60 uppercase">SKILLS // TUYỆT KỸ KIẾM ĐẠO</div>
+                        </div>
+                        <span class="relative z-10 font-jp text-lg font-bold opacity-60 group-hover:opacity-100 transition-all" style="color: var(--accent);">奥義</span>
+                    </button>
+
+                    <button onclick="handleMenuClick('settings')" class="katana-btn group w-full px-6 py-3 text-left flex items-center justify-between cursor-pointer">
+                        <div class="relative z-10">
+                            <div class="font-cyber text-base sm:text-lg font-bold tracking-wider text-white group-hover:text-purple-200 transition-colors">
+                                CÀI ĐẶT
+                            </div>
+                            <div class="text-xs font-semibold tracking-[0.2em] text-white/60 uppercase">SETTINGS // ĐỒ HỌA & ĐIỀU KHIỂN</div>
+                        </div>
+                        <span class="relative z-10 font-jp text-lg font-bold opacity-60 group-hover:opacity-100 transition-all text-white/80">設定</span>
+                    </button>
+                </nav>
+            </div>
+
+            <!-- CỘT PHẢI / TRUNG TÂM: THANH KATANA PHÁT SÁNG SIÊU CHI TIẾT -->
+            <div class="relative w-full lg:w-7/12 h-64 sm:h-80 lg:h-[480px] flex items-center justify-center pointer-events-none">
+                
+                <!-- Vòng hào quang năng lượng đa lớp phía sau -->
+                <div class="magic-ring absolute w-64 h-64 sm:w-80 sm:h-80 lg:w-[420px] lg:h-[420px] rounded-full opacity-55"></div>
+                <div class="magic-ring-reverse absolute w-52 h-52 sm:w-64 sm:h-64 lg:w-[340px] lg:h-[340px] rounded-full opacity-70"></div>
+                
+                <!-- Chữ Kanji khổng lồ phát sáng mờ phía sau kiếm -->
+                <div id="bgKanji" class="font-jp font-black text-[150px] sm:text-[210px] lg:text-[270px] select-none opacity-20 transition-all duration-500" style="color: var(--primary); text-shadow: 0 0 60px var(--primary);">
+                    雷
+                </div>
+
+                <!-- Mô hình SVG Thanh Katana Cyberpunk Neon sắc nét -->
+                <div id="katanaWrapper" class="katana-float absolute w-[115%] max-w-[780px] flex items-center justify-center">
+                    <svg id="katanaSvg" viewBox="0 0 900 220" class="w-full h-auto overflow-visible">
+                        <defs>
+                            <!-- Gradient lưỡi kiếm chuyển màu rực rỡ -->
+                            <linearGradient id="bladeEnergyGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                                <stop offset="0%" stop-color="#ffffff" />
+                                <stop offset="25%" stop-color="var(--secondary)" />
+                                <stop offset="65%" stop-color="var(--primary)" />
+                                <stop offset="100%" stop-color="var(--accent)" />
+                            </linearGradient>
+
+                            <!-- Gradient sống kiếm kim loại tối -->
+                            <linearGradient id="bladeSpineGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                                <stop offset="0%" stop-color="#1a162b" />
+                                <stop offset="50%" stop-color="#2d264a" />
+                                <stop offset="100%" stop-color="#0f0c1d" />
+                            </linearGradient>
+
+                            <!-- Bộ lọc phát sáng Neon mạnh -->
+                            <filter id="neonGlow" x="-30%" y="-50%" width="160%" height="200%">
+                                <feGaussianBlur stdDeviation="6" result="blur1" />
+                                <feGaussianBlur stdDeviation="14" result="blur2" />
+                                <feMerge>
+                                    <feMergeNode in="blur2" />
+                                    <feMergeNode in="blur1" />
+                                    <feMergeNode in="SourceGraphic" />
+                                </feMerge>
+                            </filter>
+                        </defs>
+
+                        <!-- Luồng hào quang bao quanh toàn thanh kiếm -->
+                        <path d="M 245 103 Q 560 96 865 76 L 835 104 Q 560 116 245 116 Z" 
+                              fill="url(#bladeEnergyGrad)" opacity="0.45" filter="url(#neonGlow)" />
+
+                        <!-- Lưỡi kiếm chính (Blade) -->
+                        <!-- Sống kiếm (Mune) -->
+                        <path d="M 245 102 Q 560 95 868 74 L 855 86 Q 560 103 245 108 Z" 
+                              fill="url(#bladeSpineGrad)" stroke="rgba(255,255,255,0.35)" stroke-width="0.8" />
+                        
+                        <!-- Lưỡi cắt phát sáng Neon (Ha / Hamon) -->
+                        <path d="M 245 108 Q 560 103 855 86 L 836 102 Q 560 115 245 115 Z" 
+                              fill="url(#bladeEnergyGrad)" filter="url(#neonGlow)" />
+
+                        <!-- Đường mạch năng lượng chạy dọc thân kiếm -->
+                        <path d="M 260 105 Q 550 100 820 87" 
+                              fill="none" stroke="#ffffff" stroke-width="1.8" stroke-dasharray="18 6 4 6" opacity="0.95" />
+
+                        <!-- Khâu nối cổ kiếm (Habaki) -->
+                        <polygon points="228,99 248,98 248,117 228,116" fill="var(--accent)" stroke="#fff" stroke-width="1" />
+                        <line x1="234" y1="99" x2="234" y2="116" stroke="#000" stroke-width="1.5" />
+                        <line x1="241" y1="99" x2="241" y2="116" stroke="#000" stroke-width="1.5" />
+
+                        <!-- Chắn kiếm (Tsuba) thiết kế Cyberpunk đa giác phát sáng -->
+                        <g filter="url(#neonGlow)">
+                            <polygon points="216,74 228,82 228,134 216,142 208,130 208,86" 
+                                     fill="#120d24" stroke="var(--secondary)" stroke-width="2.5" />
+                            <circle cx="218" cy="108" r="5" fill="var(--primary)" />
+                        </g>
+
+                        <!-- Tay cầm (Tsuka) -->
+                        <rect x="42" y="99" width="166" height="18" rx="3" fill="#0d091a" stroke="rgba(255,255,255,0.25)" stroke-width="1" />
+                        
+                        <!-- Dây quấn tay cầm (Tsuka-ito) hình thoi neon -->
+                        <g fill="var(--primary)" opacity="0.9">
+                            <polygon points="58,99 68,108 58,117 48,108" />
+                            <polygon points="80,99 90,108 80,117 70,108" />
+                            <polygon points="102,99 112,108 102,117 92,108" />
+                            <polygon points="124,99 134,108 124,117 114,108" />
+                            <polygon points="146,99 156,108 146,117 136,108" />
+                            <polygon points="168,99 178,108 168,117 158,108" />
+                            <polygon points="190,99 200,108 190,117 180,108" />
+                        </g>
+
+                        <!-- Đuôi kiếm (Kashira) phát sáng -->
+                        <polygon points="26,97 42,99 42,117 26,119 20,108" fill="var(--secondary)" filter="url(#neonGlow)" />
+                    </svg>
+                </div>
+
+                <!-- Nhãn thông số thanh kiếm đang trang bị -->
+                <div class="absolute bottom-2 sm:bottom-6 right-2 sm:right-8 bg-black/65 backdrop-blur-md border border-white/15 px-4 py-2.5 rounded-xl text-right">
+                    <div class="text-[10px] font-cyber tracking-widest text-white/50 uppercase">VŨ KHÍ ĐANG TRANG BỊ</div>
+                    <div id="weaponNameDisplay" class="font-cyber text-sm sm:text-base font-bold tracking-wider" style="color: var(--secondary);">
+                        RAI-JIN // LÔI THẦN KIẾM
+                    </div>
+                    <div class="flex items-center justify-end gap-2 mt-1">
+                        <span class="text-[11px] text-white/70">CÔNG PHÁ:</span>
+                        <div class="w-24 h-1.5 bg-white/15 rounded-full overflow-hidden">
+                            <div id="powerBar" class="h-full rounded-full transition-all duration-500" style="width: 92%; background: linear-gradient(90deg, var(--primary), var(--secondary));"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- THANH DƯỚI (BOTTOM BAR): Bộ chọn Hệ Nguyên Tố đổi màu toàn giao diện -->
+        <footer class="flex flex-col sm:flex-row items-center justify-between gap-4 pt-2 pointer-events-auto">
+            
+            <!-- Bộ chọn Nguyên tố / Màu sắc Katana -->
+            <div class="flex flex-wrap items-center justify-center gap-2.5 bg-black/60 backdrop-blur-xl px-4 py-2.5 rounded-2xl border border-white/15 shadow-2xl">
+                <span class="text-xs font-cyber font-bold tracking-widest text-white/70 mr-1 uppercase hidden md:inline">
+                    HỆ NGUYÊN TỐ:
+                </span>
+
+                <!-- Hệ Lôi -->
+                <button onclick="setElementTheme('lightning')" data-theme="lightning" class="element-pill active px-3.5 py-1.5 rounded-xl border border-cyan-400/60 bg-gradient-to-r from-purple-900/80 to-cyan-900/80 text-xs sm:text-sm font-bold flex items-center gap-1.5 cursor-pointer">
+                    <span class="w-3 h-3 rounded-full bg-cyan-400 shadow-[0_0_8px_#00f3ff]"></span>
+                    <span>HỆ LÔI</span>
+                </button>
+
+                <!-- Hệ Hỏa -->
+                <button onclick="setElementTheme('fire')" data-theme="fire" class="element-pill px-3.5 py-1.5 rounded-xl border border-white/15 bg-white/5 hover:bg-white/15 text-xs sm:text-sm font-bold flex items-center gap-1.5 cursor-pointer">
+                    <span class="w-3 h-3 rounded-full bg-orange-500 shadow-[0_0_8px_#ff5500]"></span>
+                    <span>HỆ HỎA</span>
+                </button>
+
+                <!-- Hệ Anh Đào -->
+                <button onclick="setElementTheme('sakura')" data-theme="sakura" class="element-pill px-3.5 py-1.5 rounded-xl border border-white/15 bg-white/5 hover:bg-white/15 text-xs sm:text-sm font-bold flex items-center gap-1.5 cursor-pointer">
+                    <span class="w-3 h-3 rounded-full bg-pink-400 shadow-[0_0_8px_#ff66b2]"></span>
+                    <span>ANH ĐÀO</span>
+                </button>
+
+                <!-- Hệ Cầu Vồng -->
+                <button onclick="setElementTheme('rainbow')" data-theme="rainbow" class="element-pill px-3.5 py-1.5 rounded-xl border border-white/15 bg-gradient-to-r from-pink-600/40 via-yellow-500/40 to-cyan-500/40 hover:brightness-125 text-xs sm:text-sm font-bold flex items-center gap-1.5 cursor-pointer">
+                    <span class="w-3 h-3 rounded-full bg-gradient-to-tr from-pink-500 via-yellow-300 to-cyan-400"></span>
+                    <span>CẦU VỒNG RGB</span>
+                </button>
+            </div>
+
+            <!-- Số combo chém tương tác trên màn hình -->
+            <div class="flex items-center gap-4 bg-black/50 backdrop-blur-md px-5 py-2 rounded-2xl border border-white/10">
+                <div class="text-right">
+                    <div class="text-[10px] font-cyber tracking-widest text-white/50">NHÁT CHÉM THỬ NGHIỆM</div>
+                    <div class="font-cyber text-lg sm:text-xl font-black" style="color: var(--accent);">
+                        <span id="slashCounter">0</span> <span class="text-xs font-normal text-white/70">SLASHES</span>
+                    </div>
+                </div>
+                <div class="h-8 w-[1px] bg-white/15"></div>
+                <div class="text-xs text-white/60 font-medium">
+                    FPS: <span id="fpsCounter" class="text-emerald-400 font-cyber font-bold">60</span>
+                </div>
+            </div>
+        </footer>
+    </div>
+
+    <!-- 4. HỘP THOẠI MODAL TƯƠNG TÁC MENU (Khi bấm vào các nút Menu) -->
+    <div id="menuModal" class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-black/75 backdrop-blur-md">
+        <div class="cyber-modal w-full max-w-lg p-6 sm:p-8 relative text-white transform transition-all scale-95 opacity-0" id="modalContent">
+            <div class="flex items-center justify-between border-b border-white/15 pb-4 mb-5">
+                <div>
+                    <span id="modalSubtitle" class="text-xs font-cyber tracking-widest uppercase" style="color: var(--secondary);">SYSTEM OVERRIDE</span>
+                    <h2 id="modalTitle" class="font-cyber text-2xl sm:text-3xl font-black tracking-wide uppercase mt-0.5">TIÊU ĐỀ</h2>
+                </div>
+                <button onclick="closeModal()" class="w-10 h-10 rounded-xl bg-white/10 hover:bg-pink-600/80 flex items-center justify-center font-cyber font-bold text-lg transition-colors cursor-pointer">
+                    ✕
+                </button>
+            </div>
+
+            <div id="modalBody" class="space-y-4 text-sm sm:text-base text-white/85 leading-relaxed">
+                <!-- Nội dung động được chèn bằng JS -->
+            </div>
+
+            <div class="mt-7 flex justify-end gap-3">
+                <button onclick="closeModal()" class="px-5 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 font-cyber text-xs sm:text-sm font-bold tracking-wider uppercase transition-all cursor-pointer">
+                    ĐÓNG
+                </button>
+                <button id="modalActionBtn" onclick="triggerEpicSlash(); closeModal();" class="px-6 py-2.5 rounded-xl font-cyber text-xs sm:text-sm font-bold tracking-wider uppercase text-black transition-all cursor-pointer shadow-lg" style="background: linear-gradient(90deg, var(--secondary), var(--primary)); color: #fff;">
+                    XÁC NHẬN & VUNG KIẾM
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        /**
+         * =========================================================================
+         * 1. CẤU HÌNH HỆ NGUYÊN TỐ & BẢNG MÀU NEON (ELEMENT THEMES)
+         * =========================================================================
+         */
+        const THEMES = {
+            lightning: {
+                name: 'RAI-JIN // LÔI THẦN KIẾM',
+                kanji: '雷',
+                primary: '#ff007f',      // Hồng Magenta rực
+                secondary: '#00f3ff',    // Xanh Cyan điện
+                accent: '#b829ff',       // Tím điện
+                bgGlow: 'rgba(184, 41, 255, 0.38)',
+                bgGlow2: 'rgba(0, 243, 255, 0.32)',
+                particles: ['#00f3ff', '#ff007f', '#b829ff', '#ffffff'],
+                power: '94%',
+                rainbow: false
+            },
+            fire: {
+                name: 'KAGU-TSUCHI // HỎA NGỤC ĐAO',
+                kanji: '炎',
+                primary: '#ff2a00',      // Đỏ rực
+                secondary: '#ffae00',    // Vàng kim rực lửa
+                accent: '#ffe600',       // Vàng chanh sáng
+                bgGlow: 'rgba(255, 42, 0, 0.42)',
+                bgGlow2: 'rgba(255, 174, 0, 0.32)',
+                particles: ['#ff2a00', '#ffae00', '#ffe600', '#ff7700'],
+                power: '98%',
+                rainbow: false
+            },
+            sakura: {
+                name: 'SENBON-ZAKURA // THIÊN ANH ĐÀO',
+                kanji: '桜',
+                primary: '#ff4da6',      // Hồng hoa anh đào neon
+                secondary: '#ffd1eb',    // Trắng hồng tinh khiết
+                accent: '#ff0066',       // Đỏ hồng đậm
+                bgGlow: 'rgba(255, 77, 166, 0.42)',
+                bgGlow2: 'rgba(255, 209, 235, 0.28)',
+                particles: ['#ff4da6', '#ff99cc', '#ffffff', '#ff1a8c'],
+                power: '90%',
+                rainbow: false
+            },
+            rainbow: {
+                name: 'GOKUSAI // CỰC SẮC VÔ CỰC',
+                kanji: '極',
+                primary: '#ff007f',
+                secondary: '#00f3ff',
+                accent: '#ffe600',
+                bgGlow: 'rgba(255, 0, 127, 0.4)',
+                bgGlow2: 'rgba(0, 243, 255, 0.4)',
+                particles: ['#ff0055', '#ffaa00', '#00ff88', '#00f3ff', '#aa00ff', '#ffffff'],
+                power: '100%',
+                rainbow: true
+            }
+        };
+
+        let currentThemeKey = 'lightning';
+        let currentTheme = THEMES.lightning;
+        let slashCount = 0;
+
+        /**
+         * Hàm đổi hệ nguyên tố ngay lập tức cho toàn bộ giao diện
+         */
+        function setElementTheme(themeKey) {
+            currentThemeKey = themeKey;
+            currentTheme = THEMES[themeKey];
+            const root = document.documentElement;
+
+            root.style.setProperty('--primary', currentTheme.primary);
+            root.style.setProperty('--secondary', currentTheme.secondary);
+            root.style.setProperty('--accent', currentTheme.accent);
+            root.style.setProperty('--bg-glow', currentTheme.bgGlow);
+            root.style.setProperty('--bg-glow-2', currentTheme.bgGlow2);
+
+            // Cập nhật chữ Kanji nền & tên vũ khí
+            document.getElementById('bgKanji').textContent = currentTheme.kanji;
+            document.getElementById('weaponNameDisplay').textContent = currentTheme.name;
+            document.getElementById('powerBar').style.width = currentTheme.power;
+
+            // Kích hoạt hoặc tắt hiệu ứng xoay sắc cầu vồng
+            const bodyEl = document.body;
+            if (currentTheme.rainbow) {
+                bodyEl.classList.add('rainbow-mode-active');
+            } else {
+                bodyEl.classList.remove('rainbow-mode-active');
+            }
+
+            // Cập nhật trạng thái nút bấm
+            document.querySelectorAll('.element-pill').forEach(btn => {
+                if (btn.dataset.theme === themeKey) {
+                    btn.classList.add('active');
+                } else {
+                    btn.classList.remove('active');
+                }
+            });
+
+            // Tạo một nhát chém bùng nổ khi đổi hệ
+            triggerEpicSlash();
+            playKatanaSound('draw');
+        }
+
+        /**
+         * =========================================================================
+         * 2. BỘ TỔNG HỢP ÂM THANH WEB AUDIO API (KHÔNG CẦN FILE ÂM THANH NGOÀI)
+         * =========================================================================
+         */
+        let audioCtx = null;
+        let soundEnabled = false;
+
+        function initAudio() {
+            if (!audioCtx) {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                audioCtx = new AudioContext();
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+        }
+
+        const soundToggleBtn = document.getElementById('soundToggleBtn');
+        soundToggleBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            soundEnabled = !soundEnabled;
+            if (soundEnabled) {
+                initAudio();
+                document.getElementById('soundIcon').textContent = '🔊';
+                document.getElementById('soundText').textContent = 'ÂM THANH: BẬT';
+                soundToggleBtn.style.borderColor = 'var(--secondary)';
+                playKatanaSound('draw');
+            } else {
+                document.getElementById('soundIcon').textContent = '🔇';
+                document.getElementById('soundText').textContent = 'ÂM THANH: TẮT';
+                soundToggleBtn.style.borderColor = 'rgba(255,255,255,0.25)';
+            }
+        });
+
+        /**
+         * Tạo âm thanh rút kiếm kim loại sắc lẹm hoặc tiếng chém gió (Whoosh + Metallic Ring)
+         */
+        function playKatanaSound(type = 'slash') {
+            if (!soundEnabled) return;
+            try {
+                initAudio();
+                const now = audioCtx.currentTime;
+
+                // 1. Tiếng rít kim loại (Metallic Shing)
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = type === 'draw' ? 'triangle' : 'sine';
+                
+                const startFreq = type === 'draw' ? 2400 : 1600 + Math.random() * 600;
+                const endFreq = type === 'draw' ? 4200 : 320;
+                
+                osc.frequency.setValueAtTime(startFreq, now);
+                osc.frequency.exponentialRampToValueAtTime(endFreq, now + 0.22);
+
+                gain.gain.setValueAtTime(0.14, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.24);
+
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start(now);
+                osc.stop(now + 0.25);
+
+                // 2. Tiếng gió xé không khí (Filtered White Noise)
+                const bufferSize = audioCtx.sampleRate * 0.18;
+                const noiseBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+                const output = noiseBuffer.getChannelData(0);
+                for (let i = 0; i < bufferSize; i++) {
+                    output[i] = Math.random() * 2 - 1;
+                }
+
+                const whiteNoise = audioCtx.createBufferSource();
+                whiteNoise.buffer = noiseBuffer;
+
+                const filter = audioCtx.createBiquadFilter();
+                filter.type = 'bandpass';
+                filter.frequency.setValueAtTime(1200, now);
+                filter.frequency.exponentialRampToValueAtTime(300, now + 0.18);
+                filter.Q.value = 1.8;
+
+                const noiseGain = audioCtx.createGain();
+                noiseGain.gain.setValueAtTime(0.22, now);
+                noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+
+                whiteNoise.connect(filter);
+                filter.connect(noiseGain);
+                noiseGain.connect(audioCtx.destination);
+                whiteNoise.start(now);
+            } catch (err) {
+                // Bỏ qua nếu trình duyệt chặn autoplay trước khi tương tác
+            }
+        }
+
+        /**
+         * =========================================================================
+         * 3. HỆ THỐNG ĐỒ HỌA CANVAS 60FPS: HOA ANH ĐÀO, VỆT CHÉM & TIA LỬA
+         * =========================================================================
+         */
+        const canvas = document.getElementById('fxCanvas');
+        const ctx = canvas.getContext('2d');
+        let width = canvas.width = window.innerWidth;
+        let height = canvas.height = window.innerHeight;
+
+        window.addEventListener('resize', () => {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        });
+
+        // Mảng lưu trữ các thực thể hiệu ứng
+        const petals = [];       // Cánh hoa anh đào phát sáng
+        const sparks = [];       // Tia lửa / năng lượng bắn ra
+        const mouseTrail = [];   // Vệt chém khi di chuột
+        const screenSlashes = []; // Vệt chém lớn xé toạc màn hình khi click
+
+        // Khởi tạo 55 cánh hoa anh đào phát sáng bay lơ lửng
+        class SakuraPetal {
+            constructor() {
+                this.reset(true);
+            }
+            reset(initial = false) {
+                this.x = Math.random() * width;
+                this.y = initial ? Math.random() * height : -20;
+                this.size = 4 + Math.random() * 7;
+                this.speedX = -1.2 - Math.random() * 1.8;
+                this.speedY = 1.0 + Math.random() * 2.0;
+                this.rotation = Math.random() * Math.PI * 2;
+                this.rotSpeed = (Math.random() - 0.5) * 0.06;
+                this.flip = Math.random() * Math.PI;
+                this.flipSpeed = 0.03 + Math.random() * 0.04;
+                this.colorIndex = Math.floor(Math.random() * 4);
+            }
+            update() {
+                this.x += this.speedX + Math.sin(this.flip) * 0.6;
+                this.y += this.speedY;
+                this.rotation += this.rotSpeed;
+                this.flip += this.flipSpeed;
+
+                if (this.x < -30 || this.y > height + 30) {
+                    this.reset(false);
+                }
+            }
+            draw() {
+                const color = currentTheme.particles[this.colorIndex % currentTheme.particles.length];
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.rotation);
+                ctx.scale(1, Math.abs(Math.cos(this.flip)) * 0.7 + 0.3);
+
+                ctx.beginPath();
+                ctx.moveTo(0, -this.size);
+                ctx.bezierCurveTo(this.size, -this.size, this.size, this.size, 0, this.size * 1.3);
+                ctx.bezierCurveTo(-this.size, this.size, -this.size, -this.size, 0, -this.size);
+                ctx.closePath();
+
+                ctx.fillStyle = color;
+                ctx.shadowColor = color;
+                ctx.shadowBlur = 12;
+                ctx.globalAlpha = 0.82;
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        for (let i = 0; i < 55; i++) {
+            petals.push(new SakuraPetal());
+        }
+
+        // Tia lửa năng lượng bắn ra khi chém
+        class EnergySpark {
+            constructor(x, y, color) {
+                this.x = x;
+                this.y = y;
+                const angle = Math.random() * Math.PI * 2;
+                const speed = 2 + Math.random() * 9;
+                this.vx = Math.cos(angle) * speed;
+                this.vy = Math.sin(angle) * speed;
+                this.life = 1.0;
+                this.decay = 0.025 + Math.random() * 0.035;
+                this.size = 2 + Math.random() * 3.5;
+                this.color = color;
+            }
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.vx *= 0.95;
+                this.vy *= 0.95;
+                this.life -= this.decay;
+            }
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = Math.max(0, this.life);
+                ctx.fillStyle = this.color;
+                ctx.shadowColor = this.color;
+                ctx.shadowBlur = 10;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        // Vệt chém kiếm khổng lồ xé toạc màn hình
+        class ScreenSlash {
+            constructor(x, y, angle, length = 520) {
+                this.x = x;
+                this.y = y;
+                this.angle = angle;
+                this.length = length;
+                this.life = 1.0;
+                this.color1 = currentTheme.primary;
+                this.color2 = currentTheme.secondary;
+            }
+            update() {
+                this.life -= 0.045;
+            }
+            draw() {
+                if (this.life <= 0) return;
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.angle);
+                ctx.globalAlpha = this.life;
+
+                const halfLen = this.length * (1.2 - this.life * 0.2);
+                const thickness = 18 * this.life;
+
+                // Hào quang ngoài
+                ctx.shadowColor = this.color1;
+                ctx.shadowBlur = 25;
+                ctx.fillStyle = this.color2;
+                ctx.beginPath();
+                ctx.moveTo(-halfLen, 0);
+                ctx.quadraticCurveTo(0, -thickness, halfLen, 0);
+                ctx.quadraticCurveTo(0, thickness, -halfLen, 0);
+                ctx.fill();
+
+                // Lõi trắng sắc lẹm ở giữa
+                ctx.fillStyle = '#ffffff';
+                ctx.beginPath();
+                ctx.moveTo(-halfLen * 0.9, 0);
+                ctx.quadraticCurveTo(0, -thickness * 0.35, halfLen * 0.9, 0);
+                ctx.quadraticCurveTo(0, thickness * 0.35, -halfLen * 0.9, 0);
+                ctx.fill();
+
+                ctx.restore();
+            }
+        }
+
+        // Theo dõi di chuyển chuột / cảm ứng để vẽ lưỡi kiếm ánh sáng
+        let lastMouseX = null;
+        let lastMouseY = null;
+
+        function addTrailPoint(x, y) {
+            mouseTrail.push({
+                x, y,
+                life: 1.0,
+                color: currentTheme.secondary
+            });
+
+            // Tạo tia lửa nhỏ theo vệt di chuyển
+            if (Math.random() < 0.45) {
+                const c = currentTheme.particles[Math.floor(Math.random() * currentTheme.particles.length)];
+                sparks.push(new EnergySpark(x, y, c));
+            }
+        }
+
+        window.addEventListener('mousemove', (e) => {
+            addTrailPoint(e.clientX, e.clientY);
+            
+            // Hiệu ứng nghiêng nhẹ thanh Katana theo góc nhìn chuột (Parallax)
+            const katanaEl = document.getElementById('katanaWrapper');
+            if (katanaEl) {
+                const dx = (e.clientX - width / 2) / 35;
+                const dy = (e.clientY - height / 2) / 35;
+                katanaEl.style.transform = `translate(${dx}px, ${dy}px) rotate(${-13 + dx * 0.15}deg)`;
+            }
+        });
+
+        window.addEventListener('touchmove', (e) => {
+            if (e.touches.length > 0) {
+                addTrailPoint(e.touches[0].clientX, e.touches[0].clientY);
+            }
+        }, { passive: true });
+
+        // Tạo nhát chém lớn khi người dùng nhấp chuột vào bất kỳ đâu trên nền
+        function createSlashAt(x, y) {
+            const randomAngle = (Math.random() - 0.5) * Math.PI * 0.85;
+            screenSlashes.push(new ScreenSlash(x, y, randomAngle, Math.min(width * 0.75, 650)));
+
+            // Bắn 24 tia lửa rực rỡ
+            for (let i = 0; i < 24; i++) {
+                const c = currentTheme.particles[i % currentTheme.particles.length];
+                sparks.push(new EnergySpark(x, y, c));
+            }
+
+            // Tăng bộ đếm nhát chém
+            slashCount++;
+            document.getElementById('slashCounter').textContent = slashCount;
+
+            // Phát âm thanh chém kiếm
+            playKatanaSound('slash');
+        }
+
+        window.addEventListener('mousedown', (e) => {
+            // Không tính nếu click vào nút điều khiển hoặc modal đang mở
+            if (e.target.closest('button') || !document.getElementById('menuModal').classList.contains('hidden')) return;
+            createSlashAt(e.clientX, e.clientY);
+        });
+
+        /**
+         * Tuyệt kỹ "Khai Mở Cực Hạn" - Chém liên hoàn đa sắc toàn màn hình
+         */
+        function triggerEpicSlash() {
+            const flash = document.getElementById('flashOverlay');
+            flash.classList.remove('flash-active');
+            void flash.offsetWidth; // Trigger reflow
+            flash.classList.add('flash-active');
+
+            for (let i = 0; i < 5; i++) {
+                setTimeout(() => {
+                    const rx = width * (0.25 + Math.random() * 0.5);
+                    const ry = height * (0.25 + Math.random() * 0.5);
+                    createSlashAt(rx, ry);
+                }, i * 75);
+            }
+        }
+
+        document.getElementById('unleashBtn').addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (!soundEnabled) {
+                soundEnabled = true;
+                initAudio();
+                document.getElementById('soundIcon').textContent = '🔊';
+                document.getElementById('soundText').textContent = 'ÂM THANH: BẬT';
+            }
+            triggerEpicSlash();
+        });
+
+        // Vòng lặp Render 60fps
+        let lastFrameTime = performance.now();
+        let frameCount = 0;
+
+        function animate(now) {
+            ctx.clearRect(0, 0, width, height);
+
+            // 1. Cập nhật & vẽ cánh hoa anh đào phát sáng
+            for (let i = 0; i < petals.length; i++) {
+                petals[i].update();
+                petals[i].draw();
+            }
+
+            // 2. Vẽ vệt chém chuột (Ribbon Slash Trail)
+            if (mouseTrail.length > 1) {
+                for (let i = 1; i < mouseTrail.length; i++) {
+                    const p1 = mouseTrail[i - 1];
+                    const p2 = mouseTrail[i];
+                    ctx.save();
+                    ctx.beginPath();
+                    ctx.moveTo(p1.x, p1.y);
+                    ctx.lineTo(p2.x, p2.y);
+                    ctx.strokeStyle = p2.color;
+                    ctx.lineWidth = p2.life * 7;
+                    ctx.lineCap = 'round';
+                    ctx.shadowColor = currentTheme.primary;
+                    ctx.shadowBlur = 15;
+                    ctx.globalAlpha = p2.life;
+                    ctx.stroke();
+
+                    // Lõi trắng bên trong vệt chuột
+                    ctx.strokeStyle = '#ffffff';
+                    ctx.lineWidth = p2.life * 2.5;
+                    ctx.stroke();
+                    ctx.restore();
+                }
+            }
+
+            for (let i = mouseTrail.length - 1; i >= 0; i--) {
+                mouseTrail[i].life -= 0.06;
+                if (mouseTrail[i].life <= 0) mouseTrail.splice(i, 1);
+            }
+
+            // 3. Cập nhật & vẽ vệt chém lớn xé màn hình
+            for (let i = screenSlashes.length - 1; i >= 0; i--) {
+                screenSlashes[i].update();
+                screenSlashes[i].draw();
+                if (screenSlashes[i].life <= 0) screenSlashes.splice(i, 1);
+            }
+
+            // 4. Cập nhật & vẽ tia lửa năng lượng
+            for (let i = sparks.length - 1; i >= 0; i--) {
+                sparks[i].update();
+                sparks[i].draw();
+                if (sparks[i].life <= 0) sparks.splice(i, 1);
+            }
+
+            // Tính FPS hiển thị
+            frameCount++;
+            if (now - lastFrameTime >= 1000) {
+                document.getElementById('fpsCounter').textContent = frameCount;
+                frameCount = 0;
+                lastFrameTime = now;
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        // Khởi chạy hiệu ứng mở màn ấn tượng khi tải trang
+        window.onload = () => {
+            requestAnimationFrame(animate);
+            setTimeout(() => {
+                createSlashAt(width * 0.55, height * 0.48);
+            }, 350);
+        };
+
+        /**
+         * =========================================================================
+         * 4. XỬ LÝ TƯƠNG TÁC MENU GAME (MODAL CYBERPUNK)
+         * =========================================================================
+         */
+        const MENU_DATA = {
+            start: {
+                subtitle: 'CHƯƠNG 01 // THÀNH PHỐ NEO-EDO',
+                title: 'BẮT ĐẦU HÀNH TRÌNH',
+                body: `
+                    <p>Sẵn sàng bước vào thế giới rực rỡ ánh đèn Neon của <strong class="text-cyan-300">Neo-Edo 2099</strong>. Sử dụng thanh <strong>${currentTheme.name}</strong> để càn quét binh đoàn cơ giới.</p>
+                    <div class="grid grid-cols-2 gap-3 pt-2">
+                        <div class="p-3 rounded-xl bg-white/5 border border-white/10">
+                            <div class="text-xs text-white/50 font-cyber">ĐỘ KHÓ</div>
+                            <div class="font-bold text-pink-400">OVERDRIVE (CỰC HẠN)</div>
+                        </div>
+                        <div class="p-3 rounded-xl bg-white/5 border border-white/10">
+                            <div class="text-xs text-white/50 font-cyber">NHÂN VẬT</div>
+                            <div class="font-bold text-cyan-300">AKIRA // BÓNG MA ĐỎ</div>
+                        </div>
+                    </div>
+                `
+            },
+            armory: {
+                subtitle: 'XƯỞNG RÈN CÔNG NGHỆ CAO',
+                title: 'KHO VŨ KHÍ KATANA',
+                body: `
+                    <p>Bạn có thể chuyển đổi trực tiếp 4 hệ nguyên tố năng lượng ngay tại thanh công cụ phía dưới màn hình chính để thay đổi hào quang thanh kiếm:</p>
+                    <ul class="space-y-2 text-sm">
+                        <li class="flex items-center gap-2"><span class="text-cyan-400">◆</span> <strong>Hệ Lôi (Rai-Jin):</strong> Tốc độ chém siêu thanh, tia sét tím xanh.</li>
+                        <li class="flex items-center gap-2"><span class="text-orange-400">◆</span> <strong>Hệ Hỏa (Kagu-Tsuchi):</strong> Sát thương bùng nổ, hào quang vàng kim.</li>
+                        <li class="flex items-center gap-2"><span class="text-pink-400">◆</span> <strong>Hệ Anh Đào (Senbon):</strong> Kiếm khí hoa rơi mỹ lệ, chí mạng cao.</li>
+                        <li class="flex items-center gap-2"><span class="text-yellow-300">◆</span> <strong>Cầu Vồng RGB (Gokusai):</strong> Biến thiên đa sắc vô cực.</li>
+                    </ul>
+                `
+            },
+            skills: {
+                subtitle: 'BẢNG KỸ NĂNG KIẾM ĐẠO',
+                title: 'TUYỆT KỸ ÁO NGHĨA',
+                body: `
+                    <div class="space-y-3">
+                        <div class="p-3 rounded-xl bg-white/5 border-l-4 border-cyan-400">
+                            <div class="font-cyber font-bold text-cyan-300">⚡ NHẤT THIỂM KHÔNG GIAN</div>
+                            <div class="text-xs text-white/70 mt-1">Lướt xuyên qua kẻ địch với tốc độ ánh sáng, để lại dư ảnh neon.</div>
+                        </div>
+                        <div class="p-3 rounded-xl bg-white/5 border-l-4 border-pink-500">
+                            <div class="font-cyber font-bold text-pink-400">🌸 BÃO HOA ANH ĐÀO</div>
+                            <div class="text-xs text-white/70 mt-1">Triệu hồi hàng ngàn cánh hoa kiếm khí cắt nát mọi mục tiêu xung quanh.</div>
+                        </div>
+                    </div>
+                `
+            },
+            settings: {
+                subtitle: 'TÙY CHỈNH HỆ THỐNG',
+                title: 'CÀI ĐẶT ĐỒ HỌA & ÂM THANH',
+                body: `
+                    <div class="space-y-3">
+                        <div class="flex items-center justify-between p-3 rounded-xl bg-white/5">
+                            <span>Hiệu ứng Hạt Neon & Hoa Anh Đào</span>
+                            <span class="font-cyber text-xs px-2.5 py-1 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-400/40">SIÊU CAO (60 FPS)</span>
+                        </div>
+                        <div class="flex items-center justify-between p-3 rounded-xl bg-white/5">
+                            <span>Âm thanh Tổng hợp Kiếm Khí (Web Audio)</span>
+                            <span class="font-cyber text-xs px-2.5 py-1 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-400/40">${soundEnabled ? 'ĐANG BẬT' : 'ĐANG TẮT'}</span>
+                        </div>
+                    </div>
+                `
+            }
+        };
+
+        function handleMenuClick(key) {
+            playKatanaSound('draw');
+            const data = MENU_DATA[key];
+            if (!data) return;
+
+            // Cập nhật nội dung động mới nhất
+            if (key === 'start') {
+                MENU_DATA.start.body = `
+                    <p>Sẵn sàng bước vào thế giới rực rỡ ánh đèn Neon của <strong class="text-cyan-300">Neo-Edo 2099</strong>. Sử dụng thanh <strong style="color: var(--secondary);">${currentTheme.name}</strong> để càn quét binh đoàn cơ giới.</p>
+                    <div class="grid grid-cols-2 gap-3 pt-2">
+                        <div class="p-3 rounded-xl bg-white/5 border border-white/10">
+                            <div class="text-xs text-white/50 font-cyber">ĐỘ KHÓ</div>
+                            <div class="font-bold text-pink-400">OVERDRIVE (CỰC HẠN)</div>
+                        </div>
+                        <div class="p-3 rounded-xl bg-white/5 border border-white/10">
+                            <div class="text-xs text-white/50 font-cyber">NHÂN VẬT</div>
+                            <div class="font-bold text-cyan-300">AKIRA // BÓNG MA ĐỎ</div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            document.getElementById('modalSubtitle').textContent = data.subtitle;
+            document.getElementById('modalTitle').textContent = data.title;
+            document.getElementById('modalBody').innerHTML = data.body;
+
+            const modal = document.getElementById('menuModal');
+            const content = document.getElementById('modalContent');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+
+            requestAnimationFrame(() => {
+                content.classList.remove('scale-95', 'opacity-0');
+                content.classList.add('scale-100', 'opacity-100');
+            });
+        }
+
+        function closeModal() {
+            const modal = document.getElementById('menuModal');
+            const content = document.getElementById('modalContent');
+            content.classList.remove('scale-100', 'opacity-100');
+            content.classList.add('scale-95', 'opacity-0');
+            setTimeout(() => {
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
+            }, 200);
+        }
+    </script>
+</body>
+</html>
