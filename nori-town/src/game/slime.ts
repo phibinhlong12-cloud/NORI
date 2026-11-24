@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { OutsideGenerator } from './outside';
+import { createParabolicEllipsoidGeometry, createParabolicLatheGeometry } from './parabolic';
 import { SLIME_ZONE_SPECS, SlimeZoneSpec } from './slimeZones';
 import { createSoftShadowTexture } from './textures';
 
@@ -247,14 +248,7 @@ export class SlimeManager {
         coreSideMat,
         coreFaceMat,
         accentMat,
-        coreMaterials: [
-          coreSideMat,
-          coreSideMat,
-          coreSideMat,
-          coreSideMat,
-          coreFaceMat,
-          coreSideMat,
-        ],
+        coreMaterials: [coreSideMat, coreFaceMat],
       };
     };
 
@@ -415,26 +409,75 @@ export class SlimeManager {
   }
 
   private spawnAllSlimes(): void {
-    // Vỏ gel trong suốt nhiều tầng + lõi nhân phát sáng + bọt khí + vương miện/sừng theo cấp
-    const outerSkirtGeo = new THREE.BoxGeometry(1.06, 0.22, 1.06);
-    const outerBodyGeo = new THREE.BoxGeometry(0.94, 0.56, 0.94);
-    const outerDomeGeo = new THREE.BoxGeometry(0.74, 0.2, 0.74);
-    const outerCapGeo = new THREE.BoxGeometry(0.48, 0.1, 0.48);
+    // Vỏ gel parabol trong suốt mượt mà (không góc 90 độ) + lõi nhân bầu + chi tiết nhận diện
+    const outerDomeGeo = createParabolicLatheGeometry(
+      1.02,
+      0.58,
+      (t) => {
+        if (t <= 0.002 || t >= 0.998) return 0;
+        if (t < 0.14) {
+          // Chân gel tiếp xúc mặt đất phình nhẹ mượt mà
+          const k = t / 0.14;
+          return 0.86 + 0.14 * Math.sin(k * (Math.PI / 2));
+        }
+        // Đỉnh cong parabol mềm mại: r = sqrt(1 - u^2) kết hợp vòm parabol
+        const u = (t - 0.14) / 0.86;
+        return Math.sqrt(Math.max(0, 1 - Math.pow(u, 1.85)));
+      },
+      26,
+      20,
+      false,
+    );
 
-    const coreGeo = new THREE.BoxGeometry(0.56, 0.44, 0.56);
-    const bubbleGeo = new THREE.IcosahedronGeometry(0.085, 1);
-    const finGeo = new THREE.ConeGeometry(0.14, 0.36, 4);
-    const crownBandGeo = new THREE.CylinderGeometry(0.24, 0.22, 0.1, 6);
-    const crownSpikeGeo = new THREE.ConeGeometry(0.065, 0.2, 4);
+    const coreBodyGeo = createParabolicEllipsoidGeometry(0.56, 0.46, 0.54, 20, 14);
+    // Mặt cong phía trước (+Z) gắn texture khuôn mặt không bị méo UV
+    const coreFaceGeo = new THREE.SphereGeometry(
+      0.285,
+      18,
+      14,
+      Math.PI * 0.16,
+      Math.PI * 0.68,
+      Math.PI * 0.2,
+      Math.PI * 0.6,
+    );
+    coreFaceGeo.scale(1.0, 0.84, 1.0);
+    const facePos = coreFaceGeo.getAttribute('position') as THREE.BufferAttribute;
+    const faceUv = coreFaceGeo.getAttribute('uv') as THREE.BufferAttribute;
+    for (let vi = 0; vi < facePos.count; vi++) {
+      const vx = facePos.getX(vi);
+      const vy = facePos.getY(vi);
+      const u = THREE.MathUtils.clamp(0.5 + vx / 0.46, 0, 1);
+      const v = THREE.MathUtils.clamp(0.5 + vy / 0.38, 0, 1);
+      faceUv.setXY(vi, u, v);
+    }
+    faceUv.needsUpdate = true;
+
+    const bubbleGeo = new THREE.SphereGeometry(0.082, 12, 10);
+    const finGeo = createParabolicLatheGeometry(
+      0.36,
+      0.13,
+      (t) => Math.sin(Math.pow(1 - t, 0.72) * Math.PI * 0.5),
+      12,
+      10,
+      true,
+    );
+    const crownBandGeo = new THREE.TorusGeometry(0.2, 0.045, 10, 20);
+    crownBandGeo.rotateX(Math.PI / 2);
+    const crownSpikeGeo = createParabolicLatheGeometry(
+      0.22,
+      0.068,
+      (t) => Math.pow(Math.max(0, 1 - t), 0.75),
+      12,
+      8,
+      true,
+    );
     const shadowGeo = new THREE.PlaneGeometry(1.45, 1.45);
     shadowGeo.rotateX(-Math.PI / 2);
 
     this.geometries.push(
-      outerSkirtGeo,
-      outerBodyGeo,
       outerDomeGeo,
-      outerCapGeo,
-      coreGeo,
+      coreBodyGeo,
+      coreFaceGeo,
       bubbleGeo,
       finGeo,
       crownBandGeo,
@@ -491,12 +534,13 @@ export class SlimeManager {
           return mesh;
         };
 
-        // 1. Lõi nhân bên trong kèm khuôn mặt sắc nét
-        addPart(coreGeo, visuals.coreMaterials, 0, 0.42, 0.04, 1, true);
+        // 1. Lõi nhân parabol bên trong + mặt trước bo cong
+        addPart(coreBodyGeo, visuals.coreSideMat, 0, 0.42, 0.02, 1, true);
+        addPart(coreFaceGeo, visuals.coreFaceMat, 0, 0.42, 0.02, 1, false);
 
-        // Bọt khí lơ lửng trong khối thạch
-        addPart(bubbleGeo, visuals.accentMat, -0.28, 0.62, 0.18, 1, false);
-        addPart(bubbleGeo, visuals.accentMat, 0.25, 0.28, -0.22, 1, false);
+        // Bọt khí tròn lơ lửng trong khối thạch
+        addPart(bubbleGeo, visuals.accentMat, -0.26, 0.62, 0.16, 1, false);
+        addPart(bubbleGeo, visuals.accentMat, 0.24, 0.28, -0.2, 1, false);
 
         // Chi tiết nhận diện riêng cho Slime cấp 2 và cấp 3
         if (level === 2) {
@@ -509,20 +553,17 @@ export class SlimeManager {
             addPart(
               crownSpikeGeo,
               visuals.accentMat,
-              Math.cos(ang) * 0.18,
-              1.15,
-              Math.sin(ang) * 0.18,
+              Math.cos(ang) * 0.19,
+              1.13,
+              Math.sin(ang) * 0.19,
               3,
               true,
             );
           }
         }
 
-        // 2. Lớp vỏ thạch trong suốt bóng loáng bao bọc bên ngoài
-        addPart(outerSkirtGeo, visuals.outerGelMat, 0, 0.11, 0, 2, false);
-        addPart(outerBodyGeo, visuals.outerGelMat, 0, 0.43, 0, 2, true);
-        addPart(outerDomeGeo, visuals.outerGelMat, 0, 0.78, 0, 2, false);
-        addPart(outerCapGeo, visuals.outerGelMat, 0, 0.92, 0, 2, false);
+        // 2. Lớp vỏ thạch parabol mượt mà trong suốt bao bọc bên ngoài
+        addPart(outerDomeGeo, visuals.outerGelMat, 0, 0, 0, 2, true);
 
         group.add(bodyGroup);
 

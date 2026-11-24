@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
-import { Backpack, FlaskConical, Shield, Sword, TreePine, Zap } from 'lucide-react';
+import { Backpack, FlaskConical, Shield, Sword, TreePine, User, Zap } from 'lucide-react';
 import { HudStats, VoxelEngine } from '../game/engine';
 import { BACKPACK_CAPACITY } from '../game/trees';
 
@@ -18,6 +18,7 @@ interface MobileHudState {
   hasShield: boolean;
   backpackOpen: boolean;
   shopOpen: boolean;
+  characterWindowOpen: boolean;
   holdingKatana: boolean;
   holdingPotionSlot: number | null;
   holdingPotionCount: number;
@@ -35,6 +36,7 @@ const INITIAL_MOBILE_HUD: MobileHudState = {
   hasShield: false,
   backpackOpen: false,
   shopOpen: false,
+  characterWindowOpen: false,
   holdingKatana: false,
   holdingPotionSlot: null,
   holdingPotionCount: 0,
@@ -123,6 +125,7 @@ export const MobileControls = memo(function MobileControls({
           prev.hasShield === stats.hasShield &&
           prev.backpackOpen === stats.backpackOpen &&
           prev.shopOpen === stats.shopOpen &&
+          prev.characterWindowOpen === stats.characterWindowOpen &&
           prev.holdingKatana === stats.holdingKatana &&
           prev.holdingPotionSlot === stats.holdingPotionSlot &&
           prev.holdingPotionCount === stats.holdingPotionCount &&
@@ -141,6 +144,7 @@ export const MobileControls = memo(function MobileControls({
           hasShield: stats.hasShield,
           backpackOpen: stats.backpackOpen,
           shopOpen: stats.shopOpen,
+          characterWindowOpen: stats.characterWindowOpen,
           holdingKatana: stats.holdingKatana,
           holdingPotionSlot: stats.holdingPotionSlot,
           holdingPotionCount: stats.holdingPotionCount,
@@ -155,14 +159,14 @@ export const MobileControls = memo(function MobileControls({
   }, [engine]);
 
   useEffect(() => {
-    if (!visible || hud.shopOpen) {
+    if (!visible || hud.shopOpen || hud.characterWindowOpen) {
       if (sprinting) {
         setSprinting(false);
         onVirtualKey('ShiftLeft', false);
       }
       resetJoystick();
     }
-  }, [visible, hud.shopOpen, sprinting, onVirtualKey, resetJoystick]);
+  }, [visible, hud.shopOpen, hud.characterWindowOpen, sprinting, onVirtualKey, resetJoystick]);
 
   useEffect(() => {
     return () => {
@@ -171,7 +175,7 @@ export const MobileControls = memo(function MobileControls({
     };
   }, [onVirtualKey, onJoystickMove]);
 
-  if (!visible || hud.shopOpen) return null;
+  if (!visible || hud.shopOpen || hud.characterWindowOpen) return null;
 
   const bindKeyProps = (code: string) => ({
     onPointerDown: (e: React.PointerEvent) => {
@@ -302,11 +306,23 @@ export const MobileControls = memo(function MobileControls({
         </div>
       </div>
 
-      {/* Cụm bên phải: Hàng trang bị nhanh + Hành động chính & Nhảy (chặt cây chạm trực tiếp lên thân cây) */}
+      {/* Cụm bên phải: Hàng trang bị nhanh + Nhân vật + Hành động chính & Nhảy */}
       <div className="flex flex-col gap-2 items-end pointer-events-auto">
-        {(hud.hasBackpack || hud.hasKatana || hud.hasShield) && (
-          <div className="flex flex-wrap justify-end gap-1.5">
-            {hud.hasBackpack && (
+        <div className="flex flex-wrap justify-end gap-1.5">
+          <button
+            type="button"
+            onPointerDown={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              engine?.toggleCharacterWindow();
+            }}
+            className="h-9 px-2.5 rounded-xl border text-[11px] font-bold flex items-center gap-1 active:scale-95 transition bg-slate-950/80 border-cyan-400/35 text-cyan-200"
+          >
+            <User className="w-3.5 h-3.5" />
+            <span>Nhân vật</span>
+          </button>
+
+          {hud.hasBackpack && (
               <>
                 <button
                   type="button"
@@ -386,8 +402,7 @@ export const MobileControls = memo(function MobileControls({
                 <span>Khiên</span>
               </button>
             )}
-          </div>
-        )}
+        </div>
 
         <div className="flex items-end gap-1.5">
           <button

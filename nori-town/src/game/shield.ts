@@ -1,8 +1,11 @@
 import * as THREE from 'three';
+import {
+  CharacterGender,
+  createFirstPersonArmGroup,
+  FirstPersonArmHandles,
+} from './firstPersonArms';
 
-export interface ShieldAssetHandles {
-  geometries: THREE.BufferGeometry[];
-  materials: THREE.Material[];
+export interface ShieldAssetHandles extends FirstPersonArmHandles {
   textures: THREE.Texture[];
 }
 
@@ -150,11 +153,12 @@ export function createShieldMeshGroup(handles: ShieldAssetHandles): THREE.Group 
     group.add(rivet);
   }
 
-  // 4. Quai cầm mặt sau khiên
-  const gripGeo = new THREE.BoxGeometry(0.18, 0.045, 0.06);
+  // 4. Quai cầm bo tròn parabol mặt sau khiên (không góc 90 độ)
+  const gripGeo = new THREE.CapsuleGeometry(0.024, 0.14, 6, 12);
+  gripGeo.rotateZ(Math.PI / 2);
   handles.geometries.push(gripGeo);
   const grip = new THREE.Mesh(gripGeo, handleMat);
-  grip.position.set(0, 0.04, -0.045);
+  grip.position.set(0, 0.04, -0.042);
   group.add(grip);
 
   return group;
@@ -162,7 +166,8 @@ export function createShieldMeshGroup(handles: ShieldAssetHandles): THREE.Group 
 
 export class ShieldViewModel {
   private readonly scene: THREE.Scene;
-  private readonly group: THREE.Group;
+  private group: THREE.Group;
+  private gender: CharacterGender = 'male';
   private readonly assets: ShieldAssetHandles = {
     geometries: [],
     materials: [],
@@ -186,10 +191,43 @@ export class ShieldViewModel {
 
   constructor(scene: THREE.Scene) {
     this.scene = scene;
-    this.group = createShieldMeshGroup(this.assets);
-    this.group.scale.set(0.76, 0.76, 0.76);
-    this.group.visible = false;
+    this.group = this.buildViewGroup();
     this.scene.add(this.group);
+  }
+
+  private buildViewGroup(): THREE.Group {
+    const root = createShieldMeshGroup(this.assets);
+    const arm = createFirstPersonArmGroup(this.gender, 'left', this.assets, 'shield');
+    root.add(arm);
+    root.scale.set(0.76, 0.76, 0.76);
+    root.visible = false;
+    return root;
+  }
+
+  setGender(gender: CharacterGender): void {
+    if (this.gender === gender) return;
+    this.gender = gender;
+    const wasVisible = this.group.visible;
+    this.disposeMeshOnly();
+    this.group = this.buildViewGroup();
+    this.group.visible = wasVisible;
+    this.scene.add(this.group);
+  }
+
+  private disposeMeshOnly(): void {
+    this.scene.remove(this.group);
+    for (const geo of this.assets.geometries) {
+      geo.dispose();
+    }
+    for (const mat of this.assets.materials) {
+      mat.dispose();
+    }
+    for (const tex of this.assets.textures) {
+      tex.dispose();
+    }
+    this.assets.geometries.length = 0;
+    this.assets.materials.length = 0;
+    this.assets.textures.length = 0;
   }
 
   update(
@@ -239,18 +277,6 @@ export class ShieldViewModel {
   }
 
   dispose(): void {
-    this.scene.remove(this.group);
-    for (const geo of this.assets.geometries) {
-      geo.dispose();
-    }
-    for (const mat of this.assets.materials) {
-      mat.dispose();
-    }
-    for (const tex of this.assets.textures) {
-      tex.dispose();
-    }
-    this.assets.geometries.length = 0;
-    this.assets.materials.length = 0;
-    this.assets.textures.length = 0;
+    this.disposeMeshOnly();
   }
 }

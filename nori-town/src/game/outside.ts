@@ -134,17 +134,17 @@ export class OutsideGenerator {
   isTreeAllowedAt(wx: number, wz: number): boolean {
     // Không mọc cây bên trong thành, trên tường thành hoặc chắn lối cổng
     if (
-      wx >= WALL_MIN - 4 &&
-      wx <= WALL_MAX + 4 &&
+      wx >= WALL_MIN - 4.5 &&
+      wx <= WALL_MAX + 4.5 &&
       wz >= GATE_MIN_Z - 6 &&
-      wz <= WALL_MAX + 4
+      wz <= WALL_MAX + 4.5
     ) {
       return false;
     }
     if (
-      wx >= GATE_BORDER_MIN_X - 5 &&
-      wx <= GATE_BORDER_MAX_X + 5 &&
-      wz >= GATE_MIN_Z - 14 &&
+      wx >= GATE_BORDER_MIN_X - 4 &&
+      wx <= GATE_BORDER_MAX_X + 4 &&
+      wz >= GATE_MIN_Z - 21 &&
       wz <= GATE_MIN_Z
     ) {
       return false;
@@ -156,19 +156,19 @@ export class OutsideGenerator {
   }
 
   isGrassAllowedAt(wx: number, wz: number): boolean {
-    // Không mọc cỏ bên trong thành, trên nền tường thành hoặc lối vào cổng
+    // Không mọc cỏ bên trong thành, trên nền tường thành, tháp cổng hoặc đường đá cuội trước cổng
     if (
-      wx >= WALL_MIN - 1.5 &&
-      wx <= WALL_MAX + 1.5 &&
-      wz >= GATE_MIN_Z - 2.5 &&
-      wz <= WALL_MAX + 1.5
+      wx >= WALL_MIN - 2.5 &&
+      wx <= WALL_MAX + 2.5 &&
+      wz >= GATE_MIN_Z - 3.0 &&
+      wz <= WALL_MAX + 2.5
     ) {
       return false;
     }
     if (
-      wx >= GATE_BORDER_MIN_X - 2.5 &&
-      wx <= GATE_BORDER_MAX_X + 2.5 &&
-      wz >= GATE_MIN_Z - 7 &&
+      wx >= -4.2 &&
+      wx <= 4.2 &&
+      wz >= GATE_MIN_Z - 20 &&
       wz <= GATE_MIN_Z
     ) {
       return false;

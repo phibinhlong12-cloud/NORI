@@ -1,13 +1,22 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { BackpackHud } from './components/BackpackHud';
 import { BossHealthBar } from './components/BossHealthBar';
+import { CharacterModal } from './components/CharacterModal';
 import { EssentialShopModal } from './components/EssentialShopModal';
+import { GenderSelectModal } from './components/GenderSelectModal';
 import { HudOverlay } from './components/HudOverlay';
 import { MobileControls } from './components/MobileControls';
 import { MoneyTracker } from './components/MoneyTracker';
 import { PauseMenu } from './components/PauseMenu';
 import { PlayerStatusBars } from './components/PlayerStatusBars';
 import { VoxelEngine } from './game/engine';
+import { CharacterGender } from './game/firstPersonArms';
+import {
+  isFullscreenActive,
+  isStandaloneDisplayMode,
+  subscribeFullscreenChange,
+  toggleFullscreen,
+} from './utils/fullscreen';
 
 function detectTouchDevice(): boolean {
   if (typeof window === 'undefined') return false;
@@ -27,15 +36,17 @@ export default function App() {
   const [engineInstance, setEngineInstance] = useState<VoxelEngine | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [hasStarted, setHasStarted] = useState(false);
+  const [choosingGender, setChoosingGender] = useState(false);
   const [renderDistance, setRenderDistance] = useState(4);
   const [sensitivity, setSensitivity] = useState(5);
   const [touchControlsEnabled, setTouchControlsEnabled] = useState<boolean>(() =>
     detectTouchDevice()
   );
+  const [isFullscreen, setIsFullscreen] = useState<boolean>(() => isFullscreenActive());
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [webglError, setWebglError] = useState<string>('');
 
-  const showToast = useCallback((message: string) => {
+  const showToast = useCallback((message: string, durationMs = 2200) => {
     setToastMessage(message);
     if (toastTimerRef.current !== null) {
       window.clearTimeout(toastTimerRef.current);
@@ -43,7 +54,11 @@ export default function App() {
     toastTimerRef.current = window.setTimeout(() => {
       setToastMessage(null);
       toastTimerRef.current = null;
-    }, 2000);
+    }, durationMs);
+  }, []);
+
+  useEffect(() => {
+    return subscribeFullscreenChange(setIsFullscreen);
   }, []);
 
   useEffect(() => {
@@ -74,6 +89,16 @@ export default function App() {
   }, [showToast]);
 
   const handlePlay = useCallback(() => {
+    if (!hasStarted) {
+      setChoosingGender(true);
+      return;
+    }
+    engineRef.current?.enterGame();
+  }, [hasStarted]);
+
+  const handleSelectGender = useCallback((gender: CharacterGender) => {
+    setChoosingGender(false);
+    engineRef.current?.setGender(gender);
     engineRef.current?.enterGame();
   }, []);
 
@@ -107,6 +132,32 @@ export default function App() {
     engineRef.current?.placeTargetBlock();
   }, []);
 
+  const handleToggleFullscreen = useCallback(async () => {
+    if (isStandaloneDisplayMode()) {
+      showToast('Bạn đang ở chế độ toàn màn hình rồi!');
+      return;
+    }
+    const result = await toggleFullscreen();
+    setIsFullscreen(result.active);
+    if (!result.supported) {
+      const isIos =
+        typeof navigator !== 'undefined' &&
+        (/iPad|iPhone|iPod/.test(navigator.userAgent) ||
+          (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
+      if (isIos) {
+        showToast(
+          'iPhone/iPad: Bấm nút Chia sẻ → "Thêm vào MH chính" (hoặc aA → Ẩn thanh công cụ) để chơi full màn hình!',
+          4200,
+        );
+      } else {
+        showToast(
+          'Không phóng full được trong khung xem trước. Hãy mở link trực tiếp bằng Chrome hoặc Thêm vào màn hình chính!',
+          3800,
+        );
+      }
+    }
+  }, [showToast]);
+
   return (
     <div className="relative w-full h-full overflow-hidden bg-[#82b6ff]">
       <div ref={canvasMountRef} className="w-full h-full" />
@@ -114,6 +165,8 @@ export default function App() {
       <HudOverlay
         engine={engineInstance}
         isPlaying={isPlaying}
+        isFullscreen={isFullscreen}
+        onToggleFullscreen={handleToggleFullscreen}
         onPause={handlePause}
         moneySlot={<MoneyTracker engine={engineInstance} />}
         leftSlot={
@@ -140,16 +193,25 @@ export default function App() {
       />
 
       <EssentialShopModal engine={engineInstance} />
+      <CharacterModal engine={engineInstance} />
+
+      <GenderSelectModal
+        visible={!isPlaying && !hasStarted && choosingGender}
+        onSelectGender={handleSelectGender}
+        onBack={() => setChoosingGender(false)}
+      />
 
       <PauseMenu
-        visible={!isPlaying}
+        visible={!isPlaying && !choosingGender}
         hasStarted={hasStarted}
         renderDistance={renderDistance}
         sensitivity={sensitivity}
         touchControlsEnabled={touchControlsEnabled}
+        isFullscreen={isFullscreen}
         onRenderDistanceChange={handleRenderDistanceChange}
         onSensitivityChange={handleSensitivityChange}
         onToggleTouchControls={handleToggleTouchControls}
+        onToggleFullscreen={handleToggleFullscreen}
         onPlay={handlePlay}
       />
 

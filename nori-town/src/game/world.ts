@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { applyCitadelToChunk } from './citadel';
+import { CitadelStructure } from './citadelMesh';
 import { BlockId, CHUNK_HEIGHT, CHUNK_SIZE } from './constants';
 import { CashierStation } from './counter';
 import {
@@ -60,6 +61,7 @@ export class WorldManager {
   private readonly maxAnisotropy: number;
   private trees: TreeManager;
   private grass: GrassManager;
+  private citadelMesh: CitadelStructure;
   private cashier: CashierStation;
   private weaponShop: WeaponShop;
   private slimes: SlimeManager;
@@ -84,6 +86,7 @@ export class WorldManager {
     this.outside = new OutsideGenerator(this.seed);
     this.trees = new TreeManager(this.scene, this.outside, this.seed, this.maxAnisotropy);
     this.grass = new GrassManager(this.scene, this.outside, this.seed);
+    this.citadelMesh = new CitadelStructure(this.scene, this.maxAnisotropy);
     this.cashier = new CashierStation(this.scene);
     this.weaponShop = new WeaponShop(this.scene);
     this.slimes = new SlimeManager(this.scene, this.outside, this.seed);
@@ -96,6 +99,7 @@ export class WorldManager {
     this.outside.resetSeed(newSeed);
     this.trees = new TreeManager(this.scene, this.outside, this.seed, this.maxAnisotropy);
     this.grass = new GrassManager(this.scene, this.outside, this.seed);
+    this.citadelMesh = new CitadelStructure(this.scene, this.maxAnisotropy);
     this.cashier = new CashierStation(this.scene);
     this.weaponShop = new WeaponShop(this.scene);
     this.slimes = new SlimeManager(this.scene, this.outside, this.seed);
@@ -303,6 +307,7 @@ export class WorldManager {
   ): void {
     this.trees.update(dt, onTreeLanded);
     this.grass.update(dt, playerX, playerZ);
+    this.citadelMesh.update(dt);
     this.slimes.update(dt, playerX, playerY, playerZ, playerYaw, shieldRaised, slimeCallbacks);
     this.dragon.update(dt, playerX, playerY, playerZ, playerYaw, shieldRaised, dragonCallbacks);
 
@@ -570,7 +575,8 @@ export class WorldManager {
       chunk.solidMesh = null;
     }
 
-    if (!chunk.hasVoxelStructures && !chunk.modified) {
+    // Mô hình 3D thành cổ 50x50x25 được dựng chi tiết bằng CitadelStructure (giữ chunk.data để xử lý va chạm & raycast)
+    if (!chunk.modified) {
       return;
     }
 
@@ -971,6 +977,7 @@ export class WorldManager {
     }
     this.trees.disposeAll();
     this.grass.disposeAll();
+    this.citadelMesh.dispose();
     this.cashier.dispose();
     this.weaponShop.dispose();
     this.slimes.dispose();

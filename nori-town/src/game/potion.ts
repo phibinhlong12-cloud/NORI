@@ -1,9 +1,11 @@
 import * as THREE from 'three';
+import {
+  CharacterGender,
+  createFirstPersonArmGroup,
+  FirstPersonArmHandles,
+} from './firstPersonArms';
 
-export interface PotionAssetHandles {
-  geometries: THREE.BufferGeometry[];
-  materials: THREE.Material[];
-}
+export interface PotionAssetHandles extends FirstPersonArmHandles {}
 
 export function createPotionMeshGroup(handles: PotionAssetHandles): THREE.Group {
   const group = new THREE.Group();
@@ -91,7 +93,8 @@ export function createPotionMeshGroup(handles: PotionAssetHandles): THREE.Group 
 
 export class PotionViewModel {
   private readonly scene: THREE.Scene;
-  private readonly group: THREE.Group;
+  private group: THREE.Group;
+  private gender: CharacterGender = 'male';
   private readonly assets: PotionAssetHandles = { geometries: [], materials: [] };
 
   private readonly idleOffset = new THREE.Vector3(0.38, -0.32, -0.58);
@@ -106,10 +109,39 @@ export class PotionViewModel {
 
   constructor(scene: THREE.Scene) {
     this.scene = scene;
-    this.group = createPotionMeshGroup(this.assets);
-    this.group.scale.set(0.95, 0.95, 0.95);
-    this.group.visible = false;
+    this.group = this.buildViewGroup();
     this.scene.add(this.group);
+  }
+
+  private buildViewGroup(): THREE.Group {
+    const root = createPotionMeshGroup(this.assets);
+    const arm = createFirstPersonArmGroup(this.gender, 'right', this.assets, 'potion');
+    root.add(arm);
+    root.scale.set(0.95, 0.95, 0.95);
+    root.visible = false;
+    return root;
+  }
+
+  setGender(gender: CharacterGender): void {
+    if (this.gender === gender) return;
+    this.gender = gender;
+    const wasVisible = this.group.visible;
+    this.disposeMeshOnly();
+    this.group = this.buildViewGroup();
+    this.group.visible = wasVisible;
+    this.scene.add(this.group);
+  }
+
+  private disposeMeshOnly(): void {
+    this.scene.remove(this.group);
+    for (const geo of this.assets.geometries) {
+      geo.dispose();
+    }
+    for (const mat of this.assets.materials) {
+      mat.dispose();
+    }
+    this.assets.geometries.length = 0;
+    this.assets.materials.length = 0;
   }
 
   triggerDrink(): void {
@@ -165,14 +197,6 @@ export class PotionViewModel {
   }
 
   dispose(): void {
-    this.scene.remove(this.group);
-    for (const geo of this.assets.geometries) {
-      geo.dispose();
-    }
-    for (const mat of this.assets.materials) {
-      mat.dispose();
-    }
-    this.assets.geometries.length = 0;
-    this.assets.materials.length = 0;
+    this.disposeMeshOnly();
   }
 }

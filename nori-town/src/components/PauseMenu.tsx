@@ -6,7 +6,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import { BookOpen, ChevronDown, Smartphone } from 'lucide-react';
+import { BookOpen, ChevronDown, Maximize2, Minimize2, Smartphone } from 'lucide-react';
 
 interface PauseMenuProps {
   visible: boolean;
@@ -14,9 +14,11 @@ interface PauseMenuProps {
   renderDistance: number;
   sensitivity: number;
   touchControlsEnabled: boolean;
+  isFullscreen: boolean;
   onRenderDistanceChange: (value: number) => void;
   onSensitivityChange: (value: number) => void;
   onToggleTouchControls: () => void;
+  onToggleFullscreen: () => void;
   onPlay: () => void;
 }
 
@@ -107,6 +109,7 @@ const GUIDE_ITEMS: Array<{ label: string; keys: string }> = [
   { label: 'Cất / Lấy nhanh (1→9)', keys: 'F' },
   { label: 'Đổi Katana', keys: 'Q' },
   { label: 'Che / Cất Khiên chắn', keys: 'R' },
+  { label: 'Mở cửa sổ nhân vật', keys: 'B' },
 ];
 
 interface Petal {
@@ -171,9 +174,11 @@ export const PauseMenu = memo(function PauseMenu({
   renderDistance,
   sensitivity,
   touchControlsEnabled,
+  isFullscreen,
   onRenderDistanceChange,
   onSensitivityChange,
   onToggleTouchControls,
+  onToggleFullscreen,
   onPlay,
 }: PauseMenuProps) {
   const [guideOpen, setGuideOpen] = useState(false);
@@ -577,7 +582,23 @@ export const PauseMenu = memo(function PauseMenu({
       {/* 3. Nội dung UI chính */}
       <div className="relative z-20 w-full h-full overflow-y-auto touch-pan-y flex flex-col justify-between p-4 sm:p-7 lg:p-9 gap-4">
         {/* THANH TRÊN */}
-        <header className="flex items-center justify-end shrink-0">
+        <header className="flex flex-wrap items-center justify-end gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={onToggleFullscreen}
+            className="px-3.5 py-2 rounded-full font-cyber text-[11px] sm:text-xs font-bold tracking-wider uppercase border bg-black/65 hover:bg-white/15 transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
+            style={{
+              borderColor: isFullscreen ? activeTheme.primary : 'rgba(255,255,255,0.28)',
+            }}
+          >
+            {isFullscreen ? (
+              <Minimize2 className="w-3.5 h-3.5" style={{ color: activeTheme.primary }} />
+            ) : (
+              <Maximize2 className="w-3.5 h-3.5" style={{ color: activeTheme.secondary }} />
+            )}
+            <span>{isFullscreen ? 'THOÁT FULL' : 'FULL MÀN HÌNH'}</span>
+          </button>
+
           <button
             type="button"
             onClick={handleToggleSound}

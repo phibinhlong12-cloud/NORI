@@ -11,6 +11,7 @@ import {
 } from './constants';
 import { CashierStation } from './counter';
 import { DragonBossHudState } from './dragon';
+import { CharacterGender } from './firstPersonArms';
 import { KatanaViewModel } from './katana';
 import { FirstPersonPlayer } from './player';
 import { PotionViewModel } from './potion';
@@ -41,6 +42,8 @@ export interface HudStats {
   hasShield: boolean;
   backpackOpen: boolean;
   shopOpen: boolean;
+  characterWindowOpen: boolean;
+  gender: CharacterGender;
   holdingKatana: boolean;
   holdingPotionSlot: number | null;
   holdingPotionCount: number;
@@ -247,6 +250,8 @@ export class VoxelEngine {
   private safeHealTimer = 0;
   private backpackOpen = false;
   private shopOpen = false;
+  private characterWindowOpen = false;
+  private playerGender: CharacterGender = 'male';
   private holdingKatana = false;
   private holdingPotionSlot: number | null = null;
   private hasIceKatana = false;
@@ -277,6 +282,8 @@ export class VoxelEngine {
     hasShield: false,
     backpackOpen: false,
     shopOpen: false,
+    characterWindowOpen: false,
+    gender: 'male',
     holdingKatana: false,
     holdingPotionSlot: null,
     holdingPotionCount: 0,
@@ -453,9 +460,18 @@ export class VoxelEngine {
     }
   }
 
+  setGender(gender: CharacterGender): void {
+    this.playerGender = gender;
+    this.katanaView.setGender(gender);
+    this.shieldView.setGender(gender);
+    this.potionView.setGender(gender);
+    this.emitStats();
+  }
+
   pauseGame(): void {
     this.isPlaying = false;
     this.shopOpen = false;
+    this.characterWindowOpen = false;
     this.player.keys = {};
     this.player.setJoystickVector(0, 0);
     this.isMouseDragging = false;
@@ -476,6 +492,7 @@ export class VoxelEngine {
   openShop(): void {
     if (this.shopOpen) return;
     this.shopOpen = true;
+    this.characterWindowOpen = false;
     this.backpackOpen = false;
     this.player.keys = {};
     this.player.setJoystickVector(0, 0);
@@ -506,6 +523,52 @@ export class VoxelEngine {
       }
     }
     this.emitStats();
+  }
+
+  openCharacterWindow(): void {
+    if (this.characterWindowOpen || !this.isPlaying) return;
+    this.characterWindowOpen = true;
+    this.shopOpen = false;
+    this.backpackOpen = false;
+    this.player.keys = {};
+    this.player.setJoystickVector(0, 0);
+    this.isMouseDragging = false;
+    this.isLeftMouseDown = false;
+    this.isTouchBreakHeld = false;
+    this.touchTreeHoldActive = false;
+    this.lookTouchId = null;
+    this.chopCompletedWaitingRelease = false;
+    this.resetChopHold();
+
+    const canvas = this.renderer.domElement;
+    if (document.pointerLockElement === canvas && document.exitPointerLock) {
+      document.exitPointerLock();
+    }
+    this.audio.playStowSound();
+    this.emitStats();
+  }
+
+  closeCharacterWindow(): void {
+    if (!this.characterWindowOpen) return;
+    this.characterWindowOpen = false;
+    const canvas = this.renderer.domElement;
+    if (!this.isTouchDevice && this.isPlaying && canvas.requestPointerLock) {
+      try {
+        canvas.requestPointerLock();
+      } catch {
+        // Fallback nếu môi trường nhúng hạn chế Pointer Lock
+      }
+    }
+    this.audio.playStowSound();
+    this.emitStats();
+  }
+
+  toggleCharacterWindow(): void {
+    if (this.characterWindowOpen) {
+      this.closeCharacterWindow();
+    } else {
+      this.openCharacterWindow();
+    }
   }
 
   buyShopItem(itemId: ShopItemId): void {
@@ -1046,6 +1109,8 @@ export class VoxelEngine {
     this.latestStats.hasShield = this.world.isShopItemOwned('shield');
     this.latestStats.backpackOpen = this.backpackOpen;
     this.latestStats.shopOpen = this.shopOpen;
+    this.latestStats.characterWindowOpen = this.characterWindowOpen;
+    this.latestStats.gender = this.playerGender;
     this.latestStats.holdingKatana = this.holdingKatana;
     if (
       this.holdingPotionSlot !== null &&
@@ -1165,20 +1230,20 @@ export class VoxelEngine {
       this.hasStarted = true;
       this.isPlaying = true;
       this.callbacks.onPlayingChange(true, true);
-    } else if (!this.isTouchDevice && this.isPlaying && !this.shopOpen) {
+    } else if (!this.isTouchDevice && this.isPlaying && !this.shopOpen && !this.characterWindowOpen) {
       this.pauseGame();
     }
   };
 
   private readonly onMouseMove = (e: MouseEvent): void => {
-    if (!this.isPlaying || this.shopOpen) return;
+    if (!this.isPlaying || this.shopOpen || this.characterWindowOpen) return;
     if (document.pointerLockElement === this.renderer.domElement || this.isMouseDragging) {
       this.player.rotate(e.movementX, e.movementY);
     }
   };
 
   private readonly onMouseDown = (e: MouseEvent): void => {
-    if (!this.isPlaying || this.shopOpen) return;
+    if (!this.isPlaying || this.shopOpen || this.characterWindowOpen) return;
     if (performance.now() - this.lastTouchTimestamp < 500) return;
     const canvas = this.renderer.domElement;
     if (document.pointerLockElement !== canvas && !this.isTouchDevice) {
@@ -1229,6 +1294,14 @@ export class VoxelEngine {
       return;
     }
 
+    if (this.characterWindowOpen) {
+      if ((e.code === 'Escape' || e.code === 'KeyB') && !e.repeat) {
+        e.preventDefault();
+        this.closeCharacterWindow();
+      }
+      return;
+    }
+
     this.player.keys[e.code] = true;
 
     if (!this.backpackOpen && e.code.startsWith('Digit')) {
@@ -1239,7 +1312,11 @@ export class VoxelEngine {
     }
 
     if (this.isPlaying && !e.repeat) {
-      if (e.code === 'KeyE') {
+      if (e.code === 'KeyB') {
+        e.preventDefault();
+        this.toggleCharacterWindow();
+        return;
+      } else if (e.code === 'KeyE') {
         this.toggleBackpack();
       } else if (e.code === 'KeyF') {
         this.interactBackpackWood();
@@ -1265,7 +1342,7 @@ export class VoxelEngine {
   };
 
   private readonly onWheel = (e: WheelEvent): void => {
-    if (!this.isPlaying || this.shopOpen) return;
+    if (!this.isPlaying || this.shopOpen || this.characterWindowOpen) return;
     if (e.deltaY > 0) {
       this.selectSlot(this.selectedSlotIndex + 1);
     } else if (e.deltaY < 0) {
@@ -1392,7 +1469,7 @@ export class VoxelEngine {
 
   private readonly onTouchStart = (e: TouchEvent): void => {
     this.lastTouchTimestamp = performance.now();
-    if (!this.isPlaying || this.shopOpen) return;
+    if (!this.isPlaying || this.shopOpen || this.characterWindowOpen) return;
     if (this.lookTouchId === null && e.changedTouches.length > 0) {
       const touch = e.changedTouches[0];
       this.lookTouchId = touch.identifier;
@@ -1420,7 +1497,7 @@ export class VoxelEngine {
 
   private readonly onTouchMove = (e: TouchEvent): void => {
     this.lastTouchTimestamp = performance.now();
-    if (!this.isPlaying || this.shopOpen || this.lookTouchId === null) return;
+    if (!this.isPlaying || this.shopOpen || this.characterWindowOpen || this.lookTouchId === null) return;
     for (let i = 0; i < e.touches.length; i++) {
       const touch = e.touches[i];
       if (touch.identifier === this.lookTouchId) {
@@ -1461,7 +1538,7 @@ export class VoxelEngine {
 
         if (wasTreeHold) {
           this.handleBreakRelease();
-        } else if (wasTap && this.isPlaying && !this.shopOpen) {
+        } else if (wasTap && this.isPlaying && !this.shopOpen && !this.characterWindowOpen) {
           this.performScreenTapInteract(endX, endY);
         }
         break;
@@ -1503,6 +1580,8 @@ export class VoxelEngine {
     canvas.addEventListener('touchend', this.onTouchEnd, { passive: true });
     canvas.addEventListener('touchcancel', this.onTouchEnd, { passive: true });
     window.addEventListener('resize', this.onResize);
+    document.addEventListener('fullscreenchange', this.onResize);
+    document.addEventListener('webkitfullscreenchange', this.onResize);
     window.addEventListener('blur', this.onWindowBlur);
     canvas.addEventListener('webglcontextlost', this.onContextLost);
     canvas.addEventListener('webglcontextrestored', this.onContextRestored);
@@ -1523,6 +1602,8 @@ export class VoxelEngine {
     canvas.removeEventListener('touchend', this.onTouchEnd);
     canvas.removeEventListener('touchcancel', this.onTouchEnd);
     window.removeEventListener('resize', this.onResize);
+    document.removeEventListener('fullscreenchange', this.onResize);
+    document.removeEventListener('webkitfullscreenchange', this.onResize);
     window.removeEventListener('blur', this.onWindowBlur);
     canvas.removeEventListener('webglcontextlost', this.onContextLost);
     canvas.removeEventListener('webglcontextrestored', this.onContextRestored);
@@ -1576,7 +1657,7 @@ export class VoxelEngine {
       this.fpsTimer = 0;
     }
 
-    if (this.isPlaying && !this.shopOpen) {
+    if (this.isPlaying && !this.shopOpen && !this.characterWindowOpen) {
       const jumpState = this.player.update(dt);
       if (jumpState.jumped) {
         this.audio.playJumpSound();

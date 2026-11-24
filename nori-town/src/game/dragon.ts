@@ -1,6 +1,12 @@
 import * as THREE from 'three';
 import { createKatanaMeshGroup, KatanaAssetHandles } from './katana';
 import { OutsideGenerator } from './outside';
+import {
+  createParabolicEllipsoidGeometry,
+  createParabolicLatheGeometry,
+  createParabolicLimbXGeometry,
+  createParabolicPlateGeometry,
+} from './parabolic';
 import { DRAGON_ZONE_SPEC } from './slimeZones';
 import { createDragonScaleTexture, createSoftShadowTexture } from './textures';
 
@@ -666,13 +672,20 @@ export class DragonBossManager {
       flameCoreMat,
     );
 
-    // 1. Thân rồng uốn lượn + giáp vai + vảy bụng trắng bạc xếp lớp + bờm gai sống lưng băng phát sáng
-    const torsoGeo = new THREE.BoxGeometry(2.12, 1.72, 3.8);
-    const chestGeo = new THREE.BoxGeometry(2.48, 1.85, 2.05);
-    const pauldronGeo = new THREE.BoxGeometry(0.82, 0.72, 1.35);
-    const waistGeo = new THREE.BoxGeometry(1.75, 1.4, 1.4);
-    const bellyPlateGeo = new THREE.BoxGeometry(1.68, 0.34, 0.72);
-    const dorsalBladeGeo = new THREE.ConeGeometry(0.24, 1.24, 5);
+    // 1. Thân rồng parabol uốn lượn + giáp vai + vảy bụng trắng bạc cong mượt + bờm gai sống lưng băng phát sáng
+    const torsoGeo = createParabolicEllipsoidGeometry(2.2, 1.78, 3.9, 20, 14);
+    const chestGeo = createParabolicEllipsoidGeometry(2.56, 1.92, 2.25, 20, 14);
+    const pauldronGeo = createParabolicPlateGeometry(0.92, 0.72, 1.42);
+    const waistGeo = createParabolicEllipsoidGeometry(1.82, 1.46, 1.56, 18, 12);
+    const bellyPlateGeo = createParabolicPlateGeometry(1.74, 0.36, 0.78);
+    const dorsalBladeGeo = createParabolicLatheGeometry(
+      1.26,
+      0.24,
+      (t) => Math.pow(Math.max(0, 1 - t), 0.72),
+      10,
+      10,
+      true,
+    );
     this.geometries.push(torsoGeo, chestGeo, pauldronGeo, waistGeo, bellyPlateGeo, dorsalBladeGeo);
 
     this.addDragonPart(this.bodyGroup, torsoGeo, deepNavyMat, 0, 2.45, -0.1, -0.06, 0, 0);
@@ -711,11 +724,18 @@ export class DragonBossManager {
       );
     }
 
-    // 2. Bốn chân mạnh mẽ với đùi gân guốc + 3 móng vuốt sắc cong
-    const thighGeo = new THREE.BoxGeometry(0.76, 1.25, 0.85);
-    const shinGeo = new THREE.BoxGeometry(0.52, 1.15, 0.58);
-    const palmGeo = new THREE.BoxGeometry(0.74, 0.32, 0.78);
-    const talonGeo = new THREE.ConeGeometry(0.11, 0.62, 4);
+    // 2. Bốn chân mạnh mẽ với đùi gân guốc parabol + 3 móng vuốt sắc cong
+    const thighGeo = createParabolicEllipsoidGeometry(0.82, 1.32, 0.9, 14, 10);
+    const shinGeo = createParabolicEllipsoidGeometry(0.56, 1.22, 0.62, 14, 10);
+    const palmGeo = createParabolicPlateGeometry(0.78, 0.34, 0.82);
+    const talonGeo = createParabolicLatheGeometry(
+      0.62,
+      0.11,
+      (t) => Math.pow(Math.max(0, 1 - t), 0.7),
+      10,
+      8,
+      true,
+    );
     this.geometries.push(thighGeo, shinGeo, palmGeo, talonGeo);
 
     const legConfigs: Array<{ x: number; y: number; z: number; isFront: boolean }> = [
@@ -775,12 +795,19 @@ export class DragonBossManager {
       this.bodyGroup.add(legPivot);
     }
 
-    // 3. Cổ chữ S vươn cao + Đầu rồng uy nghiêm với sừng phân nhánh & bờm xanh lam
+    // 3. Cổ chữ S vươn cao + Đầu rồng parabol mượt với sừng phân nhánh & bờm xanh lam
     this.neckGroup.position.set(0, 3.1, 1.95);
-    const neckLowerGeo = new THREE.BoxGeometry(1.32, 1.38, 1.25);
-    const neckMidGeo = new THREE.BoxGeometry(1.12, 1.35, 1.15);
-    const neckPlateGeo = new THREE.BoxGeometry(1.06, 0.3, 0.72);
-    const manePlumeGeo = new THREE.ConeGeometry(0.22, 1.3, 4);
+    const neckLowerGeo = createParabolicEllipsoidGeometry(1.38, 1.46, 1.34, 16, 12);
+    const neckMidGeo = createParabolicEllipsoidGeometry(1.18, 1.42, 1.24, 16, 12);
+    const neckPlateGeo = createParabolicPlateGeometry(1.1, 0.32, 0.76);
+    const manePlumeGeo = createParabolicLatheGeometry(
+      1.3,
+      0.22,
+      (t) => Math.pow(Math.max(0, 1 - t), 0.75),
+      10,
+      8,
+      true,
+    );
     this.geometries.push(neckLowerGeo, neckMidGeo, neckPlateGeo, manePlumeGeo);
 
     this.addDragonPart(this.neckGroup, neckLowerGeo, deepNavyMat, 0, 0.52, 0.45, -0.28, 0, 0);
@@ -811,18 +838,46 @@ export class DragonBossManager {
       );
     }
 
-    // Đầu rồng chi tiết: hộp sọ góc cạnh, mõm dài có nanh, râu cằm, 4 sừng lớn & mắt xanh phát sáng
+    // Đầu rồng chi tiết: hộp sọ parabol thuôn mượt, mõm dài có nanh, râu cằm, 4 sừng lớn & mắt xanh phát sáng
     this.headGroup.position.set(0, 2.15, 1.05);
-    const headSkullGeo = new THREE.BoxGeometry(1.48, 1.05, 1.48);
-    const browRidgeGeo = new THREE.BoxGeometry(1.62, 0.28, 1.12);
-    const snoutGeo = new THREE.BoxGeometry(0.98, 0.58, 1.38);
-    const snoutTipGeo = new THREE.BoxGeometry(0.76, 0.46, 0.5);
-    const jawGeo = new THREE.BoxGeometry(0.86, 0.3, 1.24);
-    const mainHornGeo = new THREE.ConeGeometry(0.22, 2.2, 5);
-    const sideHornGeo = new THREE.ConeGeometry(0.15, 1.45, 4);
-    const fangGeo = new THREE.ConeGeometry(0.08, 0.34, 4);
-    const beardGeo = new THREE.ConeGeometry(0.14, 0.65, 4);
-    const eyeGeo = new THREE.BoxGeometry(0.22, 0.2, 0.38);
+    const headSkullGeo = createParabolicEllipsoidGeometry(1.54, 1.12, 1.58, 18, 12);
+    const browRidgeGeo = createParabolicPlateGeometry(1.64, 0.3, 1.14);
+    const snoutGeo = createParabolicEllipsoidGeometry(1.04, 0.64, 1.48, 16, 12);
+    const snoutTipGeo = createParabolicEllipsoidGeometry(0.82, 0.5, 0.62, 14, 10);
+    const jawGeo = createParabolicPlateGeometry(0.92, 0.34, 1.32);
+    const mainHornGeo = createParabolicLatheGeometry(
+      2.2,
+      0.22,
+      (t) => Math.pow(Math.max(0, 1 - t), 0.72),
+      12,
+      10,
+      true,
+    );
+    const sideHornGeo = createParabolicLatheGeometry(
+      1.45,
+      0.15,
+      (t) => Math.pow(Math.max(0, 1 - t), 0.72),
+      10,
+      8,
+      true,
+    );
+    const fangGeo = createParabolicLatheGeometry(
+      0.34,
+      0.08,
+      (t) => Math.pow(Math.max(0, 1 - t), 0.7),
+      10,
+      6,
+      true,
+    );
+    const beardGeo = createParabolicLatheGeometry(
+      0.65,
+      0.14,
+      (t) => Math.pow(Math.max(0, 1 - t), 0.7),
+      10,
+      8,
+      true,
+    );
+    const eyeGeo = createParabolicEllipsoidGeometry(0.24, 0.22, 0.42, 12, 10);
     this.geometries.push(
       headSkullGeo,
       browRidgeGeo,
@@ -866,21 +921,33 @@ export class DragonBossManager {
     this.neckGroup.add(this.headGroup);
     this.bodyGroup.add(this.neckGroup);
 
-    // 4. Đôi cánh lông vũ & màng cánh băng giá 2 tầng
-    const innerBoneGeo = new THREE.BoxGeometry(2.9, 0.28, 0.32);
-    innerBoneGeo.translate(1.45, 0, 0);
-    const outerBoneGeo = new THREE.BoxGeometry(3.2, 0.22, 0.26);
-    outerBoneGeo.translate(1.6, 0, 0);
+    // 4. Đôi cánh lông vũ & màng cánh băng giá 2 tầng bo cong parabol
+    const innerBoneGeo = createParabolicLimbXGeometry(2.9, 0.16, 0.12, 0.9, 1.05);
+    const outerBoneGeo = createParabolicLimbXGeometry(3.2, 0.12, 0.08, 0.9, 1.05);
     const innerMembraneGeo = new THREE.PlaneGeometry(2.75, 2.15);
     innerMembraneGeo.rotateX(-Math.PI / 2);
     innerMembraneGeo.translate(1.45, -0.02, -1.15);
     const outerMembraneGeo = new THREE.PlaneGeometry(2.95, 2.45);
     outerMembraneGeo.rotateX(-Math.PI / 2);
     outerMembraneGeo.translate(1.5, -0.02, -1.35);
-    const innerFeatherGeo = new THREE.ConeGeometry(0.42, 3.1, 5);
+    const innerFeatherGeo = createParabolicLatheGeometry(
+      3.1,
+      0.42,
+      (t) => Math.pow(Math.max(0, 1 - t), 0.72),
+      12,
+      10,
+      true,
+    );
     innerFeatherGeo.rotateX(-Math.PI / 2);
     innerFeatherGeo.translate(0, 0, -1.55);
-    const outerFeatherGeo = new THREE.ConeGeometry(0.38, 3.8, 5);
+    const outerFeatherGeo = createParabolicLatheGeometry(
+      3.8,
+      0.38,
+      (t) => Math.pow(Math.max(0, 1 - t), 0.72),
+      12,
+      10,
+      true,
+    );
     outerFeatherGeo.rotateX(-Math.PI / 2);
     outerFeatherGeo.translate(0, 0, -1.9);
     this.geometries.push(
@@ -956,10 +1023,10 @@ export class DragonBossManager {
       [0.32, 0.3, 1.15],
     ];
     segSizes.forEach(([w, h, l], idx) => {
-      const segGeo = new THREE.BoxGeometry(w, h, l);
+      const segGeo = createParabolicEllipsoidGeometry(w * 1.04, h * 1.04, l * 1.12, 14, 10);
       segGeo.translate(0, 0, -l * 0.5);
-      const bellyGeo = new THREE.BoxGeometry(w * 0.76, 0.18, l * 0.88);
-      bellyGeo.translate(0, -h * 0.48, -l * 0.5);
+      const bellyGeo = createParabolicPlateGeometry(w * 0.78, 0.2, l * 0.9);
+      bellyGeo.translate(0, -h * 0.45, -l * 0.5);
       this.geometries.push(segGeo, bellyGeo);
 
       const segGroup = new THREE.Group();
