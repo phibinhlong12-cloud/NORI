@@ -38,8 +38,37 @@ export const DRAGON_ZONE_SPEC: SlimeZoneSpec = {
   radius: 34,
 };
 
+export const MUSHROOM_ZONE_SPECS: SlimeZoneSpec[] = [
+  {
+    id: 'mushroom-west',
+    name: 'Vùng Nấm Độc Tây',
+    x: -51,
+    z: 0,
+    radius: 17.5,
+  },
+  {
+    id: 'mushroom-east',
+    name: 'Vùng Nấm Độc Đông',
+    x: 50,
+    z: 0,
+    radius: 17.5,
+  },
+];
+
 export function isInsideSlimeZone(wx: number, wz: number, padding = 0): boolean {
   for (const zone of SLIME_ZONE_SPECS) {
+    const r = zone.radius + padding;
+    const dx = wx - zone.x;
+    const dz = wz - zone.z;
+    if (dx * dx + dz * dz <= r * r) {
+      return true;
+    }
+  }
+  return false;
+}
+
+export function isInsideMushroomZone(wx: number, wz: number, padding = 0): boolean {
+  for (const zone of MUSHROOM_ZONE_SPECS) {
     const r = zone.radius + padding;
     const dx = wx - zone.x;
     const dz = wz - zone.z;

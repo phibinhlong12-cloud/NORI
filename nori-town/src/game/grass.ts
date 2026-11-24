@@ -277,8 +277,9 @@ export class GrassManager {
         const wz = cellZ + rz * cellSpan;
 
         if (!this.outside.isGrassAllowedAt(wx, wz)) continue;
+        if (isInsideDragonZone(wx, wz, 2.2)) continue;
 
-        const inZone = isInsideSlimeZone(wx, wz, 0.4) || isInsideDragonZone(wx, wz, 0.4);
+        const inZone = isInsideSlimeZone(wx, wz, 0.4);
         const spawnThreshold = inZone ? 0.56 : 0.14;
         if (rSpawn < spawnThreshold) continue;
 

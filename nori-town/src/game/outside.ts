@@ -7,7 +7,12 @@ import {
   WALL_MIN,
 } from './citadel';
 import { BLOCK_COLORS, BlockId, CHUNK_SIZE } from './constants';
-import { isInsideDragonZone, isInsideSlimeZone } from './slimeZones';
+import {
+  DRAGON_ZONE_SPEC,
+  isInsideDragonZone,
+  isInsideMushroomZone,
+  isInsideSlimeZone,
+} from './slimeZones';
 
 export const FLAT_GROUND_Y = 4.0;
 
@@ -24,7 +29,39 @@ const baseGrassColor = new THREE.Color('#4f9e2b');
 const sunlitGrassColor = new THREE.Color('#73c43c');
 const hollowMossColor = new THREE.Color('#397d22');
 const slopeEarthColor = new THREE.Color('#6a8530');
+
+const deepIceColor = new THREE.Color('#2b6cb0');
+const midIceColor = new THREE.Color('#7dd3fc');
+const frostIceColor = new THREE.Color('#d8f1ff');
+const snowCapColor = new THREE.Color('#f4fbff');
 const tempBlendedColor = new THREE.Color();
+const tempIceColor = new THREE.Color();
+
+interface IceShelfSpec {
+  dx: number;
+  dz: number;
+  rx: number;
+  rz: number;
+  rot: number;
+  height: number;
+}
+
+// Các khoảng nhô cao của tảng băng phân bố quanh Lãnh Địa Rồng Băng (chừa lối trung tâm cho giao tranh)
+const DRAGON_ICE_SHELVES: IceShelfSpec[] = [
+  { dx: -15.5, dz: -6.0, rx: 7.5, rz: 5.5, rot: 0.45, height: 2.8 },
+  { dx: 16.0, dz: -4.5, rx: 7.2, rz: 5.8, rot: -0.35, height: 2.6 },
+  { dx: -13.5, dz: 12.5, rx: 6.8, rz: 5.2, rot: -0.5, height: 2.3 },
+  { dx: 14.5, dz: 13.0, rx: 6.6, rz: 5.4, rot: 0.55, height: 2.4 },
+  { dx: 0.0, dz: -20.5, rx: 11.0, rz: 6.5, rot: 0.08, height: 3.9 },
+  { dx: -21.0, dz: -15.0, rx: 6.5, rz: 6.0, rot: 0.8, height: 3.4 },
+  { dx: 21.5, dz: -15.5, rx: 6.5, rz: 5.8, rot: -0.75, height: 3.5 },
+  { dx: -23.0, dz: 4.5, rx: 6.2, rz: 6.4, rot: 0.2, height: 3.1 },
+  { dx: 23.0, dz: 5.5, rx: 6.4, rz: 6.0, rot: -0.25, height: 3.0 },
+  { dx: -7.5, dz: 21.5, rx: 5.4, rz: 4.5, rot: 0.3, height: 1.75 },
+  { dx: 8.5, dz: 21.0, rx: 5.2, rz: 4.6, rot: -0.3, height: 1.75 },
+  { dx: -8.5, dz: -13.0, rx: 4.6, rz: 3.8, rot: 0.6, height: 1.45 },
+  { dx: 9.0, dz: -12.5, rx: 4.5, rz: 3.8, rot: -0.6, height: 1.45 },
+];
 
 function smoothstep(edge0: number, edge1: number, x: number): number {
   const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
@@ -54,6 +91,7 @@ function valueNoise2D(wx: number, wz: number, seed: number): number {
  * Module Ngoài Thành:
  * - Địa hình đồng cỏ gồ ghề dạng parabol liên tục (không có cạnh vuông 90 độ).
  * - Chuyển tiếp mượt từ nền phẳng trong thành/cổng (y = 4.0) ra các gò parabol bên ngoài.
+ * - Riêng Lãnh Địa Rồng Băng được tạo hình thành vùng tảng băng nhô cao nhiều tầng.
  */
 export class OutsideGenerator {
   private seed: number;
@@ -108,6 +146,33 @@ export class OutsideGenerator {
     return total;
   }
 
+  private sampleDragonIceFieldHeight(wx: number, wz: number): number {
+    const rx = wx - DRAGON_ZONE_SPEC.x;
+    const rz = wz - DRAGON_ZONE_SPEC.z;
+
+    // Nền băng chính gợn sóng nhẹ
+    const ripple = (valueNoise2D(wx * 0.12, wz * 0.12, this.seed + 901) - 0.5) * 0.75;
+    const fineIce = (valueNoise2D(wx * 0.34, wz * 0.34, this.seed + 955) - 0.5) * 0.28;
+    let height = FLAT_GROUND_Y + 0.2 + ripple + fineIce;
+
+    // Cộng dồn các khối tảng băng nhô cao (dạng gò/bậc băng mượt đi lên được)
+    for (const shelf of DRAGON_ICE_SHELVES) {
+      const ox = rx - shelf.dx;
+      const oz = rz - shelf.dz;
+      const cosR = Math.cos(shelf.rot);
+      const sinR = Math.sin(shelf.rot);
+      const lx = (ox * cosR + oz * sinR) / shelf.rx;
+      const lz = (-ox * sinR + oz * cosR) / shelf.rz;
+      const u = lx * lx + lz * lz;
+      if (u < 1.0) {
+        const ridge = smoothstep(1.0, 0.22, u);
+        height += shelf.height * ridge;
+      }
+    }
+
+    return height;
+  }
+
   getDistanceOutsideFlatApron(wx: number, wz: number): number {
     let dx = 0;
     if (wx < FLAT_PAD_MIN_X) dx = FLAT_PAD_MIN_X - wx;
@@ -127,8 +192,16 @@ export class OutsideGenerator {
     const blend = smoothstep(0, 10, dist);
     const macro = this.sampleParabolicLayer(wx, wz, MACRO_CELL, 9, 15, -1.2, 5.8, 101);
     const detail = this.sampleParabolicLayer(wx, wz, DETAIL_CELL, 4.5, 8.0, -0.6, 2.2, 409);
+    const meadowH = Math.max(1.5, FLAT_GROUND_Y + blend * (macro + detail));
 
-    return Math.max(1.5, FLAT_GROUND_Y + blend * (macro + detail));
+    const dragonDist = Math.hypot(wx - DRAGON_ZONE_SPEC.x, wz - DRAGON_ZONE_SPEC.z);
+    if (dragonDist >= DRAGON_ZONE_SPEC.radius + 3.0) {
+      return meadowH;
+    }
+
+    const iceWeight = smoothstep(DRAGON_ZONE_SPEC.radius + 3.0, DRAGON_ZONE_SPEC.radius - 4.0, dragonDist);
+    const iceH = this.sampleDragonIceFieldHeight(wx, wz);
+    return meadowH * (1 - iceWeight) + iceH * iceWeight;
   }
 
   isTreeAllowedAt(wx: number, wz: number): boolean {
@@ -149,14 +222,18 @@ export class OutsideGenerator {
     ) {
       return false;
     }
-    if (isInsideSlimeZone(wx, wz, 1.8) || isInsideDragonZone(wx, wz, 2.0)) {
+    if (
+      isInsideSlimeZone(wx, wz, 1.8) ||
+      isInsideMushroomZone(wx, wz, 1.8) ||
+      isInsideDragonZone(wx, wz, 3.0)
+    ) {
       return false;
     }
     return true;
   }
 
   isGrassAllowedAt(wx: number, wz: number): boolean {
-    // Không mọc cỏ bên trong thành, trên nền tường thành, tháp cổng hoặc đường đá cuội trước cổng
+    // Không mọc cỏ bên trong thành, trên nền tường thành, tháp cổng, đường đá cuội hoặc vùng tảng băng Rồng Băng
     if (
       wx >= WALL_MIN - 2.5 &&
       wx <= WALL_MAX + 2.5 &&
@@ -171,6 +248,9 @@ export class OutsideGenerator {
       wz >= GATE_MIN_Z - 20 &&
       wz <= GATE_MIN_Z
     ) {
+      return false;
+    }
+    if (isInsideDragonZone(wx, wz, 2.2)) {
       return false;
     }
     return true;
@@ -241,6 +321,28 @@ export class OutsideGenerator {
         } else {
           // Sân cỏ trong thành giữ sắc xanh đều sạch mắt, điểm gợn cỏ rất nhẹ
           tempBlendedColor.set(BLOCK_COLORS[BlockId.GRASS]).lerp(sunlitGrassColor, patchNoise * 0.14);
+        }
+
+        // Vùng tảng băng Lãnh Địa Rồng Băng (không còn đồng cỏ xanh)
+        const dragonDist = Math.hypot(wx - DRAGON_ZONE_SPEC.x, wz - DRAGON_ZONE_SPEC.z);
+        if (dragonDist < DRAGON_ZONE_SPEC.radius + 2.5) {
+          const iceBlend = smoothstep(
+            DRAGON_ZONE_SPEC.radius + 2.5,
+            DRAGON_ZONE_SPEC.radius - 2.5,
+            dragonDist,
+          );
+          const veinNoise = valueNoise2D(wx * 0.19, wz * 0.19, this.seed + 883);
+          const heightFactor = smoothstep(4.0, 7.2, h);
+          const slopeBlue = smoothstep(0.94, 0.65, ny);
+
+          tempIceColor.copy(midIceColor);
+          tempIceColor.lerp(deepIceColor, Math.min(0.85, veinNoise * 0.55 + slopeBlue * 0.65));
+          tempIceColor.lerp(frostIceColor, Math.min(0.92, heightFactor * 0.78 + (1 - veinNoise) * 0.22));
+          if (h > 5.4 && ny > 0.84) {
+            tempIceColor.lerp(snowCapColor, smoothstep(5.4, 7.5, h) * 0.75);
+          }
+
+          tempBlendedColor.lerp(tempIceColor, iceBlend);
         }
 
         colors[idx3] = tempBlendedColor.r;

@@ -66,7 +66,7 @@ interface TierVisualSet {
   coreMaterials: THREE.Material[];
 }
 
-const SLIME_RESPAWN_SECONDS = 300.0;
+const SLIME_RESPAWN_SECONDS = 120.0;
 
 function seededRand(seed: number): number {
   const n = Math.sin(seed * 127.1 + 311.7) * 43758.5453123;
@@ -488,13 +488,13 @@ export class SlimeManager {
     let globalIdx = 0;
 
     for (const zone of SLIME_ZONE_SPECS) {
-      // Mỗi vùng có: 1 con Lv3 (6 chém, 100 XP), 2 con Lv2 (4 chém, 50 XP), 7 con Lv1 (2 chém, 10 XP)
+      // Mỗi vùng có: 1 con Lv3 (6 chém, 200 XP), 2 con Lv2 (4 chém, 100 XP), 7 con Lv1 (2 chém, 20 XP)
       const levels: SlimeLevel[] = [3, 2, 2, 1, 1, 1, 1, 1, 1, 1];
 
       levels.forEach((level, idx) => {
         globalIdx++;
         const maxHp = level === 3 ? 6 : level === 2 ? 4 : 2;
-        const xpReward = level === 3 ? 100 : level === 2 ? 50 : 10;
+        const xpReward = level === 3 ? 200 : level === 2 ? 100 : 20;
         const scale = level === 3 ? 1.52 : level === 2 ? 1.12 : 0.78;
         const radius = 0.52 * scale;
         const moveSpeed = level === 3 ? 3.25 : level === 2 ? 2.95 : 2.65;
@@ -577,6 +577,7 @@ export class SlimeManager {
         const labelSprite = new THREE.Sprite(labelMat);
         labelSprite.position.set(0, 1.32 * scale + 0.36, 0);
         labelSprite.scale.set(1.5, 0.48, 1);
+        labelSprite.visible = false;
         group.add(labelSprite);
 
         this.slimeRoot.add(group);
@@ -725,9 +726,9 @@ export class SlimeManager {
     const kx = target.x - cameraPos.x;
     const kz = target.z - cameraPos.z;
     const kLen = Math.hypot(kx, kz) || 1;
-    target.knockRemX = (kx / kLen) * 0.5;
-    target.knockRemZ = (kz / kLen) * 0.5;
-    target.knockTimer = 0.1;
+    target.knockRemX = (kx / kLen) * 1.5;
+    target.knockRemZ = (kz / kLen) * 1.5;
+    target.knockTimer = 0.14;
 
     if (target.hp <= 0) {
       target.alive = false;
@@ -825,6 +826,8 @@ export class SlimeManager {
         (playerX - slime.zone.x) * (playerX - slime.zone.x) +
         (playerZ - slime.zone.z) * (playerZ - slime.zone.z);
       const playerInsidePinkZone = pZoneDistSq <= slime.zone.radius * slime.zone.radius;
+      const showLabelRadius = slime.zone.radius + 9.0;
+      slime.labelSprite.visible = pZoneDistSq <= showLabelRadius * showLabelRadius;
 
       const toPlayerX = playerX - slime.x;
       const toPlayerZ = playerZ - slime.z;
@@ -926,7 +929,7 @@ export class SlimeManager {
         distToPlayer <= slime.radius + 0.65 &&
         Math.abs(playerY - groundY) < 2.2
       ) {
-        slime.attackCooldown = 1.15;
+        slime.attackCooldown = 1.0;
 
         const damage = slime.level === 3 ? 1.5 : slime.level === 2 ? 1.0 : 0.5;
         let dirToSlimeX = -playerFwdX;
@@ -938,9 +941,9 @@ export class SlimeManager {
         const frontDot = dirToSlimeX * playerFwdX + dirToSlimeZ * playerFwdZ;
 
         if (shieldRaised && frontDot > 0.15) {
-          slime.knockRemX = dirToSlimeX * 1.0;
-          slime.knockRemZ = dirToSlimeZ * 1.0;
-          slime.knockTimer = 0.14;
+          slime.knockRemX = dirToSlimeX * 2.0;
+          slime.knockRemZ = dirToSlimeZ * 2.0;
+          slime.knockTimer = 0.16;
           callbacks?.onShieldBlocked?.(slime.level);
         } else {
           callbacks?.onPlayerHit?.(damage, slime.level, -dirToSlimeX, -dirToSlimeZ);

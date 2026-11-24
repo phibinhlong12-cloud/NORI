@@ -54,6 +54,7 @@ const DRAGON_XP_REWARD = 5000;
 const DRAGON_RESPAWN_SECONDS = 300.0;
 
 const SKILL_TELEGRAPH_SECONDS = 1.0;
+const SKILL1_TELEGRAPH_SECONDS = 2.0;
 const SKILL1_RADIUS = 10.0;
 const SKILL2_LENGTH = 21.0;
 const SKILL2_HALF_WIDTH = 2.6;
@@ -189,6 +190,7 @@ export class DragonBossManager {
     this.labelSprite = new THREE.Sprite(this.getLabelMaterial(DRAGON_MAX_HP));
     this.labelSprite.position.set(0, 6.45, 0);
     this.labelSprite.scale.set(4.9, 1.38, 1);
+    this.labelSprite.visible = false;
     this.dragonRoot.add(this.labelSprite);
 
     const warnFillMat = new THREE.MeshBasicMaterial({
@@ -329,16 +331,16 @@ export class DragonBossManager {
 
   private buildBlueZone(): void {
     const fillMat = new THREE.MeshBasicMaterial({
-      color: '#0284c7',
+      color: '#38bdf8',
       transparent: true,
-      opacity: 0.18,
+      opacity: 0.14,
       depthWrite: false,
       side: THREE.DoubleSide,
     });
     const ringMat = new THREE.MeshBasicMaterial({
-      color: '#38bdf8',
+      color: '#7dd3fc',
       transparent: true,
-      opacity: 0.92,
+      opacity: 0.94,
       depthWrite: false,
       side: THREE.DoubleSide,
     });
@@ -349,22 +351,152 @@ export class DragonBossManager {
       DRAGON_ZONE_SPEC.z,
       0,
       DRAGON_ZONE_SPEC.radius,
-      12,
+      14,
       64,
-      0.06,
+      0.05,
       fillMat,
     );
     const ring = this.buildTerrainDiscMesh(
       DRAGON_ZONE_SPEC.x,
       DRAGON_ZONE_SPEC.z,
-      DRAGON_ZONE_SPEC.radius - 0.65,
+      DRAGON_ZONE_SPEC.radius - 0.7,
       DRAGON_ZONE_SPEC.radius + 0.35,
       2,
       72,
-      0.11,
+      0.1,
       ringMat,
     );
     this.zoneRoot.add(disc, ring);
+
+    this.buildGlacialIcebergs();
+  }
+
+  private buildGlacialIcebergs(): void {
+    const iceCrystalMat = new THREE.MeshPhysicalMaterial({
+      color: '#7dd3fc',
+      emissive: '#0c4a6e',
+      emissiveIntensity: 0.22,
+      roughness: 0.16,
+      metalness: 0.06,
+      clearcoat: 1.0,
+      clearcoatRoughness: 0.14,
+      flatShading: true,
+    });
+    const deepIceMat = new THREE.MeshPhysicalMaterial({
+      color: '#38bdf8',
+      emissive: '#075985',
+      emissiveIntensity: 0.25,
+      roughness: 0.22,
+      metalness: 0.05,
+      clearcoat: 0.95,
+      flatShading: true,
+    });
+    const frostBaseMat = new THREE.MeshStandardMaterial({
+      color: '#e6f6ff',
+      roughness: 0.78,
+      metalness: 0.02,
+    });
+    this.materials.push(iceCrystalMat, deepIceMat, frostBaseMat);
+
+    // Hình học dùng chung cho các cụm tảng băng đa diện (không dùng khối hộp 90 độ)
+    const spireGeo6 = new THREE.CylinderGeometry(0.08, 1.0, 1.0, 6);
+    spireGeo6.translate(0, 0.5, 0);
+    const spireGeo5 = new THREE.CylinderGeometry(0.14, 0.95, 1.0, 5);
+    spireGeo5.translate(0, 0.5, 0);
+    const slabGeo = new THREE.CylinderGeometry(0.55, 1.05, 1.0, 7);
+    slabGeo.translate(0, 0.5, 0);
+    const moundGeo = new THREE.SphereGeometry(1.0, 14, 9, 0, Math.PI * 2, 0, Math.PI * 0.52);
+    this.geometries.push(spireGeo6, spireGeo5, slabGeo, moundGeo);
+
+    const addIceCluster = (
+      wx: number,
+      wz: number,
+      mainRadius: number,
+      mainHeight: number,
+      seedAngle: number,
+      subCount: number,
+    ) => {
+      const groundY = this.outside.getHeightAt(wx, wz);
+      const cluster = new THREE.Group();
+      cluster.position.set(wx, groundY - 0.32, wz);
+
+      // Gò tuyết/băng đệm hình parabol mượt ở chân tảng băng
+      const mound = new THREE.Mesh(moundGeo, frostBaseMat);
+      mound.scale.set(mainRadius * 1.48, Math.max(0.65, mainRadius * 0.44), mainRadius * 1.42);
+      mound.rotation.y = seedAngle;
+      mound.receiveShadow = true;
+      cluster.add(mound);
+
+      // Mũi băng pha lê chính hơi nghiêng tự nhiên
+      const mainSpire = new THREE.Mesh(spireGeo6, iceCrystalMat);
+      mainSpire.scale.set(mainRadius, mainHeight, mainRadius * 0.88);
+      mainSpire.rotation.set(
+        Math.sin(seedAngle) * 0.14,
+        seedAngle,
+        Math.cos(seedAngle) * 0.12,
+      );
+      mainSpire.castShadow = true;
+      mainSpire.receiveShadow = true;
+      cluster.add(mainSpire);
+
+      // Các tinh thể băng phụ xung quanh tạo khối nhô cao nhiều tầng
+      for (let i = 0; i < subCount; i++) {
+        const a = seedAngle + (i / subCount) * Math.PI * 2 + (i % 2 === 0 ? 0.25 : -0.2);
+        const offsetDist = mainRadius * (0.62 + (i % 3) * 0.16);
+        const subR = mainRadius * (0.48 + ((i * 37) % 10) * 0.03);
+        const subH = mainHeight * (0.42 + ((i * 53) % 10) * 0.045);
+        const geo = i % 3 === 0 ? slabGeo : spireGeo5;
+        const mat = i % 2 === 0 ? deepIceMat : iceCrystalMat;
+        const sub = new THREE.Mesh(geo, mat);
+        sub.position.set(Math.cos(a) * offsetDist, 0, Math.sin(a) * offsetDist);
+        sub.scale.set(subR, subH, subR * 0.86);
+        sub.rotation.set(Math.sin(a) * 0.24, a + 0.4, -Math.cos(a) * 0.22);
+        sub.castShadow = true;
+        sub.receiveShadow = true;
+        cluster.add(sub);
+      }
+
+      this.zoneRoot.add(cluster);
+    };
+
+    // Vành đai tảng băng lớn bao quanh viền Lãnh Địa Rồng Băng (chừa lối vào phía Nam z > +24 hướng từ thành đi tới)
+    const outerClusters = 18;
+    for (let i = 0; i < outerClusters; i++) {
+      const theta = (i / outerClusters) * Math.PI * 2;
+      // Chừa cổng vào phía +Z (theta gần PI/2)
+      const angleDiffSouth = Math.abs(Math.atan2(Math.sin(theta - Math.PI / 2), Math.cos(theta - Math.PI / 2)));
+      if (angleDiffSouth < 0.36) continue;
+
+      const r = DRAGON_ZONE_SPEC.radius - 1.2 + (i % 3) * 1.45;
+      const wx = DRAGON_ZONE_SPEC.x + Math.cos(theta) * r;
+      const wz = DRAGON_ZONE_SPEC.z + Math.sin(theta) * r;
+      const mainR = 1.55 + (i % 4) * 0.36;
+      const mainH = 4.6 + (i % 5) * 1.35;
+      addIceCluster(wx, wz, mainR, mainH, theta + i * 0.7, 3);
+    }
+
+    // Các cụm mỏm băng nhô cao bên trong vùng (gắn sát rìa các gò băng cao, tránh vùng chiến đấu trung tâm)
+    const innerClusters: Array<[number, number, number, number]> = [
+      [-18.5, -9.5, 1.35, 3.8],
+      [19.2, -8.2, 1.3, 3.6],
+      [-23.5, 7.5, 1.45, 4.1],
+      [23.8, 8.0, 1.4, 3.9],
+      [-4.2, -23.0, 1.65, 5.2],
+      [4.8, -22.5, 1.55, 4.8],
+      [-15.8, 15.8, 1.2, 3.2],
+      [16.5, 16.0, 1.2, 3.3],
+    ];
+    for (let i = 0; i < innerClusters.length; i++) {
+      const [dx, dz, rad, h] = innerClusters[i];
+      addIceCluster(
+        DRAGON_ZONE_SPEC.x + dx,
+        DRAGON_ZONE_SPEC.z + dz,
+        rad,
+        h,
+        i * 1.15,
+        2,
+      );
+    }
   }
 
   private buildTerrainDiscMesh(
@@ -1379,6 +1511,10 @@ export class DragonBossManager {
     };
   }
 
+  private getTelegraphSeconds(skillId: DragonSkillId | null): number {
+    return skillId === 1 ? SKILL1_TELEGRAPH_SECONDS : SKILL_TELEGRAPH_SECONDS;
+  }
+
   getBossHudState(playerX: number, playerZ: number): DragonBossHudState {
     const distFromZoneCenter = Math.hypot(
       playerX - DRAGON_ZONE_SPEC.x,
@@ -1389,7 +1525,10 @@ export class DragonBossManager {
     let warningLabel: string | null = null;
     let warningProgress = 0;
     if (this.alive && this.skillPhase === 'telegraph' && this.activeSkill) {
-      warningProgress = Math.min(1, this.skillTimer / SKILL_TELEGRAPH_SECONDS);
+      warningProgress = Math.min(
+        1,
+        this.skillTimer / this.getTelegraphSeconds(this.activeSkill),
+      );
       if (this.activeSkill === 1) {
         warningLabel = 'Rồng sắp Dậm Xung Kích! Chạy khỏi vòng đỏ (Khiên giảm còn 1 tim)';
       } else if (this.activeSkill === 2) {
@@ -1608,6 +1747,8 @@ export class DragonBossManager {
       (playerZ - DRAGON_ZONE_SPEC.z) * (playerZ - DRAGON_ZONE_SPEC.z);
     const playerInsideBlueZone =
       playerDistFromCenterSq <= DRAGON_ZONE_SPEC.radius * DRAGON_ZONE_SPEC.radius;
+    const showLabelRadius = DRAGON_ZONE_SPEC.radius + 10.0;
+    this.labelSprite.visible = playerDistFromCenterSq <= showLabelRadius * showLabelRadius;
 
     const playerFwdX = -Math.sin(playerYaw);
     const playerFwdZ = -Math.cos(playerYaw);
@@ -1672,9 +1813,10 @@ export class DragonBossManager {
         }
       }
     } else if (this.skillPhase === 'telegraph' && this.activeSkill) {
-      // 1.0 giây cảnh báo đỏ trước khi tung chiêu
+      // Thời gian cảnh báo đỏ trước khi tung chiêu (Skill 1: 2.0s, Skill 2 & 3: 1.0s)
+      const telegraphSeconds = this.getTelegraphSeconds(this.activeSkill);
       this.skillTimer += dt;
-      const progress = Math.min(1, this.skillTimer / SKILL_TELEGRAPH_SECONDS);
+      const progress = Math.min(1, this.skillTimer / telegraphSeconds);
 
       if (this.activeSkill === 1) {
         const targetYaw = Math.atan2(
@@ -1719,7 +1861,7 @@ export class DragonBossManager {
         wingFlapSpeed = 6.5;
       }
 
-      if (this.skillTimer >= SKILL_TELEGRAPH_SECONDS) {
+      if (this.skillTimer >= telegraphSeconds) {
         // Chuyển sang pha tung chiêu thực tế
         this.skillPhase = 'execute';
         this.skillTimer = 0;
@@ -1740,7 +1882,7 @@ export class DragonBossManager {
           // Kiểm tra sát thương dậm xung kích ngay tại khoảnh khắc chạm đất
           const dImpact = Math.hypot(playerX - this.skillTargetX, playerZ - this.skillTargetZ);
           const impactGroundY = this.outside.getHeightAt(this.skillTargetX, this.skillTargetZ);
-          if (dImpact <= SKILL1_RADIUS && Math.abs(playerY - impactGroundY) < 4.5) {
+          if (dImpact <= SKILL1_RADIUS && Math.abs(playerY - impactGroundY) < 5.8) {
             let dirX = -playerFwdX;
             let dirZ = -playerFwdZ;
             if (dImpact > 0.001) {
@@ -1794,7 +1936,7 @@ export class DragonBossManager {
 
         if (!this.skillHitDealt) {
           const distToDragon = Math.hypot(playerX - this.x, playerZ - this.z);
-          if (distToDragon <= SKILL2_HALF_WIDTH + 0.65 && Math.abs(playerY - this.y) < 3.8) {
+          if (distToDragon <= SKILL2_HALF_WIDTH + 0.65 && Math.abs(playerY - this.y) < 4.8) {
             this.skillHitDealt = true;
             const perpX = -this.skillDirZ;
             const perpZ = this.skillDirX;
@@ -1829,7 +1971,7 @@ export class DragonBossManager {
             along >= -1.4 &&
             along <= SKILL3_LENGTH &&
             perp <= SKILL3_HALF_WIDTH + 0.2 &&
-            Math.abs(playerY - this.y) < 4.0
+            Math.abs(playerY - this.y) < 5.0
           ) {
             this.skillHitDealt = true;
             callbacks?.onPlayerHit?.(2.0, 3, false, this.skillDirX, this.skillDirZ);

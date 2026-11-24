@@ -10,6 +10,12 @@ import {
   DragonUpdateCallbacks,
 } from './dragon';
 import { GrassManager } from './grass';
+import {
+  MushroomAttackResult,
+  MushroomEntity,
+  MushroomUpdateCallbacks,
+  PoisonMushroomManager,
+} from './mushroom';
 import { OutsideGenerator } from './outside';
 import {
   SlimeAttackResult,
@@ -65,6 +71,7 @@ export class WorldManager {
   private cashier: CashierStation;
   private weaponShop: WeaponShop;
   private slimes: SlimeManager;
+  private mushrooms: PoisonMushroomManager;
   private dragon: DragonBossManager;
 
   readonly chunks = new Map<string, Chunk>();
@@ -90,6 +97,7 @@ export class WorldManager {
     this.cashier = new CashierStation(this.scene);
     this.weaponShop = new WeaponShop(this.scene);
     this.slimes = new SlimeManager(this.scene, this.outside, this.seed);
+    this.mushrooms = new PoisonMushroomManager(this.scene, this.outside, this.seed, this.maxAnisotropy);
     this.dragon = new DragonBossManager(this.scene, this.outside, this.maxAnisotropy);
   }
 
@@ -103,6 +111,7 @@ export class WorldManager {
     this.cashier = new CashierStation(this.scene);
     this.weaponShop = new WeaponShop(this.scene);
     this.slimes = new SlimeManager(this.scene, this.outside, this.seed);
+    this.mushrooms = new PoisonMushroomManager(this.scene, this.outside, this.seed, this.maxAnisotropy);
     this.dragon = new DragonBossManager(this.scene, this.outside, this.maxAnisotropy);
     this.lastPlayerCx = Number.NaN;
     this.lastPlayerCz = Number.NaN;
@@ -259,6 +268,23 @@ export class WorldManager {
     return this.slimes.attackWithKatana(cameraPos, forwardDir, maxRange);
   }
 
+  raycastMushroom(
+    origin: THREE.Vector3,
+    direction: THREE.Vector3,
+    maxDistance = 6.5,
+  ): { mushroom: MushroomEntity; point: THREE.Vector3 } | null {
+    return this.mushrooms.raycastMushroom(origin, direction, maxDistance);
+  }
+
+  attackMushroomWithKatana(
+    cameraPos: THREE.Vector3,
+    forwardDir: THREE.Vector3,
+    damage = 1,
+    maxRange = 4.0,
+  ): MushroomAttackResult {
+    return this.mushrooms.attackWithKatana(cameraPos, forwardDir, damage, maxRange);
+  }
+
   raycastDragon(
     origin: THREE.Vector3,
     direction: THREE.Vector3,
@@ -304,11 +330,21 @@ export class WorldManager {
     onEarnMoney?: (earned: number, lengthBlocks: number) => void,
     slimeCallbacks?: SlimeUpdateCallbacks,
     dragonCallbacks?: DragonUpdateCallbacks,
+    mushroomCallbacks?: MushroomUpdateCallbacks,
   ): void {
     this.trees.update(dt, onTreeLanded);
     this.grass.update(dt, playerX, playerZ);
     this.citadelMesh.update(dt);
     this.slimes.update(dt, playerX, playerY, playerZ, playerYaw, shieldRaised, slimeCallbacks);
+    this.mushrooms.update(
+      dt,
+      playerX,
+      playerY,
+      playerZ,
+      playerYaw,
+      shieldRaised,
+      mushroomCallbacks,
+    );
     this.dragon.update(dt, playerX, playerY, playerZ, playerYaw, shieldRaised, dragonCallbacks);
 
     const bounds = this.cashier.getConveyorDropBounds();
@@ -981,6 +1017,7 @@ export class WorldManager {
     this.cashier.dispose();
     this.weaponShop.dispose();
     this.slimes.dispose();
+    this.mushrooms.dispose();
     this.dragon.dispose();
     this.chunks.clear();
     this.dirtyChunks.clear();

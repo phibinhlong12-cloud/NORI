@@ -275,30 +275,30 @@ export const MobileControls = memo(function MobileControls({
           onPointerUp={handleJoystickPointerUp}
           onPointerCancel={handleJoystickPointerUp}
           onLostPointerCapture={resetJoystick}
-          className={`relative w-28 h-28 sm:w-32 sm:h-32 rounded-full border-2 flex items-center justify-center transition-colors touch-none ${
+          className={`relative w-[168px] h-[168px] sm:w-48 sm:h-48 rounded-full border-2 flex items-center justify-center transition-colors touch-none ${
             joystickActive
-              ? 'bg-slate-950/75 border-emerald-400/70 shadow-[0_0_20px_rgba(52,211,153,0.22)]'
+              ? 'bg-slate-950/75 border-emerald-400/70 shadow-[0_0_24px_rgba(52,211,153,0.25)]'
               : 'bg-slate-950/55 border-white/25 shadow-lg'
           }`}
         >
           {/* Vòng tròn chỉ hướng bên trong */}
-          <div className="absolute inset-3 rounded-full border border-white/10 pointer-events-none" />
-          <span className="absolute top-2 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full bg-white/25 pointer-events-none" />
-          <span className="absolute bottom-2 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full bg-white/25 pointer-events-none" />
-          <span className="absolute left-2 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-white/25 pointer-events-none" />
-          <span className="absolute right-2 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-white/25 pointer-events-none" />
+          <div className="absolute inset-[18px] rounded-full border border-white/10 pointer-events-none" />
+          <span className="absolute top-2.5 left-1/2 -translate-x-1/2 w-2 h-2 rounded-full bg-white/25 pointer-events-none" />
+          <span className="absolute bottom-2.5 left-1/2 -translate-x-1/2 w-2 h-2 rounded-full bg-white/25 pointer-events-none" />
+          <span className="absolute left-2.5 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-white/25 pointer-events-none" />
+          <span className="absolute right-2.5 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-white/25 pointer-events-none" />
 
           {/* Núm tâm kéo mọi hướng */}
           <div
             ref={joyKnobRef}
-            className={`w-12 h-12 sm:w-13 sm:h-13 rounded-full border-2 flex items-center justify-center pointer-events-none will-change-transform ${
+            className={`w-[72px] h-[72px] sm:w-[78px] sm:h-[78px] rounded-full border-2 flex items-center justify-center pointer-events-none will-change-transform ${
               joystickActive
-                ? 'bg-emerald-400/90 border-white shadow-[0_0_14px_rgba(52,211,153,0.65)]'
+                ? 'bg-emerald-400/90 border-white shadow-[0_0_16px_rgba(52,211,153,0.65)]'
                 : 'bg-white/25 border-white/60 shadow-md'
             }`}
           >
             <div
-              className={`w-4 h-4 rounded-full ${
+              className={`w-6 h-6 rounded-full ${
                 joystickActive ? 'bg-slate-950/70' : 'bg-white/60'
               }`}
             />

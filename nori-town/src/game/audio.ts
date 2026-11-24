@@ -511,6 +511,133 @@ export class VoxelAudio {
     }
   }
 
+  playPoisonWarningSound(): void {
+    try {
+      if (!this.audioCtx) {
+        const AudioContextClass =
+          window.AudioContext ||
+          (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+        if (!AudioContextClass) return;
+        this.audioCtx = new AudioContextClass();
+      }
+      if (this.audioCtx.state === 'suspended') {
+        void this.audioCtx.resume();
+      }
+
+      const now = this.audioCtx.currentTime;
+      const osc = this.audioCtx.createOscillator();
+      const gain = this.audioCtx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(280, now);
+      osc.frequency.exponentialRampToValueAtTime(510, now + 0.18);
+      gain.gain.setValueAtTime(0.065, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+      osc.connect(gain);
+      gain.connect(this.audioCtx.destination);
+      osc.start(now);
+      osc.stop(now + 0.21);
+    } catch {
+      // Bỏ qua nếu trình duyệt chặn audio trước tương tác
+    }
+  }
+
+  playPoisonSpraySound(): void {
+    try {
+      if (!this.audioCtx) {
+        const AudioContextClass =
+          window.AudioContext ||
+          (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+        if (!AudioContextClass) return;
+        this.audioCtx = new AudioContextClass();
+      }
+      if (this.audioCtx.state === 'suspended') {
+        void this.audioCtx.resume();
+      }
+
+      const now = this.audioCtx.currentTime;
+      const osc = this.audioCtx.createOscillator();
+      const gain = this.audioCtx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(340, now);
+      osc.frequency.exponentialRampToValueAtTime(115, now + 0.34);
+      gain.gain.setValueAtTime(0.09, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+      osc.connect(gain);
+      gain.connect(this.audioCtx.destination);
+      osc.start(now);
+      osc.stop(now + 0.36);
+    } catch {
+      // Bỏ qua nếu trình duyệt chặn audio trước tương tác
+    }
+  }
+
+  playThunderSound(intensity = 1.0): void {
+    try {
+      if (!this.audioCtx) {
+        const AudioContextClass =
+          window.AudioContext ||
+          (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+        if (!AudioContextClass) return;
+        this.audioCtx = new AudioContextClass();
+      }
+      if (this.audioCtx.state === 'suspended') {
+        void this.audioCtx.resume();
+      }
+
+      const ctx = this.audioCtx;
+      const now = ctx.currentTime;
+      const dur = 1.75;
+
+      // Tiếng nổ sét + rền vang bằng nhiễu trắng lọc trầm
+      const sampleRate = ctx.sampleRate;
+      const frameCount = Math.floor(sampleRate * dur);
+      const buffer = ctx.createBuffer(1, frameCount, sampleRate);
+      const data = buffer.getChannelData(0);
+      let lastOut = 0;
+      for (let i = 0; i < frameCount; i++) {
+        const white = Math.random() * 2 - 1;
+        lastOut = (lastOut + 0.06 * white) / 1.06;
+        data[i] = lastOut * 3.4;
+      }
+
+      const noise = ctx.createBufferSource();
+      noise.buffer = buffer;
+
+      const filter = ctx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(460, now);
+      filter.frequency.exponentialRampToValueAtTime(75, now + dur);
+
+      const nGain = ctx.createGain();
+      const peak = Math.min(0.32, 0.22 * intensity);
+      nGain.gain.setValueAtTime(0.001, now);
+      nGain.gain.linearRampToValueAtTime(peak, now + 0.045);
+      nGain.gain.exponentialRampToValueAtTime(peak * 0.45, now + 0.45);
+      nGain.gain.exponentialRampToValueAtTime(0.001, now + dur);
+
+      noise.connect(filter);
+      filter.connect(nGain);
+      nGain.connect(ctx.destination);
+      noise.start(now);
+      noise.stop(now + dur);
+
+      // Sóng trầm ầm ầm phụ trợ
+      const subOsc = ctx.createOscillator();
+      const subGain = ctx.createGain();
+      subOsc.type = 'triangle';
+      subOsc.frequency.setValueAtTime(74, now);
+      subOsc.frequency.exponentialRampToValueAtTime(28, now + 1.1);
+      subGain.gain.setValueAtTime(0.16 * intensity, now);
+      subGain.gain.exponentialRampToValueAtTime(0.001, now + 1.15);
+      subOsc.connect(subGain);
+      subGain.connect(ctx.destination);
+      subOsc.start(now);
+      subOsc.stop(now + 1.2);
+    } catch {
+      // Bỏ qua nếu trình duyệt chặn audio trước tương tác
+    }
+  }
+
   dispose(): void {
     if (this.audioCtx) {
       void this.audioCtx.close().catch(() => {});

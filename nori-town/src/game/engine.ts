@@ -13,12 +13,19 @@ import { CashierStation } from './counter';
 import { DragonBossHudState } from './dragon';
 import { CharacterGender } from './firstPersonArms';
 import { KatanaViewModel } from './katana';
+import { MushroomEntity } from './mushroom';
 import { FirstPersonPlayer } from './player';
 import { PotionViewModel } from './potion';
 import { RaycastHit, voxelRaycast } from './raycast';
 import { ShieldViewModel } from './shield';
 import { SlimeEntity } from './slime';
-import { getXpForNextLevel, MAX_LEVEL, MAX_PLAYER_HP } from './slimeZones';
+import {
+  DRAGON_ZONE_SPEC,
+  getXpForNextLevel,
+  isInsideDragonZone,
+  MAX_LEVEL,
+  MAX_PLAYER_HP,
+} from './slimeZones';
 import { createSolidVoxelMaterial } from './textures';
 import { BackpackItem, DetachedLog, InteractiveTree } from './trees';
 import { SHOP_ITEM_NAMES, SHOP_ITEM_PRICES, ShopItemId } from './weaponShop';
@@ -93,7 +100,10 @@ function detectSoftwareWebGL(): boolean {
   }
 }
 
-function createSkyDome(sunDir: THREE.Vector3): THREE.Mesh {
+function createSkyDome(sunDir: THREE.Vector3): {
+  mesh: THREE.Mesh;
+  material: THREE.ShaderMaterial;
+} {
   const geo = new THREE.SphereGeometry(1, 32, 20);
   const mat = new THREE.ShaderMaterial({
     side: THREE.BackSide,
@@ -106,6 +116,9 @@ function createSkyDome(sunDir: THREE.Vector3): THREE.Mesh {
       uHorizonColor: { value: new THREE.Color(0xbbe0ff) },
       uGroundColor: { value: new THREE.Color(0x8bb6d6) },
       uSunColor: { value: new THREE.Color(0xfff5d6) },
+      uStorm: { value: 0.0 },
+      uTime: { value: 0.0 },
+      uLightning: { value: 0.0 },
     },
     vertexShader: `
       varying vec3 vWorldDir;
@@ -122,6 +135,9 @@ function createSkyDome(sunDir: THREE.Vector3): THREE.Mesh {
       uniform vec3 uHorizonColor;
       uniform vec3 uGroundColor;
       uniform vec3 uSunColor;
+      uniform float uStorm;
+      uniform float uTime;
+      uniform float uLightning;
 
       float hash21(vec2 p) {
         p = fract(p * vec2(123.34, 456.21));
@@ -140,6 +156,17 @@ function createSkyDome(sunDir: THREE.Vector3): THREE.Mesh {
         return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
       }
 
+      float fbmClouds(vec2 p) {
+        float val = 0.0;
+        float amp = 0.52;
+        for (int i = 0; i < 4; i++) {
+          val += noise2D(p) * amp;
+          p = p * 2.06 + vec2(4.7, 2.3);
+          amp *= 0.5;
+        }
+        return val;
+      }
+
       void main() {
         vec3 dir = normalize(vWorldDir);
         float h = clamp(dir.y, -1.0, 1.0);
@@ -150,20 +177,53 @@ function createSkyDome(sunDir: THREE.Vector3): THREE.Mesh {
           sky = mix(uHorizonColor, uGroundColor, smoothstep(0.0, -0.35, h));
         }
 
-        // Mây mỏng nhẹ trên bầu trời
-        if (dir.y > 0.04) {
+        // Bầu trời giông bão xám xịt khi bước vào Lãnh Địa Rồng Băng
+        vec3 stormZenith = vec3(0.07, 0.09, 0.13);
+        vec3 stormMid = vec3(0.15, 0.18, 0.23);
+        vec3 stormHorizon = vec3(0.26, 0.30, 0.36);
+        vec3 stormGround = vec3(0.17, 0.21, 0.27);
+        vec3 stormSky = mix(stormHorizon, stormMid, smoothstep(0.0, 0.36, max(h, 0.0)));
+        stormSky = mix(stormSky, stormZenith, smoothstep(0.25, 0.9, max(h, 0.0)));
+        if (h < 0.0) {
+          stormSky = mix(stormHorizon, stormGround, smoothstep(0.0, -0.35, h));
+        }
+        sky = mix(sky, stormSky, uStorm);
+
+        // Mây mỏng nhẹ lúc trời nắng
+        if (dir.y > 0.04 && uStorm < 0.99) {
           vec2 cloudUv = dir.xz / (dir.y + 0.24) * 1.45;
           float n = noise2D(cloudUv) * 0.62 + noise2D(cloudUv * 2.15 + 3.7) * 0.38;
           float cloudMask = smoothstep(0.57, 0.84, n) * smoothstep(0.04, 0.26, dir.y);
-          sky = mix(sky, vec3(0.97, 0.99, 1.0), cloudMask * 0.45);
+          sky = mix(sky, vec3(0.97, 0.99, 1.0), cloudMask * 0.45 * (1.0 - uStorm));
         }
 
-        // Quầng nắng ấm & đĩa mặt trời
-        float sunDot = max(dot(dir, uSunDir), 0.0);
-        float halo = pow(sunDot, 12.0) * 0.36 + pow(sunDot, 64.0) * 0.42;
-        float disc = smoothstep(0.9983, 0.9994, sunDot);
-        sky += uSunColor * halo;
-        sky = mix(sky, vec3(1.0, 0.99, 0.94), disc * 0.95);
+        // Mây đen cuồn cuộn kéo tới khi vào vùng Rồng Băng
+        if (uStorm > 0.005 && dir.y > -0.02) {
+          vec2 stormUv = dir.xz / (max(dir.y, 0.02) + 0.22) * 1.25;
+          vec2 wind = vec2(uTime * 0.045, uTime * 0.028);
+          float c1 = fbmClouds(stormUv + wind);
+          float c2 = fbmClouds(stormUv * 1.9 - wind * 1.4 + vec2(9.1, 3.4));
+          float horizonFade = smoothstep(-0.02, 0.14, dir.y);
+          float denseMask = smoothstep(0.26, 0.78, c1 * 0.68 + c2 * 0.32) * horizonFade;
+          vec3 darkCloud = mix(vec3(0.08, 0.10, 0.14), vec3(0.28, 0.32, 0.39), smoothstep(0.35, 0.85, c2));
+          sky = mix(sky, darkCloud, denseMask * uStorm * 0.94);
+
+          // Ánh chớp lóe sáng xuyên qua tầng mây đen
+          if (uLightning > 0.005) {
+            float boltGlow = smoothstep(0.32, 0.82, c2) * horizonFade;
+            sky += vec3(0.68, 0.85, 1.0) * uLightning * (0.28 + boltGlow * 0.95) * uStorm;
+          }
+        }
+
+        // Quầng nắng ấm & đĩa mặt trời (mờ dần khi mây đen kéo tới)
+        float clearFactor = 1.0 - uStorm;
+        if (clearFactor > 0.01) {
+          float sunDot = max(dot(dir, uSunDir), 0.0);
+          float halo = pow(sunDot, 12.0) * 0.36 + pow(sunDot, 64.0) * 0.42;
+          float disc = smoothstep(0.9983, 0.9994, sunDot);
+          sky += uSunColor * halo * clearFactor;
+          sky = mix(sky, vec3(1.0, 0.99, 0.94), disc * 0.95 * clearFactor);
+        }
 
         gl_FragColor = vec4(sky, 1.0);
       }
@@ -173,6 +233,41 @@ function createSkyDome(sunDir: THREE.Vector3): THREE.Mesh {
   const mesh = new THREE.Mesh(geo, mat);
   mesh.frustumCulled = false;
   mesh.renderOrder = -10;
+  return { mesh, material: mat };
+}
+
+function createLightningBoltMesh(material: THREE.Material): THREE.Mesh {
+  const segments = 9;
+  const vertices: number[] = [];
+  const indices: number[] = [];
+
+  let curX = 0;
+  let curZ = 0;
+  const totalHeight = 42;
+  for (let i = 0; i <= segments; i++) {
+    const t = i / segments;
+    const y = totalHeight * (1 - t);
+    if (i > 0 && i < segments) {
+      curX += (Math.sin(i * 4.3) * 1.9 + (i % 2 === 0 ? 1.15 : -1.15));
+      curZ += Math.cos(i * 3.1) * 1.2;
+    }
+    const halfW = 0.24 * (1 - t * 0.45);
+    vertices.push(curX - halfW, y, curZ);
+    vertices.push(curX + halfW, y, curZ);
+    if (i < segments) {
+      const base = i * 2;
+      indices.push(base, base + 1, base + 2);
+      indices.push(base + 1, base + 3, base + 2);
+    }
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+  geo.setIndex(indices);
+  geo.computeBoundingSphere();
+
+  const mesh = new THREE.Mesh(geo, material);
+  mesh.frustumCulled = false;
   return mesh;
 }
 
@@ -192,7 +287,10 @@ export class VoxelEngine {
   private readonly solidMaterial: THREE.MeshStandardMaterial;
   private readonly envRenderTarget: THREE.WebGLRenderTarget;
   private readonly skyDome: THREE.Mesh;
+  private readonly skyDomeMat: THREE.ShaderMaterial;
+  private readonly hemiLight: THREE.HemisphereLight;
   private readonly sunLight: THREE.DirectionalLight;
+  private readonly rimLight: THREE.DirectionalLight;
   private readonly sunOffset = new THREE.Vector3(46, 78, 32);
   private readonly sunShadowHalfExtent = 38;
   private readonly sunShadowMapSize: number;
@@ -202,10 +300,36 @@ export class VoxelEngine {
   private readonly treeRingIdleColor = new THREE.Color(0xfbbf24);
   private readonly treeRingActiveColor = new THREE.Color(0x34d399);
   private readonly skyColor = new THREE.Color(0xb6dcff);
+  private readonly clearSkyBg = new THREE.Color(0xb6dcff);
+  private readonly stormSkyBg = new THREE.Color(0x3a424e);
+  private readonly flashSkyBg = new THREE.Color(0xdbeafe);
+  private readonly clearHemiSky = new THREE.Color(0xd6ecff);
+  private readonly stormHemiSky = new THREE.Color(0x6b7a8f);
+  private readonly clearHemiGround = new THREE.Color(0x3b5930);
+  private readonly stormHemiGround = new THREE.Color(0x283645);
+  private readonly clearSunColor = new THREE.Color(0xfff1d6);
+  private readonly stormSunColor = new THREE.Color(0x88a2c4);
+  private readonly clearRimColor = new THREE.Color(0x93c5fd);
+  private readonly stormRimColor = new THREE.Color(0x7dd3fc);
+  private readonly tempSkyColor = new THREE.Color();
+  private readonly lightningGroup = new THREE.Group();
+  private readonly lightningBolts: THREE.Mesh[] = [];
+  private readonly lightningBoltMat: THREE.MeshBasicMaterial;
+  private readonly lightningPointLight: THREE.PointLight;
+  private readonly stormSnowPoints: THREE.Points;
+  private readonly stormSnowPositions: Float32Array;
+  private readonly stormSnowMat: THREE.PointsMaterial;
   private readonly rayDir = new THREE.Vector3();
   private readonly wallCheckDir = new THREE.Vector3();
   private readonly isSoftwareGl: boolean;
   private readonly statsListeners = new Set<(stats: HudStats) => void>();
+
+  private stormBlend = 0;
+  private stormAnimTime = 0;
+  private wasInDragonZone = false;
+  private lightningTimer = 1.4;
+  private lightningFlash = 0;
+  private lightningBoltTimer = 0;
 
   private renderDistance = 4;
   private selectedSlotIndex = 0;
@@ -262,6 +386,7 @@ export class VoxelEngine {
   private currentConveyorTarget: { point: THREE.Vector3 } | null = null;
   private currentShopTarget: { point: THREE.Vector3 } | null = null;
   private currentSlimeTarget: { slime: SlimeEntity; point: THREE.Vector3 } | null = null;
+  private currentMushroomTarget: { mushroom: MushroomEntity; point: THREE.Vector3 } | null = null;
   private currentDragonTarget: { point: THREE.Vector3; hp: number; maxHp: number } | null = null;
   private currentIceKatanaDropTarget: { point: THREE.Vector3 } | null = null;
   private latestStats: HudStats = {
@@ -363,12 +488,14 @@ export class VoxelEngine {
       Math.max(140, this.renderDistance * CHUNK_SIZE * 1.45),
     );
 
-    this.skyDome = createSkyDome(this.sunOffset);
+    const skyDomeParts = createSkyDome(this.sunOffset);
+    this.skyDome = skyDomeParts.mesh;
+    this.skyDomeMat = skyDomeParts.material;
     this.skyDome.scale.setScalar(Math.max(105, this.renderDistance * CHUNK_SIZE * 1.2));
     this.scene.add(this.skyDome);
 
-    const hemiLight = new THREE.HemisphereLight(0xd6ecff, 0x3b5930, 0.92);
-    this.scene.add(hemiLight);
+    this.hemiLight = new THREE.HemisphereLight(0xd6ecff, 0x3b5930, 0.92);
+    this.scene.add(this.hemiLight);
 
     this.sunShadowMapSize = this.isTouchDevice ? 1024 : 2048;
     this.sunLight = new THREE.DirectionalLight(0xfff1d6, 1.95);
@@ -387,9 +514,51 @@ export class VoxelEngine {
     this.scene.add(this.sunLight);
     this.scene.add(this.sunLight.target);
 
-    const rimLight = new THREE.DirectionalLight(0x93c5fd, 0.48);
-    rimLight.position.set(-50, 45, -60);
-    this.scene.add(rimLight);
+    this.rimLight = new THREE.DirectionalLight(0x93c5fd, 0.48);
+    this.rimLight.position.set(-50, 45, -60);
+    this.scene.add(this.rimLight);
+
+    // Tia sét 3D & ánh chớp trên bầu trời Lãnh Địa Rồng Băng
+    this.lightningBoltMat = new THREE.MeshBasicMaterial({
+      color: 0xe8f4ff,
+      transparent: true,
+      opacity: 0.95,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    });
+    for (let i = 0; i < 2; i++) {
+      const bolt = createLightningBoltMesh(this.lightningBoltMat);
+      bolt.visible = false;
+      this.lightningBolts.push(bolt);
+      this.lightningGroup.add(bolt);
+    }
+    this.lightningPointLight = new THREE.PointLight(0xdbeafe, 0, 140, 1.0);
+    this.lightningPointLight.position.set(DRAGON_ZONE_SPEC.x, 32, DRAGON_ZONE_SPEC.z);
+    this.lightningGroup.add(this.lightningPointLight);
+    this.scene.add(this.lightningGroup);
+
+    // Bụi tuyết bay lạnh lẽo khi ở trong vùng bão tuyết Rồng Băng
+    const snowCount = this.isSoftwareGl ? 70 : 170;
+    this.stormSnowPositions = new Float32Array(snowCount * 3);
+    for (let i = 0; i < snowCount; i++) {
+      this.stormSnowPositions[i * 3] = (Math.random() - 0.5) * 34;
+      this.stormSnowPositions[i * 3 + 1] = (Math.random() - 0.35) * 18;
+      this.stormSnowPositions[i * 3 + 2] = (Math.random() - 0.5) * 34;
+    }
+    const snowGeo = new THREE.BufferGeometry();
+    snowGeo.setAttribute('position', new THREE.BufferAttribute(this.stormSnowPositions, 3));
+    this.stormSnowMat = new THREE.PointsMaterial({
+      color: 0xe0f2fe,
+      size: 0.16,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+    });
+    this.stormSnowPoints = new THREE.Points(snowGeo, this.stormSnowMat);
+    this.stormSnowPoints.frustumCulled = false;
+    this.stormSnowPoints.visible = false;
+    this.scene.add(this.stormSnowPoints);
 
     this.solidMaterial = createSolidVoxelMaterial();
 
@@ -740,6 +909,29 @@ export class VoxelEngine {
         return;
       }
 
+      const katanaDmg = this.hasIceKatana ? 2 : 1;
+      const mushroomAtk = this.world.attackMushroomWithKatana(
+        this.camera.position,
+        this.rayDir,
+        katanaDmg,
+        4.0,
+      );
+      if (mushroomAtk.hit) {
+        this.audio.playSlimeHitSound();
+        if (mushroomAtk.killed) {
+          const prevLevel = this.level;
+          this.grantXp(mushroomAtk.xpReward);
+          if (this.level === prevLevel && this.level < MAX_LEVEL) {
+            this.callbacks.onToast(
+              `Hạ Nấm Độc Lv.${mushroomAtk.level} (+${mushroomAtk.xpReward} XP)`,
+            );
+          }
+        } else {
+          this.emitStats();
+        }
+        return;
+      }
+
       const dragonDmg = this.hasIceKatana ? 2 : 1;
       const dragonAtk = this.world.attackDragonWithKatana(
         this.camera.position,
@@ -771,6 +963,12 @@ export class VoxelEngine {
       this.currentSlimeTarget.point.distanceTo(this.camera.position) <= 4.2
     ) {
       this.callbacks.onToast('Cần mua và cầm Katana (phím Q) để chém Slime!');
+      return;
+    } else if (
+      this.currentMushroomTarget &&
+      this.currentMushroomTarget.point.distanceTo(this.camera.position) <= 4.4
+    ) {
+      this.callbacks.onToast('Cần mua và cầm Katana (phím Q) để chém Nấm Độc!');
       return;
     } else if (
       this.currentDragonTarget &&
@@ -1175,6 +1373,14 @@ export class VoxelEngine {
         Math.round(point.y * 10) / 10,
         Math.round(point.z),
       ];
+    } else if (this.currentMushroomTarget && this.currentMushroomTarget.mushroom.alive) {
+      const { mushroom, point } = this.currentMushroomTarget;
+      this.latestStats.targetName = `Nấm Độc Lv.${mushroom.level} (${mushroom.hp}/${mushroom.maxHp} · +${mushroom.xpReward} XP)`;
+      this.latestStats.targetCoords = [
+        Math.round(point.x),
+        Math.round(point.y * 10) / 10,
+        Math.round(point.z),
+      ];
     } else if (this.world.isCarryingLog() && this.currentConveyorTarget) {
       const carriedLen = this.world.getCarriedLogLength() ?? 1;
       const previewVnd = CashierStation.computeWoodValue(carriedLen);
@@ -1402,6 +1608,37 @@ export class VoxelEngine {
         return;
       }
 
+      const katanaDmg = this.hasIceKatana ? 2 : 1;
+      let mushroomAtk = this.world.attackMushroomWithKatana(
+        ray.origin,
+        ray.direction,
+        katanaDmg,
+        4.4,
+      );
+      if (!mushroomAtk.hit) {
+        mushroomAtk = this.world.attackMushroomWithKatana(
+          this.camera.position,
+          this.rayDir,
+          katanaDmg,
+          4.0,
+        );
+      }
+      if (mushroomAtk.hit) {
+        this.audio.playSlimeHitSound();
+        if (mushroomAtk.killed) {
+          const prevLevel = this.level;
+          this.grantXp(mushroomAtk.xpReward);
+          if (this.level === prevLevel && this.level < MAX_LEVEL) {
+            this.callbacks.onToast(
+              `Hạ Nấm Độc Lv.${mushroomAtk.level} (+${mushroomAtk.xpReward} XP)`,
+            );
+          }
+        } else {
+          this.emitStats();
+        }
+        return;
+      }
+
       const dragonDmg = this.hasIceKatana ? 2 : 1;
       let dragonAtk = this.world.attackDragonWithKatana(
         ray.origin,
@@ -1459,6 +1696,11 @@ export class VoxelEngine {
     const slimeTap = this.world.raycastSlime(ray.origin, ray.direction, 4.5);
     if (slimeTap) {
       this.callbacks.onToast('Cần mua và cầm Katana để chém Slime!');
+      return;
+    }
+    const mushroomTap = this.world.raycastMushroom(ray.origin, ray.direction, 4.8);
+    if (mushroomTap) {
+      this.callbacks.onToast('Cần mua và cầm Katana để chém Nấm Độc!');
       return;
     }
     const dragonTap = this.world.raycastDragon(ray.origin, ray.direction, 6.0);
@@ -1706,7 +1948,7 @@ export class VoxelEngine {
       {
         onPlayerHit: (damage, _slimeLevel, dirX, dirZ) => {
           if (!this.isPlaying || this.hurtInvulnTimer > 0) return;
-          this.hurtInvulnTimer = 0.9;
+          this.hurtInvulnTimer = 0.5;
           this.hp = Math.max(0, Math.round((this.hp - damage) * 2) / 2);
           this.audio.playPlayerHurtSound();
           if (this.hp <= 0) {
@@ -1717,7 +1959,7 @@ export class VoxelEngine {
               'Bạn đã hết máu và trở về vị trí ban đầu (đồ đạc được giữ nguyên)!',
             );
           } else {
-            this.player.applyKnockback(dirX, dirZ, 0.5);
+            this.player.applyKnockback(dirX, dirZ, 1.5, 0.14);
           }
           this.emitStats();
         },
@@ -1773,6 +2015,43 @@ export class VoxelEngine {
           this.handleCollectIceKatana();
         },
       },
+      {
+        onPoisonWarning: () => {
+          if (!this.isPlaying) return;
+          this.audio.playPoisonWarningSound();
+        },
+        onPoisonSpray: () => {
+          if (!this.isPlaying) return;
+          this.audio.playPoisonSpraySound();
+        },
+        onPlayerHit: (damage, mushroomLevel, dirX, dirZ) => {
+          if (!this.isPlaying || this.hurtInvulnTimer > 0) return;
+          this.hurtInvulnTimer = 0.55;
+          this.hp = Math.max(0, Math.round((this.hp - damage) * 2) / 2);
+          this.audio.playPlayerHurtSound();
+          if (this.hp <= 0) {
+            this.hp = MAX_PLAYER_HP;
+            this.hurtInvulnTimer = 1.2;
+            this.player.respawnAtStart();
+            this.callbacks.onToast(
+              'Bạn đã hết máu vì khí độc và trở về vị trí ban đầu (đồ đạc được giữ nguyên)!',
+            );
+          } else {
+            this.player.applyKnockback(dirX, dirZ, 0.9, 0.12);
+            this.callbacks.onToast(
+              `Trúng khí độc Nấm Độc Lv.${mushroomLevel} (-${damage} tim)!`,
+            );
+          }
+          this.emitStats();
+        },
+        onShieldBlocked: (mushroomLevel) => {
+          if (!this.isPlaying) return;
+          this.audio.playShieldBlockSound();
+          this.callbacks.onToast(
+            `Khiên đã đỡ đòn phun độc của Nấm Độc Lv.${mushroomLevel}!`,
+          );
+        },
+      },
     );
     if (!this.hasStarted && !this.isPlaying) {
       this.applyTitleMeadowCamera(now);
@@ -1821,6 +2100,7 @@ export class VoxelEngine {
       this.currentDragonTarget = null;
       this.currentShopTarget = null;
       this.currentSlimeTarget = null;
+      this.currentMushroomTarget = null;
       this.currentTreeTarget = null;
       this.currentLogTarget = null;
       this.currentConveyorTarget = null;
@@ -1829,11 +2109,15 @@ export class VoxelEngine {
       this.currentConveyorTarget = null;
       const dragonHit = this.world.raycastDragon(this.camera.position, this.rayDir, 8.0);
       const slimeHit = this.world.raycastSlime(this.camera.position, this.rayDir, 6.5);
+      const mushroomHit = this.world.raycastMushroom(this.camera.position, this.rayDir, 6.5);
       const treeHit = this.world.raycastTreeTrunk(this.camera.position, this.rayDir, 7.0);
       const logHit = this.world.raycastDetachedLog(this.camera.position, this.rayDir, 7.0);
 
       const dragonDist = dragonHit ? dragonHit.point.distanceTo(this.camera.position) : Infinity;
       const slimeDist = slimeHit ? slimeHit.point.distanceTo(this.camera.position) : Infinity;
+      const mushroomDist = mushroomHit
+        ? mushroomHit.point.distanceTo(this.camera.position)
+        : Infinity;
       const treeDist = treeHit ? treeHit.point.distanceTo(this.camera.position) : Infinity;
       const logDist = logHit ? logHit.point.distanceTo(this.camera.position) : Infinity;
 
@@ -1841,6 +2125,7 @@ export class VoxelEngine {
         shopHit &&
         shopDist <= dragonDist &&
         shopDist <= slimeDist &&
+        shopDist <= mushroomDist &&
         shopDist <= treeDist &&
         shopDist <= logDist
       ) {
@@ -1848,23 +2133,40 @@ export class VoxelEngine {
         this.currentShopTarget = wallHit ? null : shopHit;
         this.currentDragonTarget = null;
         this.currentSlimeTarget = null;
+        this.currentMushroomTarget = null;
         this.currentTreeTarget = null;
         this.currentLogTarget = null;
       } else if (
         dragonHit &&
         dragonDist <= slimeDist &&
+        dragonDist <= mushroomDist &&
         dragonDist <= treeDist &&
         dragonDist <= logDist
       ) {
         const wallHit = voxelRaycast(this.world, this.camera.position, this.rayDir, dragonDist);
         this.currentDragonTarget = wallHit ? null : dragonHit;
         this.currentSlimeTarget = null;
+        this.currentMushroomTarget = null;
         this.currentTreeTarget = null;
         this.currentLogTarget = null;
         this.currentShopTarget = null;
-      } else if (slimeHit && slimeDist <= treeDist && slimeDist <= logDist) {
+      } else if (
+        slimeHit &&
+        slimeDist <= mushroomDist &&
+        slimeDist <= treeDist &&
+        slimeDist <= logDist
+      ) {
         const wallHit = voxelRaycast(this.world, this.camera.position, this.rayDir, slimeDist);
         this.currentSlimeTarget = wallHit ? null : slimeHit;
+        this.currentMushroomTarget = null;
+        this.currentDragonTarget = null;
+        this.currentTreeTarget = null;
+        this.currentLogTarget = null;
+        this.currentShopTarget = null;
+      } else if (mushroomHit && mushroomDist <= treeDist && mushroomDist <= logDist) {
+        const wallHit = voxelRaycast(this.world, this.camera.position, this.rayDir, mushroomDist);
+        this.currentMushroomTarget = wallHit ? null : mushroomHit;
+        this.currentSlimeTarget = null;
         this.currentDragonTarget = null;
         this.currentTreeTarget = null;
         this.currentLogTarget = null;
@@ -1874,6 +2176,7 @@ export class VoxelEngine {
         this.currentTreeTarget = wallHit ? null : treeHit;
         this.currentDragonTarget = null;
         this.currentSlimeTarget = null;
+        this.currentMushroomTarget = null;
         this.currentLogTarget = null;
         this.currentShopTarget = null;
       } else if (logHit) {
@@ -1881,11 +2184,13 @@ export class VoxelEngine {
         this.currentLogTarget = wallHit ? null : logHit;
         this.currentDragonTarget = null;
         this.currentSlimeTarget = null;
+        this.currentMushroomTarget = null;
         this.currentTreeTarget = null;
         this.currentShopTarget = null;
       } else {
         this.currentDragonTarget = null;
         this.currentSlimeTarget = null;
+        this.currentMushroomTarget = null;
         this.currentTreeTarget = null;
         this.currentLogTarget = null;
         this.currentShopTarget = null;
@@ -1894,6 +2199,7 @@ export class VoxelEngine {
       this.currentIceKatanaDropTarget = null;
       this.currentDragonTarget = null;
       this.currentSlimeTarget = null;
+      this.currentMushroomTarget = null;
       this.currentTreeTarget = null;
       this.currentLogTarget = null;
       const convHit = this.world.raycastConveyor(this.camera.position, this.rayDir, 7.0);
@@ -2012,6 +2318,8 @@ export class VoxelEngine {
       this.emitStats();
     }
 
+    this.updateDragonZoneStormWeather(clampedDt);
+
     if (!this.hasStarted && !this.isPlaying) {
       this.updateSunShadowTarget(
         this.camera.position.x,
@@ -2030,6 +2338,133 @@ export class VoxelEngine {
     this.scheduleNextFrame();
   };
 
+  private updateDragonZoneStormWeather(dt: number): void {
+    const inDragonZone =
+      this.isPlaying && isInsideDragonZone(this.player.position.x, this.player.position.z);
+
+    if (inDragonZone && !this.wasInDragonZone) {
+      this.callbacks.onToast(
+        'Mây đen ầm ầm kéo tới! Bạn đã bước vào Lãnh Địa Băng Giá của Rồng Băng!',
+      );
+      this.lightningTimer = 0.25;
+    }
+    this.wasInDragonZone = inDragonZone;
+
+    this.stormAnimTime += dt;
+    this.stormBlend = THREE.MathUtils.damp(
+      this.stormBlend,
+      inDragonZone ? 1 : 0,
+      inDragonZone ? 1.85 : 2.1,
+      dt,
+    );
+
+    if (inDragonZone && this.stormBlend > 0.28) {
+      this.lightningTimer -= dt;
+      if (this.lightningTimer <= 0) {
+        this.lightningFlash = 1.0;
+        this.lightningBoltTimer = 0.26;
+        this.lightningTimer = 2.4 + Math.random() * 3.0;
+
+        for (let i = 0; i < this.lightningBolts.length; i++) {
+          const bolt = this.lightningBolts[i];
+          const angle = Math.random() * Math.PI * 2;
+          const dist = 14 + Math.random() * 24;
+          const bx = DRAGON_ZONE_SPEC.x + Math.cos(angle) * dist;
+          const bz = DRAGON_ZONE_SPEC.z + Math.sin(angle) * dist;
+          bolt.position.set(bx, 11 + Math.random() * 4, bz);
+          bolt.rotation.y = Math.random() * Math.PI * 2;
+          const s = 0.85 + Math.random() * 0.5;
+          bolt.scale.set(s, 0.9 + Math.random() * 0.35, s);
+          bolt.visible = i === 0 || Math.random() > 0.35;
+        }
+        this.lightningPointLight.position.set(
+          this.lightningBolts[0].position.x,
+          28,
+          this.lightningBolts[0].position.z,
+        );
+        this.audio.playThunderSound(0.75 + Math.random() * 0.35);
+      }
+    }
+
+    if (this.lightningBoltTimer > 0) {
+      this.lightningBoltTimer -= dt;
+      const flicker =
+        this.lightningBoltTimer > 0.16 ||
+        (this.lightningBoltTimer < 0.1 && this.lightningBoltTimer > 0.03);
+      for (const bolt of this.lightningBolts) {
+        if (bolt.position.y > 0) {
+          bolt.visible = flicker && this.lightningBoltTimer > 0;
+        }
+      }
+      this.lightningBoltMat.opacity = flicker ? 0.95 : 0.28;
+      if (this.lightningBoltTimer <= 0) {
+        for (const bolt of this.lightningBolts) {
+          bolt.visible = false;
+        }
+      }
+    }
+
+    if (this.lightningFlash > 0) {
+      this.lightningFlash = Math.max(0, this.lightningFlash - dt * 3.8);
+    }
+
+    const storm = this.stormBlend;
+    const flash = this.lightningFlash * storm;
+
+    this.skyDomeMat.uniforms.uStorm.value = storm;
+    this.skyDomeMat.uniforms.uTime.value = this.stormAnimTime;
+    this.skyDomeMat.uniforms.uLightning.value = flash;
+
+    this.tempSkyColor.copy(this.clearSkyBg).lerp(this.stormSkyBg, storm);
+    if (flash > 0.01) {
+      this.tempSkyColor.lerp(this.flashSkyBg, flash * 0.42);
+    }
+    if (this.scene.background instanceof THREE.Color) {
+      this.scene.background.copy(this.tempSkyColor);
+    }
+    if (this.scene.fog instanceof THREE.Fog) {
+      this.scene.fog.color.copy(this.tempSkyColor);
+      const baseNear = this.renderDistance * CHUNK_SIZE * 0.48;
+      const baseFar = this.renderDistance * CHUNK_SIZE * 1.02;
+      this.scene.fog.near = baseNear * (1 - storm * 0.46);
+      this.scene.fog.far = baseFar * (1 - storm * 0.34);
+    }
+
+    this.hemiLight.color.copy(this.clearHemiSky).lerp(this.stormHemiSky, storm);
+    this.hemiLight.groundColor.copy(this.clearHemiGround).lerp(this.stormHemiGround, storm);
+    this.hemiLight.intensity = 0.92 * (1 - storm * 0.38) + flash * 0.85;
+
+    this.sunLight.color.copy(this.clearSunColor).lerp(this.stormSunColor, storm);
+    this.sunLight.intensity = 1.95 * (1 - storm * 0.62) + flash * 1.4;
+
+    this.rimLight.color.copy(this.clearRimColor).lerp(this.stormRimColor, storm);
+    this.rimLight.intensity = 0.48 + storm * 0.25 + flash * 0.9;
+
+    this.scene.environmentIntensity = 0.55 * (1 - storm * 0.32) + flash * 0.25;
+    this.lightningPointLight.intensity = flash * 12;
+
+    if (storm > 0.06) {
+      this.stormSnowPoints.visible = true;
+      this.stormSnowMat.opacity = Math.min(0.75, storm * 0.72);
+      const posAttr = this.stormSnowPoints.geometry.getAttribute(
+        'position',
+      ) as THREE.BufferAttribute;
+      const arr = this.stormSnowPositions;
+      for (let i = 0; i < arr.length; i += 3) {
+        arr[i] += (1.9 + Math.sin(this.stormAnimTime * 1.4 + i) * 0.65) * dt;
+        arr[i + 1] -= (3.6 + (i % 5) * 0.35) * dt;
+        arr[i + 2] += 1.25 * dt;
+        if (arr[i] > 17) arr[i] -= 34;
+        if (arr[i + 1] < -6) arr[i + 1] += 18;
+        if (arr[i + 2] > 17) arr[i + 2] -= 34;
+      }
+      posAttr.needsUpdate = true;
+      this.stormSnowPoints.position.copy(this.camera.position);
+    } else if (this.stormSnowPoints.visible) {
+      this.stormSnowPoints.visible = false;
+    }
+  }
+
   dispose(): void {
     this.isDisposed = true;
     cancelAnimationFrame(this.frameId);
@@ -2046,6 +2481,12 @@ export class VoxelEngine {
     (this.treeCutIndicator.material as THREE.Material).dispose();
     this.skyDome.geometry.dispose();
     (this.skyDome.material as THREE.Material).dispose();
+    for (const bolt of this.lightningBolts) {
+      bolt.geometry.dispose();
+    }
+    this.lightningBoltMat.dispose();
+    this.stormSnowPoints.geometry.dispose();
+    this.stormSnowMat.dispose();
     this.envRenderTarget.dispose();
     this.solidMaterial.dispose();
     this.audio.dispose();
