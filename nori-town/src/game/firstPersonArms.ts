@@ -10,6 +10,34 @@ export interface FirstPersonArmHandles {
 
 export type ArmHoldMode = 'katana' | 'shield' | 'potion';
 
+let cachedSleeveTexture: THREE.CanvasTexture | null = null;
+function getSleeveWeaveTexture(): THREE.CanvasTexture {
+  if (cachedSleeveTexture) return cachedSleeveTexture;
+  const size = 64;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  if (ctx) {
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, size, size);
+    ctx.strokeStyle = 'rgba(15, 23, 42, 0.04)';
+    ctx.lineWidth = 1;
+    for (let i = 0; i < size; i += 4) {
+      ctx.beginPath();
+      ctx.moveTo(0, i);
+      ctx.lineTo(size, i);
+      ctx.stroke();
+    }
+  }
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  cachedSleeveTexture = tex;
+  return tex;
+}
+
 /**
  * Tạo cánh tay + cổ tay + bàn tay góc nhìn thứ nhất khớp giới tính nhân vật:
  * - Nam ('male'): Cánh tay cứng cáp, cơ bắp khỏe khoắn, bàn tay rộng cầm chắc chắn, tay áo kimono ngà viền đỏ.
@@ -26,30 +54,36 @@ export function createFirstPersonArmGroup(
 
   const skinMat = new THREE.MeshStandardMaterial({
     color: isMale ? '#f3dfd0' : '#fcebe3',
-    roughness: isMale ? 0.62 : 0.48,
+    roughness: isMale ? 0.56 : 0.42,
     metalness: 0.02,
   });
-  const sleeveOuterMat = new THREE.MeshStandardMaterial({
-    color: isMale ? '#e8e2d5' : '#f8fafc',
-    roughness: 0.78,
+  const sleeveOuterMat = new THREE.MeshPhysicalMaterial({
+    map: getSleeveWeaveTexture(),
+    color: isMale ? '#f97316' : '#f472b6',
+    roughness: 0.68,
     metalness: 0.04,
+    sheen: 0.45,
+    sheenRoughness: 0.58,
+    sheenColor: new THREE.Color(isMale ? '#fed7aa' : '#fce7f3'),
   });
-  const sleeveInnerMat = new THREE.MeshStandardMaterial({
+  const sleeveInnerMat = new THREE.MeshPhysicalMaterial({
     color: isMale ? '#b91c1c' : '#dc2626',
-    roughness: 0.72,
-    metalness: 0.05,
+    roughness: 0.52,
+    metalness: 0.06,
+    sheen: 0.5,
+    sheenColor: new THREE.Color('#fca5a5'),
   });
   const gloveMat = new THREE.MeshStandardMaterial({
-    color: '#1e1b18',
-    roughness: 0.72,
+    color: '#1f1b24',
+    roughness: 0.62,
     metalness: 0.08,
   });
   handles.materials.push(skinMat, sleeveOuterMat, sleeveInnerMat, gloveMat);
 
   // Tỷ lệ cứng cáp (Nam) vs mềm mỏng (Nữ)
   const forearmLen = isMale ? 0.36 : 0.34;
-  const wristRadius = isMale ? 0.038 : 0.024;
-  const elbowRadius = isMale ? 0.056 : 0.036;
+  const wristRadius = isMale ? 0.036 : 0.023;
+  const elbowRadius = isMale ? 0.052 : 0.034;
 
   // 1. Cẳng tay parabol (trục Y từ khuỷu y = -forearmLen lên cổ tay y = 0)
   const forearmGeo = createParabolicLatheGeometry(
@@ -71,9 +105,9 @@ export function createFirstPersonArmGroup(
   const forearmMesh = new THREE.Mesh(forearmGeo, skinMat);
   armGroup.add(forearmMesh);
 
-  // 2. Tay áo kimono phủ phần cẳng tay sau với viền lót đỏ
-  const sleeveLen = isMale ? 0.23 : 0.25;
-  const sleeveFlare = isMale ? 1.24 : 1.72;
+  // 2. Tay áo kimono phủ phần cẳng tay sau gọn gàng với viền lót đỏ
+  const sleeveLen = isMale ? 0.22 : 0.24;
+  const sleeveFlare = isMale ? 1.15 : 1.38;
   const sleeveGeo = createParabolicLatheGeometry(
     sleeveLen,
     1,

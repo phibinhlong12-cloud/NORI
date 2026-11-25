@@ -2,6 +2,7 @@ import { memo, useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import {
+  animateCharacterIdle,
   CharacterAssetHandles,
   CharacterBuildOptions,
   createCharacterMeshGroup,
@@ -103,16 +104,16 @@ export const Character3DViewport = memo(function Character3DViewport({
     scene.environment = envTarget.texture;
     scene.environmentIntensity = 0.7;
 
-    const camera = new THREE.PerspectiveCamera(34, width / height, 0.1, 20);
-    camera.position.set(0, 1.0, 3.08);
-    camera.lookAt(0, 0.92, 0);
+    const camera = new THREE.PerspectiveCamera(29, width / height, 0.1, 20);
+    camera.position.set(0, 1.02, 3.48);
+    camera.lookAt(0, 0.94, 0);
 
-    // Ánh sáng studio: Key Light ấm + Front Fill dịu + Hemisphere lạnh + Rim Light tách nền
-    const hemi = new THREE.HemisphereLight('#e2e8f0', '#1e293b', 0.95);
+    // Ánh sáng studio 3 điểm tương phản đẹp mắt: Key Light ấm chếch bên + Fill dịu + Rim Light viền sáng nổi bật
+    const hemi = new THREE.HemisphereLight('#e2e8f0', '#1e293b', 0.78);
     scene.add(hemi);
 
-    const keyLight = new THREE.DirectionalLight('#fff4e0', 1.95);
-    keyLight.position.set(2.4, 4.0, 3.4);
+    const keyLight = new THREE.DirectionalLight('#fff2dc', 2.15);
+    keyLight.position.set(3.0, 4.2, 2.7);
     keyLight.castShadow = !isSoftwareGl;
     keyLight.shadow.mapSize.set(512, 512);
     keyLight.shadow.camera.left = -1.6;
@@ -122,45 +123,88 @@ export const Character3DViewport = memo(function Character3DViewport({
     keyLight.shadow.bias = -0.0005;
     scene.add(keyLight);
 
-    const frontFillLight = new THREE.DirectionalLight('#f1f5f9', 0.65);
-    frontFillLight.position.set(-0.6, 1.35, 3.6);
+    const frontFillLight = new THREE.DirectionalLight('#e2e8f0', 0.36);
+    frontFillLight.position.set(-0.9, 1.2, 3.5);
     scene.add(frontFillLight);
 
     const rimLight = new THREE.DirectionalLight(
       gender === 'male' ? '#60a5fa' : '#fb7185',
-      0.95,
+      1.5,
     );
-    rimLight.position.set(-2.4, 2.6, -2.5);
+    rimLight.position.set(-2.5, 2.7, -2.3);
     scene.add(rimLight);
 
-    // Đĩa bệ đứng parabol tinh tế dưới chân nhân vật
-    const pedestalGeo = new THREE.CylinderGeometry(0.68, 0.74, 0.05, 32);
+    const backAccentLight = new THREE.DirectionalLight(
+      gender === 'male' ? '#93c5fd' : '#fda4af',
+      0.48,
+    );
+    backAccentLight.position.set(2.2, 1.4, -2.0);
+    scene.add(backAccentLight);
+
+    // Đĩa bệ đứng parabol tinh tế + vòng hào quang dưới chân nhân vật
+    const pedestalGeo = new THREE.CylinderGeometry(0.68, 0.75, 0.055, 36);
     const pedestalMat = new THREE.MeshStandardMaterial({
-      color: gender === 'male' ? '#1e293b' : '#2b1623',
-      roughness: 0.32,
-      metalness: 0.65,
+      color: gender === 'male' ? '#172234' : '#281422',
+      roughness: 0.28,
+      metalness: 0.72,
     });
-    const pedestalRimGeo = new THREE.TorusGeometry(0.68, 0.014, 10, 36);
+    const pedestalRimGeo = new THREE.TorusGeometry(0.68, 0.015, 10, 40);
     pedestalRimGeo.rotateX(Math.PI / 2);
     const pedestalRimMat = new THREE.MeshStandardMaterial({
       color: gender === 'male' ? '#38bdf8' : '#fb7185',
       emissive: gender === 'male' ? '#0284c7' : '#e11d48',
-      emissiveIntensity: 0.85,
-      roughness: 0.25,
+      emissiveIntensity: 0.95,
+      roughness: 0.22,
     });
     const pedestal = new THREE.Mesh(pedestalGeo, pedestalMat);
-    pedestal.position.y = -0.025;
+    pedestal.position.y = -0.027;
     pedestal.receiveShadow = true;
     const pedestalRim = new THREE.Mesh(pedestalRimGeo, pedestalRimMat);
     pedestalRim.position.y = 0.002;
     scene.add(pedestal, pedestalRim);
 
+    // Các hạt ánh sáng / cánh hoa anh đào bay lơ lửng quanh bệ đứng
+    const particleCount = isSoftwareGl ? 16 : 28;
+    const particlePositions = new Float32Array(particleCount * 3);
+    const particleAngles = new Float32Array(particleCount);
+    const particleRadii = new Float32Array(particleCount);
+    const particleSpeeds = new Float32Array(particleCount);
+    for (let i = 0; i < particleCount; i++) {
+      const a = (i / particleCount) * Math.PI * 2 + (i % 3) * 0.4;
+      const r = 0.56 + (i % 5) * 0.12;
+      particleAngles[i] = a;
+      particleRadii[i] = r;
+      particleSpeeds[i] = 0.18 + (i % 4) * 0.06;
+      particlePositions[i * 3] = Math.cos(a) * r;
+      particlePositions[i * 3 + 1] = 0.08 + ((i * 0.37) % 1.75);
+      particlePositions[i * 3 + 2] = Math.sin(a) * r;
+    }
+    const particleGeo = new THREE.BufferGeometry();
+    const particlePosAttr = new THREE.BufferAttribute(particlePositions, 3);
+    particleGeo.setAttribute('position', particlePosAttr);
+    const particleMat = new THREE.PointsMaterial({
+      color: gender === 'male' ? '#bae6fd' : '#fbcfe8',
+      size: gender === 'male' ? 0.028 : 0.034,
+      transparent: true,
+      opacity: 0.78,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    });
+    const ambientParticles = new THREE.Points(particleGeo, particleMat);
+    scene.add(ambientParticles);
+
+    const maxAnisotropy = isSoftwareGl
+      ? 1
+      : Math.min(8, renderer.capabilities.getMaxAnisotropy());
     const assets: CharacterAssetHandles = {
       geometries: [],
       materials: [],
       textures: [],
     };
-    const charGroup = createCharacterMeshGroup(gender, assets, optionsRef.current);
+    const charGroup = createCharacterMeshGroup(gender, assets, {
+      ...optionsRef.current,
+      maxAnisotropy,
+    });
     charGroup.rotation.y = yawCurrentRef.current;
     scene.add(charGroup);
 
@@ -244,7 +288,19 @@ export const Character3DViewport = memo(function Character3DViewport({
         const idleSway = draggingRef.current ? 0 : Math.sin(elapsed * 0.9) * 0.14;
         charGroup.rotation.y = yawCurrentRef.current + idleSway;
       }
-      charGroup.position.y = Math.sin(elapsed * 2.2) * 0.014;
+      charGroup.position.y = Math.sin(elapsed * 2.2) * 0.012;
+      animateCharacterIdle(charGroup, elapsed);
+
+      for (let i = 0; i < particleCount; i++) {
+        const a = particleAngles[i] + elapsed * particleSpeeds[i];
+        const r = particleRadii[i] + Math.sin(elapsed * 1.3 + i) * 0.04;
+        let y = particlePositions[i * 3 + 1] + dt * (0.14 + (i % 3) * 0.05);
+        if (y > 1.85) y = 0.05;
+        particlePositions[i * 3] = Math.cos(a) * r;
+        particlePositions[i * 3 + 1] = y;
+        particlePositions[i * 3 + 2] = Math.sin(a) * r;
+      }
+      particlePosAttr.needsUpdate = true;
 
       if (!contextLost) {
         renderer.render(scene, camera);
@@ -276,6 +332,8 @@ export const Character3DViewport = memo(function Character3DViewport({
       pedestalMat.dispose();
       pedestalRimGeo.dispose();
       pedestalRimMat.dispose();
+      particleGeo.dispose();
+      particleMat.dispose();
       envTarget.dispose();
       renderer.dispose();
       if (renderer.domElement.parentNode === container) {

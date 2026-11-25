@@ -44,6 +44,7 @@ export function createKatanaMeshGroup(
   handles: KatanaAssetHandles,
   isIce = false,
   variant?: KatanaVisualVariant,
+  sheathed = false,
 ): THREE.Group {
   const resolvedVariant: KatanaVisualVariant = variant ?? (isIce ? 'ice' : 'normal');
   const iceMode = resolvedVariant === 'ice';
@@ -66,37 +67,7 @@ export function createKatanaMeshGroup(
     roughness: 0.24,
     metalness: 0.88,
   });
-  const bladeMat = iceMode
-    ? new THREE.MeshPhysicalMaterial({
-        color: '#bae6fd',
-        emissive: '#0284c7',
-        emissiveIntensity: 0.45,
-        roughness: 0.1,
-        metalness: 0.72,
-        clearcoat: 1.0,
-        clearcoatRoughness: 0.08,
-      })
-    : crimsonMode
-      ? new THREE.MeshPhysicalMaterial({
-          color: '#fecdd3',
-          emissive: '#e11d48',
-          emissiveIntensity: 0.7,
-          roughness: 0.14,
-          metalness: 0.65,
-          clearcoat: 1.0,
-          clearcoatRoughness: 0.08,
-        })
-      : new THREE.MeshStandardMaterial({
-          color: '#e2e8f0',
-          roughness: 0.14,
-          metalness: 0.92,
-        });
-  const spineMat = new THREE.MeshStandardMaterial({
-    color: iceMode ? '#0ea5e9' : crimsonMode ? '#27272a' : '#64748b',
-    roughness: 0.28,
-    metalness: 0.78,
-  });
-  handles.materials.push(hiltMat, wrapMat, goldMat, bladeMat, spineMat);
+  handles.materials.push(hiltMat, wrapMat, goldMat);
 
   // Tay cầm (Tsuka) bo tròn không góc 90 độ
   const hiltGeo = new THREE.CapsuleGeometry(0.021, 0.21, 6, 12);
@@ -130,21 +101,55 @@ export function createKatanaMeshGroup(
   guard.position.set(0, 0.245, 0);
   group.add(guard);
 
-  // Lưỡi kiếm cong parabol (Nagasa) thay cho BoxGeometry
-  const bladeGeo = createCurvedBladeGeometry(0.7, 0.036, 0.008, -0.045);
-  handles.geometries.push(bladeGeo);
-  const blade = new THREE.Mesh(bladeGeo, bladeMat);
-  blade.position.set(0, 0.252, 0);
-  group.add(blade);
+  if (!sheathed) {
+    const bladeMat = iceMode
+      ? new THREE.MeshPhysicalMaterial({
+          color: '#bae6fd',
+          emissive: '#0284c7',
+          emissiveIntensity: 0.45,
+          roughness: 0.1,
+          metalness: 0.72,
+          clearcoat: 1.0,
+          clearcoatRoughness: 0.08,
+        })
+      : crimsonMode
+        ? new THREE.MeshPhysicalMaterial({
+            color: '#fecdd3',
+            emissive: '#e11d48',
+            emissiveIntensity: 0.7,
+            roughness: 0.14,
+            metalness: 0.65,
+            clearcoat: 1.0,
+            clearcoatRoughness: 0.08,
+          })
+        : new THREE.MeshStandardMaterial({
+            color: '#e2e8f0',
+            roughness: 0.14,
+            metalness: 0.92,
+          });
+    const spineMat = new THREE.MeshStandardMaterial({
+      color: iceMode ? '#0ea5e9' : crimsonMode ? '#27272a' : '#64748b',
+      roughness: 0.28,
+      metalness: 0.78,
+    });
+    handles.materials.push(bladeMat, spineMat);
 
-  // Sống kiếm cong ôm sát lưng lưỡi
-  const spineGeo = createCurvedBladeGeometry(0.67, 0.014, 0.011, -0.042);
-  handles.geometries.push(spineGeo);
-  const spine = new THREE.Mesh(spineGeo, spineMat);
-  spine.position.set(0, 0.252, 0.012);
-  group.add(spine);
+    // Lưỡi kiếm cong parabol (Nagasa) thay cho BoxGeometry
+    const bladeGeo = createCurvedBladeGeometry(0.7, 0.036, 0.008, -0.045);
+    handles.geometries.push(bladeGeo);
+    const blade = new THREE.Mesh(bladeGeo, bladeMat);
+    blade.position.set(0, 0.252, 0);
+    group.add(blade);
 
-  // Hiệu ứng tinh thể/ánh sáng dọc lưỡi cho Katana Băng hoặc Crimson
+    // Sống kiếm cong ôm sát lưng lưỡi
+    const spineGeo = createCurvedBladeGeometry(0.67, 0.014, 0.011, -0.042);
+    handles.geometries.push(spineGeo);
+    const spine = new THREE.Mesh(spineGeo, spineMat);
+    spine.position.set(0, 0.252, 0.012);
+    group.add(spine);
+  }
+
+  // Hiệu ứng tinh thể/ánh sáng cho Katana Băng hoặc Crimson
   if (iceMode || crimsonMode) {
     const glowMat = new THREE.MeshStandardMaterial({
       color: iceMode ? '#e0f2fe' : '#ffe4e6',
@@ -162,11 +167,13 @@ export function createKatanaMeshGroup(
     crystal.scale.set(0.72, 1.25, 0.72);
     group.add(crystal);
 
-    const edgeGlowGeo = createCurvedBladeGeometry(0.66, 0.012, 0.004, -0.042);
-    handles.geometries.push(edgeGlowGeo);
-    const edgeGlow = new THREE.Mesh(edgeGlowGeo, glowMat);
-    edgeGlow.position.set(0, 0.252, -0.016);
-    group.add(edgeGlow);
+    if (!sheathed) {
+      const edgeGlowGeo = createCurvedBladeGeometry(0.66, 0.012, 0.004, -0.042);
+      handles.geometries.push(edgeGlowGeo);
+      const edgeGlow = new THREE.Mesh(edgeGlowGeo, glowMat);
+      edgeGlow.position.set(0, 0.252, -0.016);
+      group.add(edgeGlow);
+    }
   }
 
   return group;

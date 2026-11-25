@@ -48,8 +48,8 @@ export interface DragonUpdateCallbacks {
 }
 
 const DRAGON_MAX_HP = 100;
-const DRAGON_LEVEL = 30;
-const DRAGON_MIN_ATTACK_LEVEL = 20;
+export const DRAGON_LEVEL = 20;
+export const DRAGON_MIN_ATTACK_LEVEL = 15;
 const DRAGON_XP_REWARD = 5000;
 const DRAGON_RESPAWN_SECONDS = 300.0;
 

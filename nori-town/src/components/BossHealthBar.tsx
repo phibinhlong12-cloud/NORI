@@ -1,6 +1,10 @@
 import { memo, useEffect, useState } from 'react';
 import { Snowflake } from 'lucide-react';
-import { DragonBossHudState } from '../game/dragon';
+import {
+  DRAGON_LEVEL,
+  DRAGON_MIN_ATTACK_LEVEL,
+  DragonBossHudState,
+} from '../game/dragon';
 import { HudStats, VoxelEngine } from '../game/engine';
 
 interface BossHealthBarProps {
@@ -15,7 +19,7 @@ interface BossViewState {
 const INITIAL_BOSS_HUD: DragonBossHudState = {
   visible: false,
   alive: true,
-  level: 30,
+  level: DRAGON_LEVEL,
   hp: 100,
   maxHp: 100,
   activeSkill: null,
@@ -72,9 +76,9 @@ export const BossHealthBar = memo(function BossHealthBar({ engine }: BossHealthB
             <div className="flex items-center gap-1.5 text-sky-300">
               <Snowflake className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-cyan-300" />
               <span>Rồng Băng · LV.{boss.level}</span>
-              {playerLevel < 20 && (
+              {playerLevel < DRAGON_MIN_ATTACK_LEVEL && (
                 <span className="text-[10px] font-semibold text-amber-300 ml-1">
-                  (Cần Lv.20)
+                  (Cần Lv.{DRAGON_MIN_ATTACK_LEVEL})
                 </span>
               )}
             </div>

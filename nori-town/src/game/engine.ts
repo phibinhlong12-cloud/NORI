@@ -10,7 +10,11 @@ import {
   HOTBAR_BLOCKS,
 } from './constants';
 import { CashierStation } from './counter';
-import { DragonBossHudState } from './dragon';
+import {
+  DRAGON_LEVEL,
+  DRAGON_MIN_ATTACK_LEVEL,
+  DragonBossHudState,
+} from './dragon';
 import { CharacterGender } from './firstPersonArms';
 import { KatanaViewModel } from './katana';
 import { MushroomEntity } from './mushroom';
@@ -421,7 +425,7 @@ export class VoxelEngine {
     bossHud: {
       visible: false,
       alive: true,
-      level: 30,
+      level: DRAGON_LEVEL,
       hp: 100,
       maxHp: 100,
       activeSkill: null,
@@ -943,7 +947,9 @@ export class VoxelEngine {
       if (dragonAtk.hit) {
         if (dragonAtk.blockedByLevel) {
           this.audio.playShieldBlockSound();
-          this.callbacks.onToast('Cần đạt Level 20 trở lên mới có thể gây sát thương cho Rồng Băng!');
+          this.callbacks.onToast(
+            `Cần đạt Level ${DRAGON_MIN_ATTACK_LEVEL} trở lên mới có thể gây sát thương cho Rồng Băng!`,
+          );
           return;
         }
         this.audio.playSlimeHitSound();
@@ -951,7 +957,7 @@ export class VoxelEngine {
           this.audio.playDragonDefeatSound();
           this.grantXp(dragonAtk.xpReward);
           this.callbacks.onToast(
-            'Hạ Rồng Băng Lv.30! (+5.000 XP) Katana Băng đã rơi ra!',
+            `Hạ Rồng Băng Lv.${DRAGON_LEVEL}! (+5.000 XP) Katana Băng đã rơi ra!`,
           );
         } else {
           this.emitStats();
@@ -1349,9 +1355,9 @@ export class VoxelEngine {
     } else if (this.currentDragonTarget) {
       const { point, hp, maxHp } = this.currentDragonTarget;
       this.latestStats.targetName =
-        this.level < 20
-          ? `Rồng Băng Lv.30 (${hp}/${maxHp} · Cần Lv.20 để gây sát thương)`
-          : `Rồng Băng Lv.30 (${hp}/${maxHp} · +5.000 XP)`;
+        this.level < DRAGON_MIN_ATTACK_LEVEL
+          ? `Rồng Băng Lv.${DRAGON_LEVEL} (${hp}/${maxHp} · Cần Lv.${DRAGON_MIN_ATTACK_LEVEL} để gây sát thương)`
+          : `Rồng Băng Lv.${DRAGON_LEVEL} (${hp}/${maxHp} · +5.000 XP)`;
       this.latestStats.targetCoords = [
         Math.round(point.x),
         Math.round(point.y * 10) / 10,
@@ -1659,7 +1665,9 @@ export class VoxelEngine {
       if (dragonAtk.hit) {
         if (dragonAtk.blockedByLevel) {
           this.audio.playShieldBlockSound();
-          this.callbacks.onToast('Cần đạt Level 20 trở lên mới có thể gây sát thương cho Rồng Băng!');
+          this.callbacks.onToast(
+            `Cần đạt Level ${DRAGON_MIN_ATTACK_LEVEL} trở lên mới có thể gây sát thương cho Rồng Băng!`,
+          );
           return;
         }
         this.audio.playSlimeHitSound();
@@ -1667,7 +1675,7 @@ export class VoxelEngine {
           this.audio.playDragonDefeatSound();
           this.grantXp(dragonAtk.xpReward);
           this.callbacks.onToast(
-            'Hạ Rồng Băng Lv.30! (+5.000 XP) Katana Băng đã rơi ra!',
+            `Hạ Rồng Băng Lv.${DRAGON_LEVEL}! (+5.000 XP) Katana Băng đã rơi ra!`,
           );
         } else {
           this.emitStats();
