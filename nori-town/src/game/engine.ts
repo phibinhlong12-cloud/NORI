@@ -2246,6 +2246,7 @@ export class VoxelEngine {
         clampedDt,
         this.holdingKatana && !this.world.isCarryingLog(),
         viewMotion,
+        this.shieldRaised,
       );
       this.shieldView.update(
         this.camera,

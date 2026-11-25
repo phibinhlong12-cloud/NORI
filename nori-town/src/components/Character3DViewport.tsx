@@ -51,7 +51,10 @@ export const Character3DViewport = memo(function Character3DViewport({
 
   const yawTargetRef = useRef(initialYaw);
   const yawCurrentRef = useRef(initialYaw);
+  const swayWeightRef = useRef(1);
+  const lastSwayOffsetRef = useRef(0);
   const draggingRef = useRef(false);
+  const activePointerIdRef = useRef<number | null>(null);
   const lastXRef = useRef(0);
 
   const optionsRef = useRef<CharacterBuildOptions>({
@@ -92,6 +95,7 @@ export const Character3DViewport = memo(function Character3DViewport({
     renderer.domElement.style.display = 'block';
     renderer.domElement.style.width = '100%';
     renderer.domElement.style.height = '100%';
+    renderer.domElement.style.touchAction = 'none';
     container.appendChild(renderer.domElement);
 
     const scene = new THREE.Scene();
@@ -220,6 +224,8 @@ export const Character3DViewport = memo(function Character3DViewport({
     let lastTime = startTime;
     yawTargetRef.current = initialYaw;
     yawCurrentRef.current = initialYaw;
+    swayWeightRef.current = 1;
+    lastSwayOffsetRef.current = 0;
 
     const handleResize = () => {
       if (disposed) return;
@@ -283,11 +289,18 @@ export const Character3DViewport = memo(function Character3DViewport({
         yawCurrentRef.current = THREE.MathUtils.damp(
           yawCurrentRef.current,
           yawTargetRef.current,
+          draggingRef.current ? 24 : 12,
+          dt,
+        );
+        swayWeightRef.current = THREE.MathUtils.damp(
+          swayWeightRef.current,
+          draggingRef.current ? 0 : 1,
           8,
           dt,
         );
-        const idleSway = draggingRef.current ? 0 : Math.sin(elapsed * 0.9) * 0.14;
-        charGroup.rotation.y = yawCurrentRef.current + idleSway;
+        const swayOffset = Math.sin(elapsed * 0.9) * 0.08 * swayWeightRef.current;
+        lastSwayOffsetRef.current = swayOffset;
+        charGroup.rotation.y = yawCurrentRef.current + swayOffset;
       }
       charGroup.position.y = Math.sin(elapsed * 2.2) * 0.012;
       animateCharacterIdle(charGroup, elapsed);
@@ -343,31 +356,61 @@ export const Character3DViewport = memo(function Character3DViewport({
     };
   }, [gender, hasKatana, hasIceKatana, hasShield, previewWeapon, interactiveRotate, initialYaw]);
 
+  const endDrag = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (activePointerIdRef.current !== e.pointerId) return;
+    activePointerIdRef.current = null;
+    draggingRef.current = false;
+    try {
+      if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      }
+    } catch {
+      // Bỏ qua nếu trình duyệt đã tự giải phóng pointer capture
+    }
+  };
+
   return (
     <div
       ref={mountRef}
       onPointerDown={(e) => {
         if (!interactiveRotate) return;
+        if (activePointerIdRef.current !== null) return;
+        e.preventDefault();
+        e.stopPropagation();
+        activePointerIdRef.current = e.pointerId;
         draggingRef.current = true;
         lastXRef.current = e.clientX;
+        // Gộp độ lệch đung đưa hiện tại vào góc xoay để không bị giật khi vừa chạm tay
+        const offset = lastSwayOffsetRef.current;
+        if (offset !== 0) {
+          yawCurrentRef.current += offset;
+          yawTargetRef.current = yawCurrentRef.current;
+          lastSwayOffsetRef.current = 0;
+          swayWeightRef.current = 0;
+        }
+        try {
+          e.currentTarget.setPointerCapture(e.pointerId);
+        } catch {
+          // Bỏ qua nếu trình duyệt không hỗ trợ capture
+        }
       }}
       onPointerMove={(e) => {
         if (!interactiveRotate || !draggingRef.current) return;
+        if (activePointerIdRef.current !== e.pointerId) return;
+        e.preventDefault();
+        e.stopPropagation();
         const dx = e.clientX - lastXRef.current;
         lastXRef.current = e.clientX;
-        yawTargetRef.current += dx * 0.012;
+        yawTargetRef.current += dx * 0.014;
       }}
-      onPointerUp={() => {
-        draggingRef.current = false;
-      }}
-      onPointerCancel={() => {
-        draggingRef.current = false;
-      }}
-      onPointerLeave={() => {
+      onPointerUp={endDrag}
+      onPointerCancel={endDrag}
+      onLostPointerCapture={() => {
+        activePointerIdRef.current = null;
         draggingRef.current = false;
       }}
       className={`relative w-full h-full select-none ${
-        interactiveRotate ? 'cursor-grab active:cursor-grabbing' : ''
+        interactiveRotate ? 'touch-none cursor-grab active:cursor-grabbing' : ''
       } ${className}`}
     >
       {contextError && (

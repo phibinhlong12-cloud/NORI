@@ -74,7 +74,7 @@ export const CharacterModal = memo(function CharacterModal({ engine }: Character
       className="fixed inset-0 z-40 bg-slate-950/80 flex items-center justify-center p-3 sm:p-5 select-none"
       onContextMenu={(e) => e.preventDefault()}
     >
-      <div className="relative w-full max-w-3xl max-h-[92dvh] overflow-y-auto bg-slate-900 border border-white/20 rounded-3xl p-4 sm:p-6 text-white shadow-2xl space-y-4">
+      <div className="relative w-full max-w-3xl max-h-[92dvh] overflow-y-auto touch-pan-y bg-slate-900 border border-white/20 rounded-3xl p-4 sm:p-6 text-white shadow-2xl space-y-4">
         {/* Thanh tiêu đề cửa sổ nhân vật */}
         <div className="flex items-center justify-between gap-3 border-b border-white/10 pb-3.5">
           <div className="flex items-center gap-3">

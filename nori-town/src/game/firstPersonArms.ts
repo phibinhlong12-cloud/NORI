@@ -193,41 +193,65 @@ export function createFirstPersonArmGroup(
   handPivot.position.set(0, 0.01, 0);
   wristBone.add(handPivot);
 
-  const palmW = isMale ? 0.078 : 0.054;
-  const palmH = isMale ? 0.088 : 0.072;
-  const palmD = isMale ? 0.046 : 0.03;
+  const palmW = isMale ? 0.078 : 0.056;
+  const palmH = isMale ? 0.088 : 0.074;
+  const palmD = isMale ? 0.046 : 0.032;
   const palmGeo = createParabolicEllipsoidGeometry(palmW, palmH, palmD, 14, 10);
   handles.geometries.push(palmGeo);
 
   const palmMesh = new THREE.Mesh(palmGeo, isMale ? skinMat : gloveMat);
-  palmMesh.position.set(0, 0.036, 0.006);
+  palmMesh.position.set(0, 0.036, mode === 'katana' ? 0.014 : 0.006);
   handPivot.add(palmMesh);
 
   // 4 ngón tay cong ôm vào tay cầm + ngón cái giữ phía trên
-  const fingerLen = isMale ? 0.068 : 0.056;
-  const fingerR = isMale ? 0.011 : 0.0074;
-  const fingerGeo = new THREE.CapsuleGeometry(fingerR, fingerLen * 0.55, 4, 8);
-  const thumbGeo = new THREE.CapsuleGeometry(fingerR * 1.12, fingerLen * 0.42, 4, 8);
+  const fingerLen = mode === 'katana' ? (isMale ? 0.076 : 0.064) : isMale ? 0.068 : 0.056;
+  const fingerR = isMale ? 0.0115 : 0.0078;
+  const fingerGeo = new THREE.CapsuleGeometry(fingerR, fingerLen * 0.56, 4, 8);
+  const thumbGeo = new THREE.CapsuleGeometry(fingerR * 1.15, fingerLen * 0.44, 4, 8);
   handles.geometries.push(fingerGeo, thumbGeo);
 
-  const fingerWrapDir = side === 'right' ? 1 : -1;
-  for (let i = 0; i < 4; i++) {
-    const fMesh = new THREE.Mesh(fingerGeo, skinMat);
-    const offsetY = 0.006 + i * (isMale ? 0.02 : 0.0155);
-    fMesh.position.set(fingerWrapDir * (palmW * 0.42), offsetY, -palmD * 0.55);
-    fMesh.rotation.set(0.45, 0, fingerWrapDir * 1.15);
-    handPivot.add(fMesh);
-  }
+  const sideSign = side === 'right' ? 1 : -1;
+  if (mode === 'katana') {
+    for (let i = 0; i < 4; i++) {
+      const fMesh = new THREE.Mesh(fingerGeo, skinMat);
+      const offsetY = 0.006 + i * (isMale ? 0.02 : 0.016);
+      fMesh.position.set(-sideSign * (palmW * 0.24), offsetY, -palmD * 0.56);
+      fMesh.rotation.set(0.32, 0, -sideSign * 1.32);
+      handPivot.add(fMesh);
+    }
 
-  const thumbMesh = new THREE.Mesh(thumbGeo, skinMat);
-  thumbMesh.position.set(-fingerWrapDir * (palmW * 0.36), 0.066, -palmD * 0.45);
-  thumbMesh.rotation.set(-0.55, 0, -fingerWrapDir * 0.72);
-  handPivot.add(thumbMesh);
+    const thumbMesh = new THREE.Mesh(thumbGeo, skinMat);
+    thumbMesh.position.set(sideSign * (palmW * 0.34), 0.064, -palmD * 0.42);
+    thumbMesh.rotation.set(-0.32, 0, sideSign * 0.42);
+    handPivot.add(thumbMesh);
+  } else {
+    for (let i = 0; i < 4; i++) {
+      const fMesh = new THREE.Mesh(fingerGeo, skinMat);
+      const offsetY = 0.006 + i * (isMale ? 0.02 : 0.0155);
+      fMesh.position.set(sideSign * (palmW * 0.42), offsetY, -palmD * 0.55);
+      fMesh.rotation.set(0.45, 0, sideSign * 1.15);
+      handPivot.add(fMesh);
+    }
+
+    const thumbMesh = new THREE.Mesh(thumbGeo, skinMat);
+    thumbMesh.position.set(-sideSign * (palmW * 0.36), 0.066, -palmD * 0.45);
+    thumbMesh.rotation.set(-0.55, 0, -sideSign * 0.72);
+    handPivot.add(thumbMesh);
+  }
 
   // Căn chỉnh hướng cánh tay theo từng loại vật phẩm cầm trên tay (SAU khi đã bind Skeleton ở tư thế nghỉ)
   if (mode === 'katana') {
-    armGroup.position.set(0.012, 0.095, -0.006);
-    armGroup.rotation.set(0.42, 0.18, -0.34);
+    if (side === 'right') {
+      armGroup.position.set(0.032, 0.155, 0.018);
+      armGroup.rotation.set(-0.28, -0.45, 0.52);
+      handPivot.position.set(-0.008, 0.004, -0.006);
+      handPivot.rotation.set(0.16, 0.24, -0.42);
+    } else {
+      armGroup.position.set(-0.026, 0.048, 0.018);
+      armGroup.rotation.set(-0.34, 0.48, -0.58);
+      handPivot.position.set(0.008, 0.004, -0.006);
+      handPivot.rotation.set(0.18, -0.26, 0.44);
+    }
   } else if (mode === 'shield') {
     armGroup.position.set(-0.04, 0.01, -0.058);
     armGroup.rotation.set(-0.48, -0.26, 0.42);

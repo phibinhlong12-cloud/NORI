@@ -244,11 +244,11 @@ function createHairHighlightTexture(isMale: boolean, maxAnisotropy: number): THR
   if (ctx) {
     const grad = ctx.createLinearGradient(0, 0, 0, size);
     if (isMale) {
-      grad.addColorStop(0, '#0d0f15');
-      grad.addColorStop(0.26, '#171b24');
-      grad.addColorStop(0.43, '#333b4d');
-      grad.addColorStop(0.57, '#161922');
-      grad.addColorStop(1, '#0d0f14');
+      grad.addColorStop(0, '#090a0e');
+      grad.addColorStop(0.26, '#111319');
+      grad.addColorStop(0.43, '#1f232c');
+      grad.addColorStop(0.57, '#101218');
+      grad.addColorStop(1, '#090a0d');
     } else {
       grad.addColorStop(0, '#0f0e15');
       grad.addColorStop(0.26, '#1b1826');
@@ -645,7 +645,7 @@ export function createCharacterMeshGroup(
     isMale ? 'waves' : 'sakura',
     maxAniso,
   );
-  const haoriTex = createKimonoFabricTexture('#e2dac9', '#cfc4af', 'waves', maxAniso);
+  const haoriTex = createKimonoFabricTexture('#f97316', '#ea580c', 'waves', maxAniso);
   const sleeveTex = createKimonoFabricTexture(
     isMale ? '#f97316' : '#f472b6',
     isMale ? '#ea580c' : '#ec4899',
@@ -680,11 +680,11 @@ export function createCharacterMeshGroup(
   const haoriOuterMat = new THREE.MeshPhysicalMaterial({
     map: haoriTex,
     color: '#ffffff',
-    roughness: 0.75,
-    metalness: 0.03,
-    sheen: 0.36,
-    sheenRoughness: 0.68,
-    sheenColor: new THREE.Color('#f5efe2'),
+    roughness: 0.68,
+    metalness: 0.04,
+    sheen: 0.45,
+    sheenRoughness: 0.58,
+    sheenColor: new THREE.Color('#fed7aa'),
     side: THREE.DoubleSide,
   });
   const sleeveMat = new THREE.MeshPhysicalMaterial({
@@ -722,16 +722,16 @@ export function createCharacterMeshGroup(
   const hairMat = new THREE.MeshPhysicalMaterial({
     map: hairTex,
     color: '#ffffff',
-    roughness: isMale ? 0.25 : 0.22,
-    metalness: 0.06,
-    clearcoat: isMale ? 0.52 : 0.65,
-    clearcoatRoughness: 0.22,
-    sheen: isMale ? 0.35 : 0.4,
-    sheenColor: new THREE.Color(isMale ? '#93c5fd' : '#c4b5fd'),
+    roughness: isMale ? 0.32 : 0.22,
+    metalness: 0.05,
+    clearcoat: isMale ? 0.32 : 0.65,
+    clearcoatRoughness: 0.24,
+    sheen: isMale ? 0.14 : 0.4,
+    sheenColor: new THREE.Color(isMale ? '#475569' : '#c4b5fd'),
   });
   const hairShadowMat = new THREE.MeshStandardMaterial({
-    color: isMale ? '#0d0f15' : '#0f0d16',
-    roughness: 0.42,
+    color: isMale ? '#0b0c11' : '#0f0d16',
+    roughness: isMale ? 0.36 : 0.42,
     metalness: 0.05,
   });
   const goldMat = new THREE.MeshStandardMaterial({
@@ -1447,10 +1447,14 @@ export function createCharacterMeshGroup(
     }
   }
 
-  // 4. Vai bo tròn gọn gàng + Hệ xương 3 khớp (Vai -> Khuỷu -> Cổ tay) + Tay áo & Cánh tay SkinnedMesh
+  // 4. Vai bo tròn gọn gàng + Hệ xương 3 khớp (Vai -> Khuỷu -> Cổ tay) cân đối 2 bên & vươn dài tự nhiên
   const shoulderY = torsoY + torsoH - 0.065;
   const shoulderX = isMale ? 0.205 : 0.155;
   const armR = isMale ? 0.042 : 0.03;
+  const upperLen = isMale ? 0.28 : 0.26;
+  const foreLen = isMale ? 0.285 : 0.265;
+  const totalArmY = upperLen + foreLen;
+  const upAxis = new THREE.Vector3(0, 1, 0);
 
   const shoulderCapGeo = new THREE.SphereGeometry(isMale ? 0.06 : 0.046, 14, 10);
   handles.geometries.push(shoulderCapGeo);
@@ -1460,21 +1464,29 @@ export function createCharacterMeshGroup(
     const sign = isRight ? 1 : -1;
 
     const armGroup = new THREE.Group();
-    const baseRot = new THREE.Euler(0, 0, sign * (isMale ? -0.04 : -0.06));
+    const baseRot = new THREE.Euler(0, 0, sign * (isMale ? -0.035 : -0.045));
 
-    // Khởi tạo xương Vai -> Khuỷu -> Cổ tay ở tư thế nghỉ trước khi bind SkinnedMesh
+    // Khởi tạo xương Vai -> Khuỷu -> Cổ tay cân đối 2 tay ở tư thế nghỉ trước khi bind SkinnedMesh
+    const elbowRel = new THREE.Vector3(
+      sign * (isMale ? 0.048 : 0.066),
+      -upperLen,
+      0.015,
+    );
+    const wristRel = new THREE.Vector3(
+      sign * (isMale ? 0.018 : 0.062),
+      -foreLen,
+      isMale ? 0.052 : 0.05,
+    );
+    const wristTotal = elbowRel.clone().add(wristRel);
+
     const shoulderBone = new THREE.Bone();
     shoulderBone.name = `${side}_shoulder`;
     const elbowBone = new THREE.Bone();
     elbowBone.name = `${side}_elbow`;
-    elbowBone.position.set(sign * 0.032, -0.175, 0.036);
+    elbowBone.position.copy(elbowRel);
     const wristBone = new THREE.Bone();
     wristBone.name = `${side}_wrist`;
-    wristBone.position.set(
-      sign * (isRight ? 0.012 : 0.01),
-      isRight ? -0.15 : -0.137,
-      isRight ? 0.096 : 0.114,
-    );
+    wristBone.position.copy(wristRel);
 
     shoulderBone.add(elbowBone);
     elbowBone.add(wristBone);
@@ -1489,37 +1501,41 @@ export function createCharacterMeshGroup(
 
     const bakeMat = new THREE.Matrix4();
     const bakeQuat = new THREE.Quaternion();
-    const bakeEuler = new THREE.Euler();
     const bakePos = new THREE.Vector3();
     const bakeScale = new THREE.Vector3(1, 1, 1);
 
-    const upperGeo = new THREE.CapsuleGeometry(armR * 1.05, 0.165, 8, 12);
-    bakePos.set(sign * 0.014, -0.095, isRight ? 0.014 : 0.016);
-    bakeEuler.set(isRight ? -0.24 : -0.26, 0, sign * 0.14);
-    bakeQuat.setFromEuler(bakeEuler);
+    const upperDir = elbowRel.clone().normalize();
+    const upperDist = elbowRel.length();
+    const upperGeo = new THREE.CapsuleGeometry(
+      armR * 1.04,
+      Math.max(0.08, upperDist - armR * 0.5),
+      8,
+      12,
+    );
+    bakePos.copy(elbowRel).multiplyScalar(0.5);
+    bakeQuat.setFromUnitVectors(upAxis, upperDir);
     bakeMat.compose(bakePos, bakeQuat, bakeScale);
     upperGeo.applyMatrix4(bakeMat);
     applyAxisSkinWeights(upperGeo, 'y', [
-      { boneIndex: 0, pos: 0, blendWidth: 0.1 },
-      { boneIndex: 1, pos: -0.175, blendWidth: 0.1 },
+      { boneIndex: 0, pos: 0, blendWidth: 0.14 },
+      { boneIndex: 1, pos: -upperLen, blendWidth: 0.14 },
     ]);
     handles.geometries.push(upperGeo);
     bindSkinnedMeshToSkeleton(upperGeo, sleeveMat, skeleton, armGroup, false);
 
     const drapeGeo = createDrapedKimonoSleeveGeometry(
       isMale ? 0.082 : 0.09,
-      isMale ? 0.165 : 0.185,
+      isMale ? 0.24 : 0.25,
       isMale ? 0.036 : 0.032,
       !isRight,
     );
-    bakePos.set(sign * 0.002, -0.015, 0.008);
-    bakeEuler.set(-0.14, -sign * 0.18, sign * 0.1);
-    bakeQuat.setFromEuler(bakeEuler);
+    bakePos.set(sign * 0.004, -0.015, 0.008);
+    bakeQuat.setFromEuler(new THREE.Euler(-0.08, -sign * 0.16, sign * 0.14));
     bakeMat.compose(bakePos, bakeQuat, bakeScale);
     drapeGeo.applyMatrix4(bakeMat);
     applyAxisSkinWeights(drapeGeo, 'y', [
-      { boneIndex: 0, pos: 0, blendWidth: 0.1 },
-      { boneIndex: 1, pos: -0.175, blendWidth: 0.1 },
+      { boneIndex: 0, pos: 0, blendWidth: 0.14 },
+      { boneIndex: 1, pos: -upperLen, blendWidth: 0.14 },
     ]);
     handles.geometries.push(drapeGeo);
     const drapeMesh = bindSkinnedMeshToSkeleton(drapeGeo, sleeveMat, skeleton, armGroup, false);
@@ -1527,27 +1543,32 @@ export function createCharacterMeshGroup(
 
     const trimGeo = new THREE.TorusGeometry(armR * 1.12, 0.0065, 8, 16);
     trimGeo.rotateX(Math.PI / 2);
-    bakePos.set(sign * 0.032, -0.175, isRight ? 0.036 : 0.038);
-    bakeEuler.set(isRight ? -0.24 : -0.26, 0, sign * 0.14);
-    bakeQuat.setFromEuler(bakeEuler);
+    bakePos.copy(elbowRel);
+    bakeQuat.setFromUnitVectors(upAxis, upperDir);
     bakeMat.compose(bakePos, bakeQuat, bakeScale);
     trimGeo.applyMatrix4(bakeMat);
     applyAxisSkinWeights(trimGeo, 'y', [
-      { boneIndex: 0, pos: -0.05, blendWidth: 0.1 },
-      { boneIndex: 1, pos: -0.175, blendWidth: 0.1 },
+      { boneIndex: 0, pos: -upperLen * 0.35, blendWidth: 0.12 },
+      { boneIndex: 1, pos: -upperLen, blendWidth: 0.12 },
     ]);
     handles.geometries.push(trimGeo);
     bindSkinnedMeshToSkeleton(trimGeo, redCollarMat, skeleton, armGroup, false);
 
-    const foreGeo = new THREE.CapsuleGeometry(armR * 0.88, 0.185, 10, 12);
-    bakePos.set(sign * (isRight ? 0.038 : 0.036), isRight ? -0.245 : -0.24, isRight ? 0.072 : 0.08);
-    bakeEuler.set(isRight ? -0.56 : -0.72, 0, sign * (isRight ? 0.06 : 0.08));
-    bakeQuat.setFromEuler(bakeEuler);
+    const foreDir = wristRel.clone().normalize();
+    const foreDist = wristRel.length();
+    const foreGeo = new THREE.CapsuleGeometry(
+      armR * 0.88,
+      Math.max(0.08, foreDist - armR * 0.45),
+      10,
+      12,
+    );
+    bakePos.copy(elbowRel).add(wristTotal).multiplyScalar(0.5);
+    bakeQuat.setFromUnitVectors(upAxis, foreDir);
     bakeMat.compose(bakePos, bakeQuat, bakeScale);
     foreGeo.applyMatrix4(bakeMat);
     applyAxisSkinWeights(foreGeo, 'y', [
-      { boneIndex: 1, pos: -0.175, blendWidth: 0.11 },
-      { boneIndex: 2, pos: isRight ? -0.325 : -0.312, blendWidth: 0.1 },
+      { boneIndex: 1, pos: -upperLen, blendWidth: 0.15 },
+      { boneIndex: 2, pos: -totalArmY, blendWidth: 0.14 },
     ]);
     handles.geometries.push(foreGeo);
     bindSkinnedMeshToSkeleton(foreGeo, plainSkinMat, skeleton, armGroup, false);
@@ -1560,7 +1581,8 @@ export function createCharacterMeshGroup(
       plainSkinMat,
       gloveMat,
     );
-    hand.rotation.set(isRight ? 0.32 : 0.25, -sign * 0.18, 0);
+    hand.position.set(0, -armR * 0.55, 0.008);
+    hand.rotation.set(0.22, -sign * 0.16, 0);
     wristBone.add(hand);
 
     armGroup.position.set(sign * shoulderX, shoulderY, 0);
@@ -1581,7 +1603,7 @@ export function createCharacterMeshGroup(
   if (showShield) {
     const shield = createShieldMeshGroup(handles);
     shield.scale.setScalar(isMale ? 0.68 : 0.56);
-    shield.position.set(-0.063, 0.042, 0.025);
+    shield.position.set(-0.063, 0.015, 0.025);
     shield.rotation.set(0.08, -Math.PI * 0.38, 0.08);
     leftRig.wristBone.add(shield);
   }

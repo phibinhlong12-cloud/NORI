@@ -235,6 +235,8 @@ export class KatanaViewModel {
   private readonly scene: THREE.Scene;
   private group: THREE.Group;
   private armRig: FirstPersonArmRig | null = null;
+  private leftArmGroup: THREE.Group | null = null;
+  private leftArmRig: FirstPersonArmRig | null = null;
   private slashArcMesh: THREE.Mesh | null = null;
   private slashArcMat: THREE.MeshBasicMaterial | null = null;
 
@@ -242,7 +244,7 @@ export class KatanaViewModel {
   private isIce = false;
   private gender: CharacterGender = 'male';
 
-  private readonly idleOffset = new THREE.Vector3(0.42, -0.34, -0.62);
+  private readonly idleOffset = new THREE.Vector3(0.04, -0.32, -0.52);
   private readonly slashOffset = new THREE.Vector3();
   private readonly tempLocalPos = new THREE.Vector3();
   private readonly tempEuler = new THREE.Euler(0, 0, 0, 'YXZ');
@@ -271,7 +273,13 @@ export class KatanaViewModel {
     const rig = (arm.userData.armRig as FirstPersonArmRig | undefined) ?? null;
     this.armRig = rig;
 
+    const leftArm = createFirstPersonArmGroup(this.gender, 'left', this.assets, 'katana');
+    const leftRig = (leftArm.userData.armRig as FirstPersonArmRig | undefined) ?? null;
+    this.leftArmGroup = leftArm;
+    this.leftArmRig = leftRig;
+
     const katana = createKatanaMeshGroup(this.assets, this.isIce);
+    katana.add(leftArm);
     if (rig) {
       // Đặt katana vào trực tiếp trong xương cổ tay theo ma trận nghịch đảo của tay ở tư thế nghỉ
       const armLocalMat = new THREE.Matrix4().compose(
@@ -305,7 +313,7 @@ export class KatanaViewModel {
     this.slashArcMesh = arcMesh;
     this.slashArcMat = arcMat;
 
-    viewRoot.scale.set(0.85, 0.85, 0.85);
+    viewRoot.scale.set(0.88, 0.88, 0.88);
     viewRoot.visible = false;
     return viewRoot;
   }
@@ -338,6 +346,8 @@ export class KatanaViewModel {
       this.slashArcMat = null;
     }
     this.armRig = null;
+    this.leftArmGroup = null;
+    this.leftArmRig = null;
     if (this.assets.skeletons) {
       for (const skel of this.assets.skeletons) {
         skel.dispose();
@@ -366,21 +376,30 @@ export class KatanaViewModel {
   }
 
   private resetBonesToIdle(lagY: number, strideX: number): void {
-    const rig = this.armRig;
-    if (!rig) return;
     const breath = Math.sin(this.idleTime * 2.1);
     const sway = Math.cos(this.idleTime * 1.45);
     const elbowPhase = Math.sin(this.idleTime * 2.1 - 0.55);
     const wristPhase = Math.sin(this.idleTime * 2.1 - 1.1);
 
-    rig.shoulderBone.rotation.set(breath * 0.015 + lagY * 0.25, 0, sway * 0.012);
-    rig.elbowBone.rotation.set(0.03 + elbowPhase * 0.024 + lagY * 0.42, 0, -strideX * 0.45);
-    rig.forearmBone.rotation.set(0, Math.sin(this.idleTime * 1.7) * 0.035, 0);
-    rig.wristBone.rotation.set(
-      wristPhase * 0.024 + lagY * 0.72,
-      -strideX * 0.4,
-      strideX * 0.6,
-    );
+    const rig = this.armRig;
+    if (rig) {
+      rig.shoulderBone.rotation.set(breath * 0.015 + lagY * 0.25, 0, sway * 0.012);
+      rig.elbowBone.rotation.set(0.03 + elbowPhase * 0.024 + lagY * 0.42, 0, -strideX * 0.45);
+      rig.forearmBone.rotation.set(0, Math.sin(this.idleTime * 1.7) * 0.035, 0);
+      rig.wristBone.rotation.set(
+        wristPhase * 0.024 + lagY * 0.72,
+        -strideX * 0.4,
+        strideX * 0.6,
+      );
+    }
+
+    const leftRig = this.leftArmRig;
+    if (leftRig) {
+      leftRig.shoulderBone.rotation.set(-breath * 0.012, 0, -sway * 0.01);
+      leftRig.elbowBone.rotation.set(0.02 - elbowPhase * 0.018, 0, strideX * 0.25);
+      leftRig.forearmBone.rotation.set(0, -Math.sin(this.idleTime * 1.7) * 0.02, 0);
+      leftRig.wristBone.rotation.set(0, 0, 0);
+    }
   }
 
   update(
@@ -388,6 +407,7 @@ export class KatanaViewModel {
     dt: number,
     visible: boolean,
     motion?: { lagY: number; strideX: number; strideY: number },
+    shieldRaised = false,
   ): void {
     this.group.visible = visible;
     if (!visible) {
@@ -395,6 +415,10 @@ export class KatanaViewModel {
       this.nextComboIndex = 0;
       if (this.slashArcMesh) this.slashArcMesh.visible = false;
       return;
+    }
+
+    if (this.leftArmGroup) {
+      this.leftArmGroup.visible = !shieldRaised;
     }
 
     this.idleTime += dt;
@@ -409,10 +433,10 @@ export class KatanaViewModel {
     const strideX = motion?.strideX ?? 0;
     const strideY = motion?.strideY ?? 0;
 
-    // Nữ giữ kiếm nghiêng thanh thoát hơn, Nam giữ vững chãi
-    const basePitch = this.gender === 'male' ? -0.65 : -0.6;
-    const baseYaw = this.gender === 'male' ? 0.18 : 0.24;
-    const baseRoll = this.gender === 'male' ? 0.25 : 0.32;
+    // Dáng thủ katana chéo hướng tới trước-phải như ảnh mẫu (hai tay ôm chuôi, lưỡi vát chéo)
+    const basePitch = this.gender === 'male' ? -0.58 : -0.54;
+    const baseYaw = this.gender === 'male' ? -0.22 : -0.18;
+    const baseRoll = this.gender === 'male' ? -0.46 : -0.42;
 
     let pitch = basePitch + lagY * 0.85;
     let yaw = baseYaw;
