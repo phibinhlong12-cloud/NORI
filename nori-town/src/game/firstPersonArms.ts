@@ -1,14 +1,27 @@
 import * as THREE from 'three';
 import { createParabolicEllipsoidGeometry, createParabolicLatheGeometry } from './parabolic';
+import { applyAxisSkinWeights, bindSkinnedMeshToSkeleton } from './skeletonUtils';
 
 export type CharacterGender = 'male' | 'female';
 
 export interface FirstPersonArmHandles {
   geometries: THREE.BufferGeometry[];
   materials: THREE.Material[];
+  skeletons?: THREE.Skeleton[];
 }
 
 export type ArmHoldMode = 'katana' | 'shield' | 'potion';
+
+export interface FirstPersonArmRig {
+  shoulderBone: THREE.Bone;
+  elbowBone: THREE.Bone;
+  forearmBone: THREE.Bone;
+  wristBone: THREE.Bone;
+  handPivot: THREE.Group;
+  skeleton: THREE.Skeleton;
+  basePosition: THREE.Vector3;
+  baseRotation: THREE.Euler;
+}
 
 let cachedSleeveTexture: THREE.CanvasTexture | null = null;
 function getSleeveWeaveTexture(): THREE.CanvasTexture {
@@ -39,9 +52,9 @@ function getSleeveWeaveTexture(): THREE.CanvasTexture {
 }
 
 /**
- * Tạo cánh tay + cổ tay + bàn tay góc nhìn thứ nhất khớp giới tính nhân vật:
- * - Nam ('male'): Cánh tay cứng cáp, cơ bắp khỏe khoắn, bàn tay rộng cầm chắc chắn, tay áo kimono ngà viền đỏ.
- * - Nữ ('female'): Cánh tay mềm mỏng, thon gọn thanh thoát, găng tay hở ngón tối màu, tay áo kimono trắng rộng viền đỏ.
+ * Tạo cánh tay + cổ tay + bàn tay góc nhìn thứ nhất gắn hệ xương thật (THREE.Bone + THREE.SkinnedMesh):
+ * - Chuỗi xương Vai → Khuỷu tay → Cẳng tay (xoay cổ tay) → Cổ tay/Bàn tay.
+ * - Da cẳng tay và tay áo kimono được skin mượt để uốn cong liền mạch khi vung kiếm / đỡ khiên / uống thuốc.
  */
 export function createFirstPersonArmGroup(
   gender: CharacterGender,
@@ -84,8 +97,37 @@ export function createFirstPersonArmGroup(
   const forearmLen = isMale ? 0.36 : 0.34;
   const wristRadius = isMale ? 0.036 : 0.023;
   const elbowRadius = isMale ? 0.052 : 0.034;
+  const sleeveLen = isMale ? 0.22 : 0.24;
+  const sleeveFlare = isMale ? 1.15 : 1.38;
 
-  // 1. Cẳng tay parabol (trục Y từ khuỷu y = -forearmLen lên cổ tay y = 0)
+  // Chuỗi 4 xương thực: Vai -> Khuỷu -> Giữa cẳng tay (xoắn cổ tay) -> Cổ tay
+  const shoulderBone = new THREE.Bone();
+  shoulderBone.name = 'arm_shoulder';
+  shoulderBone.position.set(0, -forearmLen - 0.14, -0.02);
+
+  const elbowBone = new THREE.Bone();
+  elbowBone.name = 'arm_elbow';
+  elbowBone.position.set(0, 0.14, 0.02); // Ở tư thế nghỉ: (0, -forearmLen, 0)
+
+  const forearmBone = new THREE.Bone();
+  forearmBone.name = 'arm_forearm_twist';
+  forearmBone.position.set(0, forearmLen * 0.5, 0);
+
+  const wristBone = new THREE.Bone();
+  wristBone.name = 'arm_wrist';
+  wristBone.position.set(0, forearmLen * 0.5, 0); // Ở tư thế nghỉ: (0, 0, 0)
+
+  shoulderBone.add(elbowBone);
+  elbowBone.add(forearmBone);
+  forearmBone.add(wristBone);
+  armGroup.add(shoulderBone);
+
+  const bones = [shoulderBone, elbowBone, forearmBone, wristBone];
+  armGroup.updateMatrixWorld(true);
+  const skeleton = new THREE.Skeleton(bones);
+  handles.skeletons?.push(skeleton);
+
+  // 1. Cẳng tay parabol chia dày vòng dọc (24 segments) + skinWeight mượt qua khuỷu & cổ tay
   const forearmGeo = createParabolicLatheGeometry(
     forearmLen,
     1,
@@ -95,19 +137,21 @@ export function createFirstPersonArmGroup(
       const muscleBulge = isMale ? Math.sin(t * Math.PI) * 0.007 : Math.sin(t * Math.PI) * 0.002;
       return base + muscleBulge;
     },
-    16,
-    12,
+    18,
+    24,
     false,
   );
   forearmGeo.translate(0, -forearmLen, 0);
+  applyAxisSkinWeights(forearmGeo, 'y', [
+    { boneIndex: 0, pos: -forearmLen - 0.05, blendWidth: 0.08 },
+    { boneIndex: 1, pos: -forearmLen, blendWidth: 0.12 },
+    { boneIndex: 2, pos: -forearmLen * 0.5, blendWidth: 0.15 },
+    { boneIndex: 3, pos: 0, blendWidth: 0.09 },
+  ]);
   handles.geometries.push(forearmGeo);
+  bindSkinnedMeshToSkeleton(forearmGeo, skinMat, skeleton, armGroup, false);
 
-  const forearmMesh = new THREE.Mesh(forearmGeo, skinMat);
-  armGroup.add(forearmMesh);
-
-  // 2. Tay áo kimono phủ phần cẳng tay sau gọn gàng với viền lót đỏ
-  const sleeveLen = isMale ? 0.22 : 0.24;
-  const sleeveFlare = isMale ? 1.15 : 1.38;
+  // 2. Tay áo kimono phủ phần cẳng tay sau được skin mềm để uốn theo khuỷu tay
   const sleeveGeo = createParabolicLatheGeometry(
     sleeveLen,
     1,
@@ -116,14 +160,18 @@ export function createFirstPersonArmGroup(
       const mouthR = (wristRadius + (isMale ? 0.016 : 0.024)) * (1 + (1 - t) * (sleeveFlare - 1));
       return mouthR;
     },
-    16,
-    10,
+    18,
+    20,
     false,
   );
   sleeveGeo.translate(0, -forearmLen - 0.02, 0);
+  applyAxisSkinWeights(sleeveGeo, 'y', [
+    { boneIndex: 0, pos: -forearmLen - 0.03, blendWidth: 0.07 },
+    { boneIndex: 1, pos: -forearmLen + 0.02, blendWidth: 0.11 },
+    { boneIndex: 2, pos: -forearmLen + sleeveLen - 0.02, blendWidth: 0.12 },
+  ]);
   handles.geometries.push(sleeveGeo);
-  const sleeveMesh = new THREE.Mesh(sleeveGeo, sleeveOuterMat);
-  armGroup.add(sleeveMesh);
+  bindSkinnedMeshToSkeleton(sleeveGeo, sleeveOuterMat, skeleton, armGroup, false);
 
   const cuffTrimGeo = new THREE.TorusGeometry(
     wristRadius + (isMale ? 0.016 : 0.024),
@@ -132,15 +180,18 @@ export function createFirstPersonArmGroup(
     18,
   );
   cuffTrimGeo.rotateX(Math.PI / 2);
+  cuffTrimGeo.translate(0, -forearmLen + sleeveLen - 0.022, 0);
+  applyAxisSkinWeights(cuffTrimGeo, 'y', [
+    { boneIndex: 1, pos: -forearmLen + 0.02, blendWidth: 0.1 },
+    { boneIndex: 2, pos: -forearmLen + sleeveLen - 0.02, blendWidth: 0.1 },
+  ]);
   handles.geometries.push(cuffTrimGeo);
-  const cuffTrim = new THREE.Mesh(cuffTrimGeo, sleeveInnerMat);
-  cuffTrim.position.set(0, -forearmLen + sleeveLen - 0.022, 0);
-  armGroup.add(cuffTrim);
+  bindSkinnedMeshToSkeleton(cuffTrimGeo, sleeveInnerMat, skeleton, armGroup, false);
 
-  // 3. Bàn tay & các ngón tay ôm quanh vật phẩm
+  // 3. Bàn tay & các ngón tay gắn trực tiếp vào xương cổ tay (wristBone)
   const handPivot = new THREE.Group();
   handPivot.position.set(0, 0.01, 0);
-  armGroup.add(handPivot);
+  wristBone.add(handPivot);
 
   const palmW = isMale ? 0.078 : 0.054;
   const palmH = isMale ? 0.088 : 0.072;
@@ -173,20 +224,29 @@ export function createFirstPersonArmGroup(
   thumbMesh.rotation.set(-0.55, 0, -fingerWrapDir * 0.72);
   handPivot.add(thumbMesh);
 
-  // Căn chỉnh hướng cánh tay theo từng loại vật phẩm cầm trên tay
+  // Căn chỉnh hướng cánh tay theo từng loại vật phẩm cầm trên tay (SAU khi đã bind Skeleton ở tư thế nghỉ)
   if (mode === 'katana') {
-    // Nắm quanh tsuka (y từ ~0.04 đến 0.16) với cẳng tay hướng chéo từ góc phải-dưới lên
     armGroup.position.set(0.012, 0.095, -0.006);
     armGroup.rotation.set(0.42, 0.18, -0.34);
   } else if (mode === 'shield') {
-    // Tay trái giữ mặt sau khiên (z < -0.04)
     armGroup.position.set(-0.04, 0.01, -0.058);
     armGroup.rotation.set(-0.48, -0.26, 0.42);
   } else {
-    // Tay phải nâng bình thuốc hồi máu
     armGroup.position.set(0.02, 0.12, 0.015);
     armGroup.rotation.set(0.46, 0.14, -0.28);
   }
+
+  const armRig: FirstPersonArmRig = {
+    shoulderBone,
+    elbowBone,
+    forearmBone,
+    wristBone,
+    handPivot,
+    skeleton,
+    basePosition: armGroup.position.clone(),
+    baseRotation: armGroup.rotation.clone(),
+  };
+  armGroup.userData.armRig = armRig;
 
   return armGroup;
 }

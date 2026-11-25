@@ -12,6 +12,21 @@ export const COUNTER_MIN_Z = -21.55;
 export const COUNTER_MAX_Z = -19.25;
 export const COUNTER_TOP_Y = 5.18;
 
+// Vùng đứng trước băng tải & quầy thu ngân (từ đầu trái băng tải tới mép đường đá cuội)
+export const SELL_ZONE_MIN_X = -15.0;
+export const SELL_ZONE_MAX_X = -3.0;
+export const SELL_ZONE_MIN_Z = -22.8;
+export const SELL_ZONE_MAX_Z = -13.6;
+
+export function isPlayerInSellZone(x: number, z: number): boolean {
+  return (
+    x >= SELL_ZONE_MIN_X &&
+    x <= SELL_ZONE_MAX_X &&
+    z >= SELL_ZONE_MIN_Z &&
+    z <= SELL_ZONE_MAX_Z
+  );
+}
+
 export const VND_PER_BLOCK = 50;
 
 const BELT_SPEED = 2.8;

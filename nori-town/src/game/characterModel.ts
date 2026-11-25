@@ -3,12 +3,14 @@ import { CharacterGender } from './firstPersonArms';
 import { createKatanaMeshGroup } from './katana';
 import { createParabolicEllipsoidGeometry, createParabolicLatheGeometry } from './parabolic';
 import { createShieldMeshGroup } from './shield';
+import { applyAxisSkinWeights, bindSkinnedMeshToSkeleton } from './skeletonUtils';
 import { createSoftShadowTexture } from './textures';
 
 export interface CharacterAssetHandles {
   geometries: THREE.BufferGeometry[];
   materials: THREE.Material[];
   textures: THREE.Texture[];
+  skeletons?: THREE.Skeleton[];
 }
 
 export interface CharacterBuildOptions {
@@ -25,6 +27,12 @@ interface CharacterAnimRig {
   headGroup: THREE.Group;
   rightArm: THREE.Group;
   leftArm: THREE.Group;
+  rShoulderBone: THREE.Bone;
+  rElbowBone: THREE.Bone;
+  rWristBone: THREE.Bone;
+  lShoulderBone: THREE.Bone;
+  lElbowBone: THREE.Bone;
+  lWristBone: THREE.Bone;
   ponytailKnot: THREE.Group | null;
   sakuraOrnament: THREE.Group | null;
   baseHeadRot: THREE.Euler;
@@ -33,6 +41,12 @@ interface CharacterAnimRig {
 }
 
 export function disposeCharacterAssets(handles: CharacterAssetHandles): void {
+  if (handles.skeletons) {
+    for (const skel of handles.skeletons) {
+      skel.dispose();
+    }
+    handles.skeletons.length = 0;
+  }
   for (const geo of handles.geometries) {
     geo.dispose();
   }
@@ -56,16 +70,24 @@ export function animateCharacterIdle(root: THREE.Group, elapsed: number): void {
 
   const breath = Math.sin(elapsed * 2.1);
   const sway = Math.sin(elapsed * 1.45);
+  const elbowWave = Math.sin(elapsed * 2.1 - 0.55);
+  const wristWave = Math.sin(elapsed * 2.1 - 1.15);
 
   rig.upperRig.position.y = breath * 0.0055;
   rig.headGroup.rotation.x = rig.baseHeadRot.x + breath * 0.018;
   rig.headGroup.rotation.y = rig.baseHeadRot.y + Math.sin(elapsed * 0.9) * 0.032;
   rig.headGroup.rotation.z = rig.baseHeadRot.z + sway * 0.015;
 
-  rig.rightArm.rotation.x = rig.baseRightArmRot.x + breath * 0.022;
-  rig.rightArm.rotation.z = rig.baseRightArmRot.z + sway * 0.014;
-  rig.leftArm.rotation.x = rig.baseLeftArmRot.x - breath * 0.018;
-  rig.leftArm.rotation.z = rig.baseLeftArmRot.z - sway * 0.014;
+  rig.rightArm.rotation.copy(rig.baseRightArmRot);
+  rig.leftArm.rotation.copy(rig.baseLeftArmRot);
+
+  rig.rShoulderBone.rotation.set(breath * 0.022, 0, sway * 0.014);
+  rig.rElbowBone.rotation.set(-0.04 + elbowWave * 0.036, 0, 0);
+  rig.rWristBone.rotation.set(wristWave * 0.045, 0, sway * 0.02);
+
+  rig.lShoulderBone.rotation.set(-breath * 0.018, 0, -sway * 0.014);
+  rig.lElbowBone.rotation.set(-0.04 - elbowWave * 0.032, 0, 0);
+  rig.lWristBone.rotation.set(-wristWave * 0.04, 0, -sway * 0.018);
 
   if (rig.ponytailKnot) {
     rig.ponytailKnot.rotation.x = 0.05 + Math.sin(elapsed * 2.2 - 0.6) * 0.045;
@@ -389,13 +411,15 @@ function createDrapedKimonoSleeveGeometry(
   width: number,
   dropLength: number,
   thickness: number,
+  mirrorX = false,
 ): THREE.ExtrudeGeometry {
+  const sx = mirrorX ? -1 : 1;
   const s = new THREE.Shape();
   s.moveTo(0, 0);
-  s.lineTo(width * 0.92, -0.025);
-  s.quadraticCurveTo(width * 0.96, -dropLength * 0.62, width * 0.72, -dropLength);
-  s.quadraticCurveTo(width * 0.36, -dropLength * 1.03, width * 0.06, -dropLength * 0.86);
-  s.quadraticCurveTo(-0.02, -dropLength * 0.46, 0, 0);
+  s.lineTo(sx * width * 0.92, -0.025);
+  s.quadraticCurveTo(sx * width * 0.96, -dropLength * 0.62, sx * width * 0.72, -dropLength);
+  s.quadraticCurveTo(sx * width * 0.36, -dropLength * 1.03, sx * width * 0.06, -dropLength * 0.86);
+  s.quadraticCurveTo(-sx * 0.02, -dropLength * 0.46, 0, 0);
 
   const geo = new THREE.ExtrudeGeometry(s, {
     depth: thickness,
@@ -771,10 +795,10 @@ export function createCharacterMeshGroup(
   if (isMale) {
     const hakamaLegGeo = createParabolicLatheGeometry(
       0.86,
-      0.168,
+      0.108,
       (t) => {
         if (t <= 0.002 || t >= 0.998) return 0;
-        return 0.7 + 0.3 * Math.sin(t * Math.PI * 0.86);
+        return 0.76 + 0.24 * Math.sin(t * Math.PI * 0.85);
       },
       26,
       14,
@@ -786,36 +810,39 @@ export function createCharacterMeshGroup(
       const hz = hPos.getZ(i);
       if (Math.hypot(hx, hz) > 0.02) {
         const ang = Math.atan2(hz, hx);
-        const pleat = 1 + Math.sin(ang * 8) * 0.048;
+        const pleat = 1 + Math.sin(ang * 8) * 0.036;
         hPos.setX(i, hx * pleat);
         hPos.setZ(i, hz * pleat);
       }
     }
+    hakamaLegGeo.scale(0.96, 1, 0.92);
     hakamaLegGeo.computeVertexNormals();
     handles.geometries.push(hakamaLegGeo);
 
-    for (const sx of [-0.112, 0.112]) {
+    for (const sx of [-0.086, 0.086]) {
       const leg = new THREE.Mesh(hakamaLegGeo, obiMat);
       leg.position.set(sx, 0.06, 0);
       leg.castShadow = true;
       root.add(leg);
 
       const shoe = new THREE.Mesh(shoeGeo, sandalMat);
-      shoe.position.set(sx, 0.031, 0.036);
+      shoe.scale.set(0.86, 0.92, 0.92);
+      shoe.position.set(sx, 0.03, 0.032);
       shoe.castShadow = true;
       root.add(shoe);
 
       const strap = new THREE.Mesh(strapGeo, redCollarMat);
-      strap.position.set(sx, 0.056, 0.055);
+      strap.scale.setScalar(0.86);
+      strap.position.set(sx, 0.053, 0.048);
       strap.rotation.x = 0.6;
       root.add(strap);
 
       const tabi = new THREE.Mesh(
-        createParabolicEllipsoidGeometry(0.086, 0.068, 0.148, 12, 8),
+        createParabolicEllipsoidGeometry(0.072, 0.062, 0.136, 12, 8),
         sockMat,
       );
       handles.geometries.push(tabi.geometry);
-      tabi.position.set(sx, 0.056, 0.02);
+      tabi.position.set(sx, 0.054, 0.018);
       root.add(tabi);
     }
   } else {
@@ -1420,109 +1447,143 @@ export function createCharacterMeshGroup(
     }
   }
 
-  // 4. Vai bo tròn gọn gàng + Tay áo kimono thu nhỏ (Nam màu cam, Nữ màu hồng) + Cánh tay & Bàn tay chi tiết
+  // 4. Vai bo tròn gọn gàng + Hệ xương 3 khớp (Vai -> Khuỷu -> Cổ tay) + Tay áo & Cánh tay SkinnedMesh
   const shoulderY = torsoY + torsoH - 0.065;
   const shoulderX = isMale ? 0.205 : 0.155;
   const armR = isMale ? 0.042 : 0.03;
 
   const shoulderCapGeo = new THREE.SphereGeometry(isMale ? 0.06 : 0.046, 14, 10);
-  const upperArmGeo = new THREE.CapsuleGeometry(armR * 1.05, 0.165, 6, 12);
-  const forearmGeo = new THREE.CapsuleGeometry(armR * 0.88, 0.185, 6, 12);
-  const sleeveDrapeGeo = createDrapedKimonoSleeveGeometry(
-    isMale ? 0.082 : 0.09,
-    isMale ? 0.165 : 0.185,
-    isMale ? 0.036 : 0.032,
-  );
-  const sleeveTrimGeo = new THREE.TorusGeometry(armR * 1.12, 0.0065, 8, 16);
-  sleeveTrimGeo.rotateX(Math.PI / 2);
-  handles.geometries.push(
-    shoulderCapGeo,
-    upperArmGeo,
-    forearmGeo,
-    sleeveDrapeGeo,
-    sleeveTrimGeo,
-  );
+  handles.geometries.push(shoulderCapGeo);
 
-  // Tay phải (buông tự nhiên dọc bên thân)
-  const rightArm = new THREE.Group();
-  rightArm.position.set(shoulderX, shoulderY, 0);
-  const baseRightArmRot = new THREE.Euler(0, 0, isMale ? -0.04 : -0.06);
-  rightArm.rotation.copy(baseRightArmRot);
+  const buildSkinnedArm = (side: 'right' | 'left') => {
+    const isRight = side === 'right';
+    const sign = isRight ? 1 : -1;
 
-  const rShoulder = new THREE.Mesh(shoulderCapGeo, sleeveMat);
-  const rUpper = new THREE.Mesh(upperArmGeo, sleeveMat);
-  rUpper.position.set(0.014, -0.095, 0.014);
-  rUpper.rotation.set(-0.24, 0, 0.14);
+    const armGroup = new THREE.Group();
+    const baseRot = new THREE.Euler(0, 0, sign * (isMale ? -0.04 : -0.06));
 
-  const rDrape = new THREE.Mesh(sleeveDrapeGeo, sleeveMat);
-  rDrape.position.set(0.002, -0.015, 0.008);
-  rDrape.rotation.set(-0.14, -0.18, 0.1);
-  rDrape.castShadow = true;
+    // Khởi tạo xương Vai -> Khuỷu -> Cổ tay ở tư thế nghỉ trước khi bind SkinnedMesh
+    const shoulderBone = new THREE.Bone();
+    shoulderBone.name = `${side}_shoulder`;
+    const elbowBone = new THREE.Bone();
+    elbowBone.name = `${side}_elbow`;
+    elbowBone.position.set(sign * 0.032, -0.175, 0.036);
+    const wristBone = new THREE.Bone();
+    wristBone.name = `${side}_wrist`;
+    wristBone.position.set(
+      sign * (isRight ? 0.012 : 0.01),
+      isRight ? -0.15 : -0.137,
+      isRight ? 0.096 : 0.114,
+    );
 
-  const rTrim = new THREE.Mesh(sleeveTrimGeo, redCollarMat);
-  rTrim.position.set(0.032, -0.175, 0.036);
-  rTrim.rotation.set(-0.24, 0, 0.14);
+    shoulderBone.add(elbowBone);
+    elbowBone.add(wristBone);
+    armGroup.add(shoulderBone);
+    armGroup.updateMatrixWorld(true);
 
-  const rForearm = new THREE.Mesh(forearmGeo, plainSkinMat);
-  rForearm.position.set(0.038, -0.245, 0.072);
-  rForearm.rotation.set(-0.56, 0, 0.06);
+    const skeleton = new THREE.Skeleton([shoulderBone, elbowBone, wristBone]);
+    handles.skeletons?.push(skeleton);
 
-  const rHand = createArticulatedHandGroup(
-    isMale,
-    'right',
-    armR,
-    handles,
-    plainSkinMat,
-    gloveMat,
-  );
-  rHand.position.set(0.044, -0.325, 0.132);
-  rHand.rotation.set(0.32, -0.18, 0);
-  rightArm.add(rShoulder, rUpper, rDrape, rTrim, rForearm, rHand);
+    const cap = new THREE.Mesh(shoulderCapGeo, sleeveMat);
+    shoulderBone.add(cap);
+
+    const bakeMat = new THREE.Matrix4();
+    const bakeQuat = new THREE.Quaternion();
+    const bakeEuler = new THREE.Euler();
+    const bakePos = new THREE.Vector3();
+    const bakeScale = new THREE.Vector3(1, 1, 1);
+
+    const upperGeo = new THREE.CapsuleGeometry(armR * 1.05, 0.165, 8, 12);
+    bakePos.set(sign * 0.014, -0.095, isRight ? 0.014 : 0.016);
+    bakeEuler.set(isRight ? -0.24 : -0.26, 0, sign * 0.14);
+    bakeQuat.setFromEuler(bakeEuler);
+    bakeMat.compose(bakePos, bakeQuat, bakeScale);
+    upperGeo.applyMatrix4(bakeMat);
+    applyAxisSkinWeights(upperGeo, 'y', [
+      { boneIndex: 0, pos: 0, blendWidth: 0.1 },
+      { boneIndex: 1, pos: -0.175, blendWidth: 0.1 },
+    ]);
+    handles.geometries.push(upperGeo);
+    bindSkinnedMeshToSkeleton(upperGeo, sleeveMat, skeleton, armGroup, false);
+
+    const drapeGeo = createDrapedKimonoSleeveGeometry(
+      isMale ? 0.082 : 0.09,
+      isMale ? 0.165 : 0.185,
+      isMale ? 0.036 : 0.032,
+      !isRight,
+    );
+    bakePos.set(sign * 0.002, -0.015, 0.008);
+    bakeEuler.set(-0.14, -sign * 0.18, sign * 0.1);
+    bakeQuat.setFromEuler(bakeEuler);
+    bakeMat.compose(bakePos, bakeQuat, bakeScale);
+    drapeGeo.applyMatrix4(bakeMat);
+    applyAxisSkinWeights(drapeGeo, 'y', [
+      { boneIndex: 0, pos: 0, blendWidth: 0.1 },
+      { boneIndex: 1, pos: -0.175, blendWidth: 0.1 },
+    ]);
+    handles.geometries.push(drapeGeo);
+    const drapeMesh = bindSkinnedMeshToSkeleton(drapeGeo, sleeveMat, skeleton, armGroup, false);
+    drapeMesh.castShadow = true;
+
+    const trimGeo = new THREE.TorusGeometry(armR * 1.12, 0.0065, 8, 16);
+    trimGeo.rotateX(Math.PI / 2);
+    bakePos.set(sign * 0.032, -0.175, isRight ? 0.036 : 0.038);
+    bakeEuler.set(isRight ? -0.24 : -0.26, 0, sign * 0.14);
+    bakeQuat.setFromEuler(bakeEuler);
+    bakeMat.compose(bakePos, bakeQuat, bakeScale);
+    trimGeo.applyMatrix4(bakeMat);
+    applyAxisSkinWeights(trimGeo, 'y', [
+      { boneIndex: 0, pos: -0.05, blendWidth: 0.1 },
+      { boneIndex: 1, pos: -0.175, blendWidth: 0.1 },
+    ]);
+    handles.geometries.push(trimGeo);
+    bindSkinnedMeshToSkeleton(trimGeo, redCollarMat, skeleton, armGroup, false);
+
+    const foreGeo = new THREE.CapsuleGeometry(armR * 0.88, 0.185, 10, 12);
+    bakePos.set(sign * (isRight ? 0.038 : 0.036), isRight ? -0.245 : -0.24, isRight ? 0.072 : 0.08);
+    bakeEuler.set(isRight ? -0.56 : -0.72, 0, sign * (isRight ? 0.06 : 0.08));
+    bakeQuat.setFromEuler(bakeEuler);
+    bakeMat.compose(bakePos, bakeQuat, bakeScale);
+    foreGeo.applyMatrix4(bakeMat);
+    applyAxisSkinWeights(foreGeo, 'y', [
+      { boneIndex: 1, pos: -0.175, blendWidth: 0.11 },
+      { boneIndex: 2, pos: isRight ? -0.325 : -0.312, blendWidth: 0.1 },
+    ]);
+    handles.geometries.push(foreGeo);
+    bindSkinnedMeshToSkeleton(foreGeo, plainSkinMat, skeleton, armGroup, false);
+
+    const hand = createArticulatedHandGroup(
+      isMale,
+      side,
+      armR,
+      handles,
+      plainSkinMat,
+      gloveMat,
+    );
+    hand.rotation.set(isRight ? 0.32 : 0.25, -sign * 0.18, 0);
+    wristBone.add(hand);
+
+    armGroup.position.set(sign * shoulderX, shoulderY, 0);
+    armGroup.rotation.copy(baseRot);
+
+    return { armGroup, baseRot, shoulderBone, elbowBone, wristBone };
+  };
+
+  const rightRig = buildSkinnedArm('right');
+  const rightArm = rightRig.armGroup;
+  const baseRightArmRot = rightRig.baseRot;
   upperRig.add(rightArm);
 
-  // Tay trái (đeo khiên nếu có + thả nhẹ gần chuôi kiếm bên hông)
-  const leftArm = new THREE.Group();
-  leftArm.position.set(-shoulderX, shoulderY, 0);
-  const baseLeftArmRot = new THREE.Euler(0, 0, isMale ? 0.04 : 0.06);
-  leftArm.rotation.copy(baseLeftArmRot);
-
-  const lShoulder = new THREE.Mesh(shoulderCapGeo, sleeveMat);
-  const lUpper = new THREE.Mesh(upperArmGeo, sleeveMat);
-  lUpper.position.set(-0.014, -0.095, 0.016);
-  lUpper.rotation.set(-0.26, 0, -0.14);
-
-  const lDrape = new THREE.Mesh(sleeveDrapeGeo, sleeveMat);
-  lDrape.scale.x = -1;
-  lDrape.position.set(-0.002, -0.015, 0.008);
-  lDrape.rotation.set(-0.14, 0.18, -0.1);
-  lDrape.castShadow = true;
-
-  const lTrim = new THREE.Mesh(sleeveTrimGeo, redCollarMat);
-  lTrim.position.set(-0.032, -0.175, 0.038);
-  lTrim.rotation.set(-0.26, 0, -0.14);
-
-  const lForearm = new THREE.Mesh(forearmGeo, plainSkinMat);
-  lForearm.position.set(-0.036, -0.24, 0.08);
-  lForearm.rotation.set(-0.72, 0, -0.08);
-
-  const lHand = createArticulatedHandGroup(
-    isMale,
-    'left',
-    armR,
-    handles,
-    plainSkinMat,
-    gloveMat,
-  );
-  lHand.position.set(-0.042, -0.312, 0.15);
-  lHand.rotation.set(0.25, 0.18, 0);
-  leftArm.add(lShoulder, lUpper, lDrape, lTrim, lForearm, lHand);
+  const leftRig = buildSkinnedArm('left');
+  const leftArm = leftRig.armGroup;
+  const baseLeftArmRot = leftRig.baseRot;
 
   if (showShield) {
     const shield = createShieldMeshGroup(handles);
     shield.scale.setScalar(isMale ? 0.68 : 0.56);
-    shield.position.set(-0.105, -0.27, 0.175);
+    shield.position.set(-0.063, 0.042, 0.025);
     shield.rotation.set(0.08, -Math.PI * 0.38, 0.08);
-    leftArm.add(shield);
+    leftRig.wristBone.add(shield);
   }
   upperRig.add(leftArm);
 
@@ -1550,6 +1611,12 @@ export function createCharacterMeshGroup(
     headGroup,
     rightArm,
     leftArm,
+    rShoulderBone: rightRig.shoulderBone,
+    rElbowBone: rightRig.elbowBone,
+    rWristBone: rightRig.wristBone,
+    lShoulderBone: leftRig.shoulderBone,
+    lElbowBone: leftRig.elbowBone,
+    lWristBone: leftRig.wristBone,
     ponytailKnot,
     sakuraOrnament,
     baseHeadRot,

@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
-import { Backpack, FlaskConical, Shield, Sword, TreePine, User, Zap } from 'lucide-react';
+import { Backpack, Coins, FlaskConical, Shield, Sword, TreePine, User, Zap } from 'lucide-react';
 import { HudStats, VoxelEngine } from '../game/engine';
 import { BACKPACK_CAPACITY } from '../game/trees';
 
@@ -8,7 +8,6 @@ interface MobileControlsProps {
   engine: VoxelEngine | null;
   onVirtualKey: (code: string, pressed: boolean) => void;
   onJoystickMove: (x: number, y: number) => void;
-  onPlace: () => void;
 }
 
 interface MobileHudState {
@@ -24,6 +23,8 @@ interface MobileHudState {
   holdingPotionCount: number;
   shieldRaised: boolean;
   carryingLog: boolean;
+  inSellZone: boolean;
+  carriedLogValue: number;
   isShopTarget: boolean;
   isConveyorTarget: boolean;
   backpackUsed: number;
@@ -42,6 +43,8 @@ const INITIAL_MOBILE_HUD: MobileHudState = {
   holdingPotionCount: 0,
   shieldRaised: false,
   carryingLog: false,
+  inSellZone: false,
+  carriedLogValue: 0,
   isShopTarget: false,
   isConveyorTarget: false,
   backpackUsed: 0,
@@ -54,7 +57,6 @@ export const MobileControls = memo(function MobileControls({
   engine,
   onVirtualKey,
   onJoystickMove,
-  onPlace,
 }: MobileControlsProps) {
   const [hud, setHud] = useState<MobileHudState>(INITIAL_MOBILE_HUD);
   const [sprinting, setSprinting] = useState(false);
@@ -80,7 +82,7 @@ export const MobileControls = memo(function MobileControls({
       const rect = baseEl.getBoundingClientRect();
       const centerX = rect.left + rect.width * 0.5;
       const centerY = rect.top + rect.height * 0.5;
-      const maxRadius = Math.max(24, rect.width * 0.36);
+      const maxRadius = Math.max(20, rect.width * 0.36);
 
       const dx = clientX - centerX;
       const dy = clientY - centerY;
@@ -131,6 +133,8 @@ export const MobileControls = memo(function MobileControls({
           prev.holdingPotionCount === stats.holdingPotionCount &&
           prev.shieldRaised === stats.shieldRaised &&
           prev.carryingLog === stats.carryingLog &&
+          prev.inSellZone === stats.inSellZone &&
+          prev.carriedLogValue === stats.carriedLogValue &&
           prev.isShopTarget === stats.isShopTarget &&
           prev.isConveyorTarget === stats.isConveyorTarget &&
           prev.backpackUsed === used
@@ -150,6 +154,8 @@ export const MobileControls = memo(function MobileControls({
           holdingPotionCount: stats.holdingPotionCount,
           shieldRaised: stats.shieldRaised,
           carryingLog: stats.carryingLog,
+          inSellZone: stats.inSellZone,
+          carriedLogValue: stats.carriedLogValue,
           isShopTarget: stats.isShopTarget,
           isConveyorTarget: stats.isConveyorTarget,
           backpackUsed: used,
@@ -236,16 +242,6 @@ export const MobileControls = memo(function MobileControls({
   };
 
   const holdingPotion = hud.holdingPotionSlot !== null && hud.holdingPotionCount > 0;
-  const placeLabel =
-    holdingPotion && !hud.carryingLog && !hud.isShopTarget
-      ? 'Uống (+2)'
-      : hud.isConveyorTarget
-        ? 'Bán gỗ'
-        : hud.carryingLog
-          ? 'Đặt gỗ'
-          : hud.isShopTarget
-            ? 'Mở shop'
-            : 'Khiêng / Nhận';
 
   return (
     <div className="fixed inset-x-0 bottom-3 z-20 px-3 flex justify-between items-end pointer-events-none touch-none select-none">
@@ -275,30 +271,30 @@ export const MobileControls = memo(function MobileControls({
           onPointerUp={handleJoystickPointerUp}
           onPointerCancel={handleJoystickPointerUp}
           onLostPointerCapture={resetJoystick}
-          className={`relative w-[168px] h-[168px] sm:w-48 sm:h-48 rounded-full border-2 flex items-center justify-center transition-colors touch-none ${
+          className={`relative w-[126px] h-[126px] sm:w-36 sm:h-36 rounded-full border-2 flex items-center justify-center transition-colors touch-none ${
             joystickActive
               ? 'bg-slate-950/75 border-emerald-400/70 shadow-[0_0_24px_rgba(52,211,153,0.25)]'
               : 'bg-slate-950/55 border-white/25 shadow-lg'
           }`}
         >
           {/* Vòng tròn chỉ hướng bên trong */}
-          <div className="absolute inset-[18px] rounded-full border border-white/10 pointer-events-none" />
-          <span className="absolute top-2.5 left-1/2 -translate-x-1/2 w-2 h-2 rounded-full bg-white/25 pointer-events-none" />
-          <span className="absolute bottom-2.5 left-1/2 -translate-x-1/2 w-2 h-2 rounded-full bg-white/25 pointer-events-none" />
-          <span className="absolute left-2.5 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-white/25 pointer-events-none" />
-          <span className="absolute right-2.5 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-white/25 pointer-events-none" />
+          <div className="absolute inset-[13px] rounded-full border border-white/10 pointer-events-none" />
+          <span className="absolute top-2 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full bg-white/25 pointer-events-none" />
+          <span className="absolute bottom-2 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full bg-white/25 pointer-events-none" />
+          <span className="absolute left-2 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-white/25 pointer-events-none" />
+          <span className="absolute right-2 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-white/25 pointer-events-none" />
 
           {/* Núm tâm kéo mọi hướng */}
           <div
             ref={joyKnobRef}
-            className={`w-[72px] h-[72px] sm:w-[78px] sm:h-[78px] rounded-full border-2 flex items-center justify-center pointer-events-none will-change-transform ${
+            className={`w-[54px] h-[54px] sm:w-[58px] sm:h-[58px] rounded-full border-2 flex items-center justify-center pointer-events-none will-change-transform ${
               joystickActive
                 ? 'bg-emerald-400/90 border-white shadow-[0_0_16px_rgba(52,211,153,0.65)]'
                 : 'bg-white/25 border-white/60 shadow-md'
             }`}
           >
             <div
-              className={`w-6 h-6 rounded-full ${
+              className={`w-[18px] h-[18px] rounded-full ${
                 joystickActive ? 'bg-slate-950/70' : 'bg-white/60'
               }`}
             />
@@ -405,24 +401,43 @@ export const MobileControls = memo(function MobileControls({
         </div>
 
         <div className="flex items-end gap-1.5">
-          <button
-            type="button"
-            onPointerDown={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              onPlace();
-            }}
-            className={`h-12 px-3.5 rounded-xl border font-bold text-xs active:scale-95 transition flex items-center gap-1 ${
-              holdingPotion && !hud.carryingLog && !hud.isShopTarget
-                ? 'bg-rose-950/90 border-rose-400 text-rose-200 active:bg-rose-500/40'
-                : 'bg-slate-950/80 border-emerald-400/40 text-emerald-300 active:bg-emerald-500/35'
-            }`}
-          >
-            {holdingPotion && !hud.carryingLog && !hud.isShopTarget && (
+          {hud.inSellZone && (
+            <button
+              type="button"
+              onPointerDown={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                engine?.sellCarriedLog();
+              }}
+              className={`h-12 px-3.5 rounded-xl border font-bold text-xs active:scale-95 transition flex items-center gap-1.5 shadow-lg ${
+                hud.carryingLog
+                  ? 'bg-emerald-500/95 border-emerald-200 text-slate-950 shadow-[0_0_18px_rgba(16,185,129,0.45)]'
+                  : 'bg-slate-950/85 border-emerald-400/45 text-emerald-200'
+              }`}
+            >
+              <Coins className="w-4 h-4 shrink-0" />
+              <span>
+                {hud.carryingLog && hud.carriedLogValue > 0
+                  ? `Bán đồ (+${hud.carriedLogValue.toLocaleString('vi-VN')}đ)`
+                  : 'Bán đồ'}
+              </span>
+            </button>
+          )}
+
+          {holdingPotion && !hud.carryingLog && (
+            <button
+              type="button"
+              onPointerDown={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                engine?.drinkHeldPotion();
+              }}
+              className="h-12 px-3.5 rounded-xl border font-bold text-xs active:scale-95 transition flex items-center gap-1 bg-rose-950/90 border-rose-400 text-rose-200 active:bg-rose-500/40"
+            >
               <FlaskConical className="w-3.5 h-3.5 text-rose-300 shrink-0" />
-            )}
-            <span>{placeLabel}</span>
-          </button>
+              <span>Uống (+2)</span>
+            </button>
+          )}
 
           <button
             type="button"

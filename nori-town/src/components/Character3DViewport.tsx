@@ -200,6 +200,7 @@ export const Character3DViewport = memo(function Character3DViewport({
       geometries: [],
       materials: [],
       textures: [],
+      skeletons: [],
     };
     const charGroup = createCharacterMeshGroup(gender, assets, {
       ...optionsRef.current,

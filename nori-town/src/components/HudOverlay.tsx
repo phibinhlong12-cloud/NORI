@@ -6,6 +6,7 @@ interface HudOverlayProps {
   engine: VoxelEngine | null;
   isPlaying: boolean;
   isFullscreen: boolean;
+  touchMode?: boolean;
   onToggleFullscreen: () => void;
   onPause: () => void;
   moneySlot?: ReactNode;
@@ -19,6 +20,7 @@ export const HudOverlay = memo(function HudOverlay({
   engine,
   isPlaying,
   isFullscreen,
+  touchMode = false,
   onToggleFullscreen,
   onPause,
   moneySlot,
@@ -85,14 +87,22 @@ export const HudOverlay = memo(function HudOverlay({
     <>
       {isPlaying && (
         <>
-          <div
-            ref={crosshairRef}
-            aria-hidden="true"
-            className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-5 h-5 pointer-events-none z-20"
-          >
-            <span className="absolute top-[9px] left-0 w-5 h-0.5 bg-white/90 shadow-[0_0_3px_rgba(0,0,0,0.85)]" />
-            <span className="absolute top-0 left-[9px] w-0.5 h-5 bg-white/90 shadow-[0_0_3px_rgba(0,0,0,0.85)]" />
-          </div>
+          {!touchMode && (
+            <div
+              ref={crosshairRef}
+              aria-hidden="true"
+              className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-6 h-6 pointer-events-none z-20"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                className="block w-6 h-6 drop-shadow-[0_0_1.5px_rgba(0,0,0,0.75)]"
+                fill="none"
+              >
+                <circle cx="12" cy="12" r="9.2" stroke="#ef1c24" strokeWidth="3.2" />
+                <circle cx="12" cy="12" r="2.1" stroke="#2c4de0" strokeWidth="1.7" />
+              </svg>
+            </div>
+          )}
 
           <div
             ref={chopBoxRef}

@@ -147,8 +147,9 @@ export class WorldManager {
     origin: THREE.Vector3,
     direction: THREE.Vector3,
     maxDistance = 7.0,
+    touchTolerance = 0,
   ): { log: DetachedLog; point: THREE.Vector3 } | null {
-    return this.trees.raycastDetachedLog(origin, direction, maxDistance);
+    return this.trees.raycastDetachedLog(origin, direction, maxDistance, touchTolerance);
   }
 
   isCarryingLog(): boolean {

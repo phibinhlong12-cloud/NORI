@@ -3,6 +3,7 @@ import {
   CharacterGender,
   createFirstPersonArmGroup,
   FirstPersonArmHandles,
+  FirstPersonArmRig,
 } from './firstPersonArms';
 
 export interface ShieldAssetHandles extends FirstPersonArmHandles {
@@ -168,10 +169,12 @@ export class ShieldViewModel {
   private readonly scene: THREE.Scene;
   private group: THREE.Group;
   private gender: CharacterGender = 'male';
+  private armRig: FirstPersonArmRig | null = null;
   private readonly assets: ShieldAssetHandles = {
     geometries: [],
     materials: [],
     textures: [],
+    skeletons: [],
   };
 
   private readonly frontOffset = new THREE.Vector3(-0.34, -0.16, -0.64);
@@ -198,6 +201,7 @@ export class ShieldViewModel {
   private buildViewGroup(): THREE.Group {
     const root = createShieldMeshGroup(this.assets);
     const arm = createFirstPersonArmGroup(this.gender, 'left', this.assets, 'shield');
+    this.armRig = (arm.userData.armRig as FirstPersonArmRig | undefined) ?? null;
     root.add(arm);
     root.scale.set(0.76, 0.76, 0.76);
     root.visible = false;
@@ -216,6 +220,13 @@ export class ShieldViewModel {
 
   private disposeMeshOnly(): void {
     this.scene.remove(this.group);
+    this.armRig = null;
+    if (this.assets.skeletons) {
+      for (const skel of this.assets.skeletons) {
+        skel.dispose();
+      }
+      this.assets.skeletons.length = 0;
+    }
     for (const geo of this.assets.geometries) {
       geo.dispose();
     }
@@ -265,6 +276,11 @@ export class ShieldViewModel {
     const lagY = motion?.lagY ?? 0;
     const strideX = motion?.strideX ?? 0;
     const strideY = motion?.strideY ?? 0;
+
+    if (this.armRig) {
+      this.armRig.elbowBone.rotation.set((1 - t) * 0.25 + lagY * 0.35, 0, 0);
+      this.armRig.wristBone.rotation.set(lagY * 0.5, 0, -strideX * 0.35);
+    }
 
     this.tempLocalPos.set(
       this.currentOffset.x - strideX * 0.7,

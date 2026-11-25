@@ -152,6 +152,11 @@ export class TreeManager {
     new THREE.Euler(-Math.PI * 0.42, 0.12, -0.16, 'YXZ'),
   );
   private readonly tempCarryWorldPos = new THREE.Vector3();
+  private readonly touchHelperRay = new THREE.Ray();
+  private readonly tempSegStart = new THREE.Vector3();
+  private readonly tempSegEnd = new THREE.Vector3();
+  private readonly tempClosestOnRay = new THREE.Vector3();
+  private readonly tempClosestOnSeg = new THREE.Vector3();
 
   constructor(
     scene: THREE.Scene,
@@ -794,6 +799,7 @@ export class TreeManager {
     origin: THREE.Vector3,
     direction: THREE.Vector3,
     maxDistance = 7.0,
+    touchTolerance = 0,
   ): { log: DetachedLog; point: THREE.Vector3 } | null {
     if (this.carriedLog || this.detachedLogs.size === 0) return null;
 
@@ -812,15 +818,50 @@ export class TreeManager {
     this.raycaster.far = maxDistance;
 
     const hits = this.raycaster.intersectObjects(this.tempRayHitCheck, false);
-    if (hits.length === 0) return null;
+    if (hits.length > 0) {
+      const first = hits[0];
+      const log = first.object.userData.detachedLog as DetachedLog | undefined;
+      if (log && log.state !== 'carried') {
+        return {
+          log,
+          point: first.point,
+        };
+      }
+    }
 
-    const first = hits[0];
-    const log = first.object.userData.detachedLog as DetachedLog | undefined;
-    if (!log || log.state === 'carried') return null;
+    if (touchTolerance <= 0) return null;
 
+    this.touchHelperRay.set(origin, direction);
+    let bestLog: DetachedLog | null = null;
+    let bestDist = Infinity;
+    let bestPoint: THREE.Vector3 | null = null;
+
+    for (const log of this.detachedLogs) {
+      if (log.state === 'carried') continue;
+      this.tempSegStart.set(log.x, log.y, log.z);
+      this.tempSegEnd.set(log.tipX, log.tipY, log.tipZ);
+      const distSq = this.touchHelperRay.distanceSqToSegment(
+        this.tempSegStart,
+        this.tempSegEnd,
+        this.tempClosestOnRay,
+        this.tempClosestOnSeg,
+      );
+      const maxRadius = log.trunkRadius + touchTolerance;
+      if (distSq > maxRadius * maxRadius) continue;
+
+      const hitDist = this.tempClosestOnRay.distanceTo(origin);
+      if (hitDist < 0.1 || hitDist > maxDistance) continue;
+      if (hitDist < bestDist) {
+        bestDist = hitDist;
+        bestLog = log;
+        bestPoint = this.tempClosestOnSeg.clone();
+      }
+    }
+
+    if (!bestLog || !bestPoint) return null;
     return {
-      log,
-      point: first.point,
+      log: bestLog,
+      point: bestPoint,
     };
   }
 

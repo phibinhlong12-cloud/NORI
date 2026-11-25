@@ -9,7 +9,7 @@ import {
   CHUNK_SIZE,
   HOTBAR_BLOCKS,
 } from './constants';
-import { CashierStation } from './counter';
+import { CashierStation, isPlayerInSellZone } from './counter';
 import {
   DRAGON_LEVEL,
   DRAGON_MIN_ATTACK_LEVEL,
@@ -60,6 +60,8 @@ export interface HudStats {
   holdingPotionCount: number;
   shieldRaised: boolean;
   carryingLog: boolean;
+  inSellZone: boolean;
+  carriedLogValue: number;
   isShopTarget: boolean;
   isConveyorTarget: boolean;
   chopProgress: number;
@@ -418,6 +420,8 @@ export class VoxelEngine {
     holdingPotionCount: 0,
     shieldRaised: false,
     carryingLog: false,
+    inSellZone: false,
+    carriedLogValue: 0,
     isShopTarget: false,
     isConveyorTarget: false,
     chopProgress: 0,
@@ -1051,27 +1055,7 @@ export class VoxelEngine {
         return;
       }
 
-      const fwdX = -Math.sin(this.player.yaw);
-      const fwdZ = -Math.cos(this.player.yaw);
-      let placeDist = 2.4;
-
-      this.camera.getWorldDirection(this.wallCheckDir);
-      const wallHit = voxelRaycast(this.world, this.camera.position, this.wallCheckDir, 3.2);
-      if (wallHit) {
-        const wallHorizDist = Math.hypot(
-          wallHit.blockPos[0] + 0.5 - this.camera.position.x,
-          wallHit.blockPos[2] + 0.5 - this.camera.position.z,
-        );
-        placeDist = Math.max(1.1, Math.min(placeDist, wallHorizDist - 0.8));
-      }
-
-      const placeX = this.player.position.x + fwdX * placeDist;
-      const placeZ = this.player.position.z + fwdZ * placeDist;
-      if (this.world.placeCarriedLog(placeX, placeZ, fwdX, fwdZ)) {
-        this.audio.playBlockSound('place');
-        this.currentLogTarget = null;
-        this.emitStats();
-      }
+      this.placeCarriedLogInFront();
       return;
     }
 
@@ -1179,7 +1163,52 @@ export class VoxelEngine {
     }
   }
 
-  private drinkHeldPotion(): boolean {
+  private placeCarriedLogInFront(): boolean {
+    const fwdX = -Math.sin(this.player.yaw);
+    const fwdZ = -Math.cos(this.player.yaw);
+    let placeDist = 2.4;
+
+    this.camera.getWorldDirection(this.wallCheckDir);
+    const wallHit = voxelRaycast(this.world, this.camera.position, this.wallCheckDir, 3.2);
+    if (wallHit) {
+      const wallHorizDist = Math.hypot(
+        wallHit.blockPos[0] + 0.5 - this.camera.position.x,
+        wallHit.blockPos[2] + 0.5 - this.camera.position.z,
+      );
+      placeDist = Math.max(1.1, Math.min(placeDist, wallHorizDist - 0.8));
+    }
+
+    const placeX = this.player.position.x + fwdX * placeDist;
+    const placeZ = this.player.position.z + fwdZ * placeDist;
+    if (this.world.placeCarriedLog(placeX, placeZ, fwdX, fwdZ)) {
+      this.audio.playBlockSound('place');
+      this.currentLogTarget = null;
+      this.emitStats();
+      return true;
+    }
+    return false;
+  }
+
+  sellCarriedLog(): boolean {
+    if (!this.isPlaying || this.shopOpen || this.characterWindowOpen) return false;
+    if (!this.world.isCarryingLog()) {
+      this.callbacks.onToast('Hãy cầm khúc gỗ trên tay để bán lên băng chuyền!');
+      return false;
+    }
+    const inZone = isPlayerInSellZone(this.player.position.x, this.player.position.z);
+    if (!inZone && !this.currentConveyorTarget) {
+      return false;
+    }
+    if (this.world.placeCarriedOnConveyor()) {
+      this.audio.playBlockSound('place');
+      this.currentConveyorTarget = null;
+      this.emitStats();
+      return true;
+    }
+    return false;
+  }
+
+  drinkHeldPotion(): boolean {
     if (this.holdingPotionSlot === null) return false;
     const count = this.world.getPotionCountAtSlot(this.holdingPotionSlot);
     if (count <= 0) {
@@ -1328,12 +1357,20 @@ export class VoxelEngine {
         ? this.world.getPotionCountAtSlot(this.holdingPotionSlot)
         : 0;
     this.latestStats.shieldRaised = this.shieldRaised;
-    this.latestStats.carryingLog = this.world.isCarryingLog();
+    const carryingLog = this.world.isCarryingLog();
+    this.latestStats.carryingLog = carryingLog;
+    this.latestStats.inSellZone = isPlayerInSellZone(
+      this.player.position.x,
+      this.player.position.z,
+    );
+    const heldLogLen = carryingLog ? this.world.getCarriedLogLength() : null;
+    this.latestStats.carriedLogValue =
+      heldLogLen !== null ? CashierStation.computeWoodValue(heldLogLen) : 0;
     this.latestStats.isShopTarget = Boolean(this.currentShopTarget);
     this.latestStats.isConveyorTarget =
-      this.latestStats.carryingLog && Boolean(this.currentConveyorTarget);
+      carryingLog && Boolean(this.currentConveyorTarget);
     const chopProgress =
-      this.chopTreeId !== null && !(this.holdingKatana && !this.world.isCarryingLog())
+      this.chopTreeId !== null && !this.holdingKatana && !this.world.isCarryingLog()
         ? Math.min(1, Math.max(0, this.chopElapsed / TREE_HAND_CHOP_DURATION))
         : 0;
     this.latestStats.chopProgress = chopProgress;
@@ -1587,11 +1624,103 @@ export class VoxelEngine {
     return wallHit ? null : hit;
   }
 
+  private raycastUnblockedTouchTarget<T extends { point: THREE.Vector3 }>(
+    ray: { origin: THREE.Vector3; direction: THREE.Vector3 },
+    hit: T | null,
+  ): T | null {
+    if (!hit) return null;
+    const dist = hit.point.distanceTo(ray.origin);
+    const wallHit = voxelRaycast(this.world, ray.origin, ray.direction, dist);
+    return wallHit ? null : hit;
+  }
+
   private performScreenTapInteract(clientX: number, clientY: number): void {
     const ray = this.getTouchWorldRay(clientX, clientY);
     if (!ray) return;
 
-    if (this.holdingKatana && !this.world.isCarryingLog()) {
+    if (this.world.isCarryingLog()) {
+      const convHit = this.raycastUnblockedTouchTarget(
+        ray,
+        this.world.raycastConveyor(ray.origin, ray.direction, 8.0),
+      );
+      if (convHit && this.world.placeCarriedOnConveyor()) {
+        this.audio.playBlockSound('place');
+        this.currentConveyorTarget = null;
+        this.emitStats();
+        return;
+      }
+
+      this.placeCarriedLogInFront();
+      return;
+    }
+
+    const dropHit = this.raycastUnblockedTouchTarget(
+      ray,
+      this.world.raycastDroppedIceKatana(ray.origin, ray.direction, 7.0),
+    );
+    const shopHit = this.raycastUnblockedTouchTarget(
+      ray,
+      this.world.raycastShop(ray.origin, ray.direction, 7.5),
+    );
+    const logHit = this.raycastUnblockedTouchTarget(
+      ray,
+      this.world.raycastDetachedLog(ray.origin, ray.direction, 8.0, 0.35),
+    );
+
+    const dropDist = dropHit ? dropHit.point.distanceTo(ray.origin) : Infinity;
+    const shopDist = shopHit ? shopHit.point.distanceTo(ray.origin) : Infinity;
+    const logDist = logHit ? logHit.point.distanceTo(ray.origin) : Infinity;
+
+    if (dropHit && dropDist <= shopDist && dropDist <= logDist) {
+      if (
+        this.world.tryCollectIceKatana({
+          onCollectIceKatana: () => this.handleCollectIceKatana(),
+        })
+      ) {
+        this.currentIceKatanaDropTarget = null;
+        return;
+      }
+    }
+
+    if (this.holdingKatana) {
+      const slimePreview = this.raycastUnblockedTouchTarget(
+        ray,
+        this.world.raycastSlime(ray.origin, ray.direction, 4.2),
+      );
+      const mushroomPreview = this.raycastUnblockedTouchTarget(
+        ray,
+        this.world.raycastMushroom(ray.origin, ray.direction, 4.4),
+      );
+      const dragonPreview = this.raycastUnblockedTouchTarget(
+        ray,
+        this.world.raycastDragon(ray.origin, ray.direction, 5.6),
+      );
+      const treeHit = this.raycastUnblockedTreeAtScreen(clientX, clientY);
+
+      const slimeDist = slimePreview ? slimePreview.point.distanceTo(ray.origin) : Infinity;
+      const mushroomDist = mushroomPreview
+        ? mushroomPreview.point.distanceTo(ray.origin)
+        : Infinity;
+      const dragonDist = dragonPreview ? dragonPreview.point.distanceTo(ray.origin) : Infinity;
+      const treeDist = treeHit ? treeHit.point.distanceTo(ray.origin) : Infinity;
+      const monsterDist = Math.min(slimeDist, mushroomDist, dragonDist);
+
+      if (shopHit && shopDist < monsterDist && shopDist <= logDist && shopDist <= treeDist) {
+        this.openShop();
+        return;
+      }
+
+      if (logHit && logDist < monsterDist && logDist <= treeDist) {
+        if (this.world.pickUpLog(logHit.log)) {
+          this.holdingKatana = false;
+          this.holdingPotionSlot = null;
+          this.audio.playBlockSound('place');
+          this.currentLogTarget = null;
+          this.emitStats();
+          return;
+        }
+      }
+
       this.katanaView.triggerSlash();
       this.audio.playSlashSound();
 
@@ -1683,7 +1812,6 @@ export class VoxelEngine {
         return;
       }
 
-      const treeHit = this.raycastUnblockedTreeAtScreen(clientX, clientY);
       if (
         treeHit &&
         this.world.cutTree(
@@ -1697,6 +1825,21 @@ export class VoxelEngine {
         this.currentTreeTarget = null;
         this.treeCutIndicator.visible = false;
         this.resetChopHold();
+      }
+      return;
+    }
+
+    if (shopHit && shopDist <= logDist) {
+      this.openShop();
+      return;
+    }
+
+    if (logHit) {
+      if (this.world.pickUpLog(logHit.log)) {
+        this.holdingPotionSlot = null;
+        this.audio.playBlockSound('place');
+        this.currentLogTarget = null;
+        this.emitStats();
       }
       return;
     }
@@ -1730,16 +1873,43 @@ export class VoxelEngine {
       this.touchTotalMove = 0;
       this.touchTreeHoldActive = false;
 
-      if (!(this.holdingKatana && !this.world.isCarryingLog())) {
+      if (!this.holdingKatana && !this.world.isCarryingLog()) {
         const treeHit = this.raycastUnblockedTreeAtScreen(touch.clientX, touch.clientY);
         if (treeHit) {
-          this.touchTreeHoldActive = true;
-          this.chopTreeId = treeHit.tree.id;
-          this.chopCutLocalY = treeHit.cutLocalY;
-          this.chopElapsed = 0;
-          this.chopSoundTimer = 0;
-          this.chopCompletedWaitingRelease = false;
-          this.audio.playBlockSound('break');
+          const ray = this.getTouchWorldRay(touch.clientX, touch.clientY);
+          const treeDist = ray ? treeHit.point.distanceTo(ray.origin) : Infinity;
+          const dropHit = ray
+            ? this.raycastUnblockedTouchTarget(
+                ray,
+                this.world.raycastDroppedIceKatana(ray.origin, ray.direction, 7.0),
+              )
+            : null;
+          const shopHit = ray
+            ? this.raycastUnblockedTouchTarget(
+                ray,
+                this.world.raycastShop(ray.origin, ray.direction, 7.5),
+              )
+            : null;
+          const logHit = ray
+            ? this.raycastUnblockedTouchTarget(
+                ray,
+                this.world.raycastDetachedLog(ray.origin, ray.direction, 8.0, 0.35),
+              )
+            : null;
+          const blockerDist = Math.min(
+            dropHit && ray ? dropHit.point.distanceTo(ray.origin) : Infinity,
+            shopHit && ray ? shopHit.point.distanceTo(ray.origin) : Infinity,
+            logHit && ray ? logHit.point.distanceTo(ray.origin) : Infinity,
+          );
+          if (treeDist <= blockerDist) {
+            this.touchTreeHoldActive = true;
+            this.chopTreeId = treeHit.tree.id;
+            this.chopCutLocalY = treeHit.cutLocalY;
+            this.chopElapsed = 0;
+            this.chopSoundTimer = 0;
+            this.chopCompletedWaitingRelease = false;
+            this.audio.playBlockSound('break');
+          }
         }
       }
     }
@@ -2224,7 +2394,7 @@ export class VoxelEngine {
     }
 
     const touchChopTreeTarget =
-      this.isPlaying && this.touchTreeHoldActive && !this.holdingKatana
+      this.isPlaying && this.touchTreeHoldActive && !this.holdingKatana && !this.world.isCarryingLog()
         ? this.raycastUnblockedTreeAtScreen(this.touchClientX, this.touchClientY)
         : null;
     const activeChopTreeTarget = touchChopTreeTarget ?? this.currentTreeTarget;
@@ -2232,7 +2402,7 @@ export class VoxelEngine {
     const breakHeld =
       this.isPlaying &&
       (this.isLeftMouseDown || this.isTouchBreakHeld || this.touchTreeHoldActive);
-    if (breakHeld && !(this.holdingKatana && !this.world.isCarryingLog())) {
+    if (breakHeld && !this.holdingKatana && !this.world.isCarryingLog()) {
       if (activeChopTreeTarget) {
         if (!this.chopCompletedWaitingRelease) {
           const sameSpot =
@@ -2279,7 +2449,7 @@ export class VoxelEngine {
     if (activeChopTreeTarget) {
       const { tree, cutLocalY } = activeChopTreeTarget;
       const isChoppingThis =
-        this.chopTreeId === tree.id && !(this.holdingKatana && !this.world.isCarryingLog());
+        this.chopTreeId === tree.id && !this.holdingKatana && !this.world.isCarryingLog();
       const displayCutY = isChoppingThis ? this.chopCutLocalY : cutLocalY;
       const chopRatio = isChoppingThis
         ? Math.min(1, this.chopElapsed / TREE_HAND_CHOP_DURATION)

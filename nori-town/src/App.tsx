@@ -128,10 +128,6 @@ export default function App() {
     engineRef.current?.setVirtualJoystick(x, y);
   }, []);
 
-  const handlePlace = useCallback(() => {
-    engineRef.current?.placeTargetBlock();
-  }, []);
-
   const handleToggleFullscreen = useCallback(async () => {
     if (isStandaloneDisplayMode()) {
       showToast('Bạn đang ở chế độ toàn màn hình rồi!');
@@ -166,6 +162,7 @@ export default function App() {
         engine={engineInstance}
         isPlaying={isPlaying}
         isFullscreen={isFullscreen}
+        touchMode={touchControlsEnabled}
         onToggleFullscreen={handleToggleFullscreen}
         onPause={handlePause}
         moneySlot={<MoneyTracker engine={engineInstance} />}
@@ -189,7 +186,6 @@ export default function App() {
         engine={engineInstance}
         onVirtualKey={handleVirtualKey}
         onJoystickMove={handleJoystickMove}
-        onPlace={handlePlace}
       />
 
       <EssentialShopModal engine={engineInstance} />

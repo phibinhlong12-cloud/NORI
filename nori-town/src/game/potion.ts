@@ -3,6 +3,7 @@ import {
   CharacterGender,
   createFirstPersonArmGroup,
   FirstPersonArmHandles,
+  FirstPersonArmRig,
 } from './firstPersonArms';
 
 export interface PotionAssetHandles extends FirstPersonArmHandles {}
@@ -95,7 +96,12 @@ export class PotionViewModel {
   private readonly scene: THREE.Scene;
   private group: THREE.Group;
   private gender: CharacterGender = 'male';
-  private readonly assets: PotionAssetHandles = { geometries: [], materials: [] };
+  private armRig: FirstPersonArmRig | null = null;
+  private readonly assets: PotionAssetHandles = {
+    geometries: [],
+    materials: [],
+    skeletons: [],
+  };
 
   private readonly idleOffset = new THREE.Vector3(0.38, -0.32, -0.58);
   private readonly animOffset = new THREE.Vector3();
@@ -116,6 +122,7 @@ export class PotionViewModel {
   private buildViewGroup(): THREE.Group {
     const root = createPotionMeshGroup(this.assets);
     const arm = createFirstPersonArmGroup(this.gender, 'right', this.assets, 'potion');
+    this.armRig = (arm.userData.armRig as FirstPersonArmRig | undefined) ?? null;
     root.add(arm);
     root.scale.set(0.95, 0.95, 0.95);
     root.visible = false;
@@ -134,6 +141,13 @@ export class PotionViewModel {
 
   private disposeMeshOnly(): void {
     this.scene.remove(this.group);
+    this.armRig = null;
+    if (this.assets.skeletons) {
+      for (const skel of this.assets.skeletons) {
+        skel.dispose();
+      }
+      this.assets.skeletons.length = 0;
+    }
     for (const geo of this.assets.geometries) {
       geo.dispose();
     }
@@ -170,18 +184,24 @@ export class PotionViewModel {
     let roll = 0.12 - strideX * 1.4;
     this.animOffset.set(strideX, lagY + strideY, 0);
 
+    let drinkWave = 0;
     if (this.isDrinking) {
       this.drinkElapsed += dt;
       const t = Math.min(1, this.drinkElapsed / this.drinkDuration);
-      const wave = Math.sin(t * Math.PI);
-      pitch += wave * 0.92;
-      roll += wave * 0.35;
-      this.animOffset.x -= wave * 0.16;
-      this.animOffset.y += wave * 0.14;
-      this.animOffset.z += wave * 0.12;
+      drinkWave = Math.sin(t * Math.PI);
+      pitch += drinkWave * 0.92;
+      roll += drinkWave * 0.35;
+      this.animOffset.x -= drinkWave * 0.16;
+      this.animOffset.y += drinkWave * 0.14;
+      this.animOffset.z += drinkWave * 0.12;
       if (t >= 1) {
         this.isDrinking = false;
       }
+    }
+
+    if (this.armRig) {
+      this.armRig.elbowBone.rotation.set(drinkWave * 0.28 + lagY * 0.35, 0, 0);
+      this.armRig.wristBone.rotation.set(drinkWave * 0.22 + lagY * 0.5, 0, strideX * 0.35);
     }
 
     this.tempLocalPos
