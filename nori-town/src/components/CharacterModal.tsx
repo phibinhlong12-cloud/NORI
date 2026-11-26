@@ -2,12 +2,14 @@ import { memo, useEffect, useState } from 'react';
 import { ArrowLeftRight, Shield, Shirt, Sword, User, X } from 'lucide-react';
 import { HudStats, VoxelEngine } from '../game/engine';
 import { CharacterGender } from '../game/firstPersonArms';
+import { getKatanaDisplayName } from '../game/katana';
 import {
   getOutfitName,
   isOutfitCompatibleWithGender,
   OutfitId,
   OUTFITS,
 } from '../game/outfits';
+import { BackpackKatanaVariant } from '../game/trees';
 import { Character3DViewport } from './Character3DViewport';
 
 interface CharacterModalProps {
@@ -19,7 +21,7 @@ interface CharacterWindowState {
   gender: CharacterGender;
   level: number;
   hasKatana: boolean;
-  hasIceKatana: boolean;
+  equippedKatana: BackpackKatanaVariant | null;
   hasShield: boolean;
   ownedOutfits: OutfitId[];
   equippedOutfit: OutfitId;
@@ -30,7 +32,7 @@ const INITIAL_STATE: CharacterWindowState = {
   gender: 'male',
   level: 1,
   hasKatana: false,
-  hasIceKatana: false,
+  equippedKatana: null,
   hasShield: false,
   ownedOutfits: ['default'],
   equippedOutfit: 'default',
@@ -52,7 +54,7 @@ export const CharacterModal = memo(function CharacterModal({ engine }: Character
           prev.gender === stats.gender &&
           prev.level === stats.level &&
           prev.hasKatana === stats.hasKatana &&
-          prev.hasIceKatana === stats.hasIceKatana &&
+          prev.equippedKatana === stats.equippedKatana &&
           prev.hasShield === stats.hasShield &&
           prev.ownedOutfits === stats.ownedOutfits &&
           prev.equippedOutfit === stats.equippedOutfit
@@ -64,7 +66,7 @@ export const CharacterModal = memo(function CharacterModal({ engine }: Character
           gender: stats.gender,
           level: stats.level,
           hasKatana: stats.hasKatana,
-          hasIceKatana: stats.hasIceKatana,
+          equippedKatana: stats.equippedKatana,
           hasShield: stats.hasShield,
           ownedOutfits: stats.ownedOutfits,
           equippedOutfit: stats.equippedOutfit,
@@ -137,9 +139,11 @@ export const CharacterModal = memo(function CharacterModal({ engine }: Character
             <div
               className={`rounded-2xl border p-3.5 flex flex-col items-center justify-center gap-2 text-center min-h-[112px] ${
                 state.hasKatana
-                  ? state.hasIceKatana
-                    ? 'bg-cyan-950/35 border-cyan-400/45'
-                    : 'bg-sky-950/35 border-sky-400/45'
+                  ? state.equippedKatana === 'leaf'
+                    ? 'bg-emerald-950/35 border-emerald-400/45'
+                    : state.equippedKatana === 'ice'
+                      ? 'bg-cyan-950/35 border-cyan-400/45'
+                      : 'bg-sky-950/35 border-sky-400/45'
                   : 'bg-slate-800/65 border-white/10'
               }`}
             >
@@ -147,9 +151,11 @@ export const CharacterModal = memo(function CharacterModal({ engine }: Character
                 <Sword
                   className={`w-6 h-6 ${
                     state.hasKatana
-                      ? state.hasIceKatana
-                        ? 'text-cyan-300'
-                        : 'text-sky-300'
+                      ? state.equippedKatana === 'leaf'
+                        ? 'text-emerald-300'
+                        : state.equippedKatana === 'ice'
+                          ? 'text-cyan-300'
+                          : 'text-sky-300'
                       : 'text-slate-500'
                   }`}
                 />
@@ -159,16 +165,16 @@ export const CharacterModal = memo(function CharacterModal({ engine }: Character
                 <div
                   className={`text-[11px] mt-0.5 font-semibold ${
                     state.hasKatana
-                      ? state.hasIceKatana
-                        ? 'text-cyan-300'
-                        : 'text-emerald-300'
+                      ? state.equippedKatana === 'leaf'
+                        ? 'text-emerald-300'
+                        : state.equippedKatana === 'ice'
+                          ? 'text-cyan-300'
+                          : 'text-sky-300'
                       : 'text-slate-500'
                   }`}
                 >
-                  {state.hasKatana
-                    ? state.hasIceKatana
-                      ? 'Katana Băng'
-                      : 'Katana'
+                  {state.equippedKatana
+                    ? getKatanaDisplayName(state.equippedKatana)
                     : 'Trống'}
                 </div>
               </div>
@@ -205,7 +211,7 @@ export const CharacterModal = memo(function CharacterModal({ engine }: Character
               gender={state.gender}
               outfit={activeOutfit}
               hasKatana={state.hasKatana}
-              hasIceKatana={state.hasIceKatana}
+              katanaVariant={state.equippedKatana}
               hasShield={state.hasShield}
               interactiveRotate
               initialYaw={0.2}

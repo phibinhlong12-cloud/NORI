@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { BackpackHud } from './components/BackpackHud';
 import { BossHealthBar } from './components/BossHealthBar';
 import { CharacterModal } from './components/CharacterModal';
+import { CraftingModal } from './components/CraftingModal';
 import { EssentialShopModal } from './components/EssentialShopModal';
 import { GenderSelectModal } from './components/GenderSelectModal';
 import { HudOverlay } from './components/HudOverlay';
@@ -66,15 +67,21 @@ export default function App() {
     const mountEl = canvasMountRef.current;
     if (!mountEl) return;
 
-    const engine = new VoxelEngine(mountEl, {
-      onPlayingChange: (playing, started) => {
-        setIsPlaying(playing);
-        setHasStarted(started);
-      },
-      onSlotChange: () => {},
-      onToast: showToast,
-      onWebGLError: setWebglError,
-    });
+    let engine: VoxelEngine;
+    try {
+      engine = new VoxelEngine(mountEl, {
+        onPlayingChange: (playing, started) => {
+          setIsPlaying(playing);
+          setHasStarted(started);
+        },
+        onSlotChange: () => {},
+        onToast: showToast,
+        onWebGLError: setWebglError,
+      });
+    } catch {
+      setWebglError('Trình duyệt hiện tại không hỗ trợ WebGL để hiển thị thế giới 3D.');
+      return;
+    }
 
     engineRef.current = engine;
     setEngineInstance(engine);
@@ -197,6 +204,7 @@ export default function App() {
 
       <EssentialShopModal engine={engineInstance} />
       <OutfitShopModal engine={engineInstance} />
+      <CraftingModal engine={engineInstance} />
       <CharacterModal engine={engineInstance} />
 
       <GenderSelectModal

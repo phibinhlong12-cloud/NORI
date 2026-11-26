@@ -11,8 +11,11 @@ import {
 export type TreeState = 'standing' | 'fallen';
 export type DetachedLogState = 'falling' | 'fallen' | 'carried';
 
-export const BACKPACK_CAPACITY = 9;
+export const BACKPACK_CAPACITY = 18;
 export const MAX_POTION_STACK = 50;
+export const MAX_MATERIAL_STACK = 99;
+
+export type BackpackKatanaVariant = 'normal' | 'ice' | 'leaf';
 
 export type BackpackItem =
   | {
@@ -26,11 +29,29 @@ export type BackpackItem =
       kind: 'potion';
       id: string;
       count: number;
+    }
+  | {
+      kind: 'slime_orb';
+      id: string;
+      count: number;
+    }
+  | {
+      kind: 'mushroom_item';
+      id: string;
+      count: number;
+    }
+  | {
+      kind: 'katana';
+      id: string;
+      variant: BackpackKatanaVariant;
     };
 
 type InternalBackpackSlot =
   | { kind: 'wood'; log: DetachedLog }
-  | { kind: 'potion'; id: string; count: number };
+  | { kind: 'potion'; id: string; count: number }
+  | { kind: 'slime_orb'; id: string; count: number }
+  | { kind: 'mushroom_item'; id: string; count: number }
+  | { kind: 'katana'; id: string; variant: BackpackKatanaVariant };
 
 export interface TreeBranchSpec {
   localY: number;
@@ -429,6 +450,27 @@ export class TreeManager {
           count: slot.count,
         };
       }
+      if (slot.kind === 'slime_orb') {
+        return {
+          kind: 'slime_orb',
+          id: slot.id,
+          count: slot.count,
+        };
+      }
+      if (slot.kind === 'mushroom_item') {
+        return {
+          kind: 'mushroom_item',
+          id: slot.id,
+          count: slot.count,
+        };
+      }
+      if (slot.kind === 'katana') {
+        return {
+          kind: 'katana',
+          id: slot.id,
+          variant: slot.variant,
+        };
+      }
       const log = slot.log;
       return {
         kind: 'wood',
@@ -444,10 +486,15 @@ export class TreeManager {
     return this.backpackSnapshot;
   }
 
-  getSlotKind(slotIndex: number): 'wood' | 'potion' | null {
+  getSlotKind(slotIndex: number): BackpackItem['kind'] | null {
     if (slotIndex < 0 || slotIndex >= BACKPACK_CAPACITY) return null;
     const slot = this.backpackSlots[slotIndex];
     return slot ? slot.kind : null;
+  }
+
+  getSlotItem(slotIndex: number): BackpackItem | null {
+    if (slotIndex < 0 || slotIndex >= BACKPACK_CAPACITY) return null;
+    return this.backpackSnapshot[slotIndex] ?? null;
   }
 
   getPotionCountAtSlot(slotIndex: number): number {
@@ -478,6 +525,171 @@ export class TreeManager {
     };
     this.rebuildBackpackSnapshot();
     return { added: true, slotIndex: emptyIndex, count: 1 };
+  }
+
+  canAddMaterialToBackpack(kind: 'slime_orb' | 'mushroom_item'): boolean {
+    for (let i = 0; i < BACKPACK_CAPACITY; i++) {
+      const slot = this.backpackSlots[i];
+      if (slot && slot.kind === kind && slot.count < MAX_MATERIAL_STACK) {
+        return true;
+      }
+    }
+    return this.backpackSlots.some((slot) => slot === null);
+  }
+
+  addMaterialToBackpack(
+    kind: 'slime_orb' | 'mushroom_item',
+    amount = 1,
+  ): { added: boolean; slotIndex: number; count: number } {
+    if (amount <= 0) return { added: false, slotIndex: -1, count: 0 };
+    for (let i = 0; i < BACKPACK_CAPACITY; i++) {
+      const slot = this.backpackSlots[i];
+      if (slot && slot.kind === kind && slot.count + amount <= MAX_MATERIAL_STACK) {
+        slot.count += amount;
+        this.rebuildBackpackSnapshot();
+        return { added: true, slotIndex: i, count: slot.count };
+      }
+    }
+
+    const emptyIndex = this.backpackSlots.findIndex((slot) => slot === null);
+    if (emptyIndex === -1) {
+      return { added: false, slotIndex: -1, count: 0 };
+    }
+
+    this.backpackSlots[emptyIndex] = {
+      kind,
+      id: `${kind}:${emptyIndex}:${++this.cutCounter}`,
+      count: Math.min(MAX_MATERIAL_STACK, amount),
+    };
+    this.rebuildBackpackSnapshot();
+    return { added: true, slotIndex: emptyIndex, count: Math.min(MAX_MATERIAL_STACK, amount) };
+  }
+
+  hasEmptySlot(): boolean {
+    return this.backpackSlots.some((slot) => slot === null);
+  }
+
+  addKatanaToBackpack(
+    variant: BackpackKatanaVariant,
+  ): { added: boolean; slotIndex: number } {
+    const emptyIndex = this.backpackSlots.findIndex((slot) => slot === null);
+    if (emptyIndex === -1) {
+      return { added: false, slotIndex: -1 };
+    }
+    this.backpackSlots[emptyIndex] = {
+      kind: 'katana',
+      id: `katana:${variant}:${emptyIndex}:${++this.cutCounter}`,
+      variant,
+    };
+    this.rebuildBackpackSnapshot();
+    return { added: true, slotIndex: emptyIndex };
+  }
+
+  swapKatanaAtSlot(
+    slotIndex: number,
+    currentEquipped: BackpackKatanaVariant | null,
+  ): { swapped: boolean; newVariant?: BackpackKatanaVariant } {
+    if (slotIndex < 0 || slotIndex >= BACKPACK_CAPACITY) {
+      return { swapped: false };
+    }
+    const slot = this.backpackSlots[slotIndex];
+    if (!slot || slot.kind !== 'katana') {
+      return { swapped: false };
+    }
+    const newVariant = slot.variant;
+    if (currentEquipped !== null) {
+      this.backpackSlots[slotIndex] = {
+        kind: 'katana',
+        id: `katana:${currentEquipped}:${slotIndex}:${++this.cutCounter}`,
+        variant: currentEquipped,
+      };
+    } else {
+      this.backpackSlots[slotIndex] = null;
+    }
+    this.rebuildBackpackSnapshot();
+    return { swapped: true, newVariant };
+  }
+
+  deleteBackpackSlot(slotIndex: number): BackpackItem | null {
+    if (slotIndex < 0 || slotIndex >= BACKPACK_CAPACITY) return null;
+    const prevSnapshot = this.backpackSnapshot[slotIndex];
+    const slot = this.backpackSlots[slotIndex];
+    if (!slot || !prevSnapshot) return null;
+
+    if (slot.kind === 'wood') {
+      this.detachedLogs.delete(slot.log);
+      this.fallingLogs.delete(slot.log);
+      this.scene.remove(slot.log.group);
+    }
+    this.backpackSlots[slotIndex] = null;
+    this.rebuildBackpackSnapshot();
+    return prevSnapshot;
+  }
+
+  getCraftingMaterialCounts(): {
+    mushroomCount: number;
+    slimeOrbCount: number;
+    woodCount: number;
+  } {
+    let mushroomCount = 0;
+    let slimeOrbCount = 0;
+    let woodCount = 0;
+    for (const slot of this.backpackSlots) {
+      if (!slot) continue;
+      if (slot.kind === 'mushroom_item') mushroomCount += slot.count;
+      else if (slot.kind === 'slime_orb') slimeOrbCount += slot.count;
+      else if (slot.kind === 'wood') woodCount += 1;
+    }
+    return { mushroomCount, slimeOrbCount, woodCount };
+  }
+
+  consumeCraftingMaterials(req: {
+    mushrooms: number;
+    slimeOrbs: number;
+    woods: number;
+  }): boolean {
+    const counts = this.getCraftingMaterialCounts();
+    if (
+      counts.mushroomCount < req.mushrooms ||
+      counts.slimeOrbCount < req.slimeOrbs ||
+      counts.woodCount < req.woods
+    ) {
+      return false;
+    }
+
+    let remMushrooms = req.mushrooms;
+    let remSlimeOrbs = req.slimeOrbs;
+    let remWoods = req.woods;
+
+    for (let i = 0; i < BACKPACK_CAPACITY; i++) {
+      const slot = this.backpackSlots[i];
+      if (!slot) continue;
+
+      if (slot.kind === 'mushroom_item' && remMushrooms > 0) {
+        const take = Math.min(slot.count, remMushrooms);
+        slot.count -= take;
+        remMushrooms -= take;
+        if (slot.count <= 0) {
+          this.backpackSlots[i] = null;
+        }
+      } else if (slot.kind === 'slime_orb' && remSlimeOrbs > 0) {
+        const take = Math.min(slot.count, remSlimeOrbs);
+        slot.count -= take;
+        remSlimeOrbs -= take;
+        if (slot.count <= 0) {
+          this.backpackSlots[i] = null;
+        }
+      } else if (slot.kind === 'wood' && remWoods > 0) {
+        this.detachedLogs.delete(slot.log);
+        this.fallingLogs.delete(slot.log);
+        this.scene.remove(slot.log.group);
+        this.backpackSlots[i] = null;
+        remWoods -= 1;
+      }
+    }
+
+    this.rebuildBackpackSnapshot();
+    return true;
   }
 
   consumePotionFromSlot(slotIndex: number): number {
@@ -538,7 +750,7 @@ export class TreeManager {
   retrieveLogFromBackpack(): boolean {
     if (this.carriedLog) return false;
 
-    // Lấy nhanh khúc gỗ đầu tiên theo thứ tự từ ô 1 tới ô 9
+    // Lấy nhanh khúc gỗ đầu tiên theo thứ tự từ ô 1 tới ô 18
     const firstIndex = this.backpackSlots.findIndex((slot) => slot !== null && slot.kind === 'wood');
     if (firstIndex === -1) {
       return false;

@@ -3,12 +3,14 @@ import { applyCitadelToChunk } from './citadel';
 import { CitadelStructure } from './citadelMesh';
 import { BlockId, CHUNK_HEIGHT, CHUNK_SIZE } from './constants';
 import { CashierStation } from './counter';
+import { CraftingStation } from './crafting';
 import {
   DragonAttackResult,
   DragonBossHudState,
   DragonBossManager,
   DragonUpdateCallbacks,
 } from './dragon';
+import { MonsterDropCallbacks, MonsterDropKind, MonsterDropManager } from './drops';
 import { GrassManager } from './grass';
 import {
   MushroomAttackResult,
@@ -25,7 +27,13 @@ import {
   SlimeUpdateCallbacks,
 } from './slime';
 import { BlockRgbTable, createBlockRgbTable } from './textures';
-import { BackpackItem, DetachedLog, InteractiveTree, TreeManager } from './trees';
+import {
+  BackpackItem,
+  BackpackKatanaVariant,
+  DetachedLog,
+  InteractiveTree,
+  TreeManager,
+} from './trees';
 import { ShopItemId, WeaponShop } from './weaponShop';
 
 export interface Chunk {
@@ -72,9 +80,11 @@ export class WorldManager {
   private cashier: CashierStation;
   private weaponShop: WeaponShop;
   private outfitShop: OutfitShop;
+  private craftingStation: CraftingStation;
   private slimes: SlimeManager;
   private mushrooms: PoisonMushroomManager;
   private dragon: DragonBossManager;
+  private monsterDrops: MonsterDropManager;
 
   readonly chunks = new Map<string, Chunk>();
   readonly dirtyChunks = new Set<string>();
@@ -99,9 +109,11 @@ export class WorldManager {
     this.cashier = new CashierStation(this.scene);
     this.weaponShop = new WeaponShop(this.scene);
     this.outfitShop = new OutfitShop(this.scene, this.maxAnisotropy);
+    this.craftingStation = new CraftingStation(this.scene, this.maxAnisotropy);
     this.slimes = new SlimeManager(this.scene, this.outside, this.seed);
     this.mushrooms = new PoisonMushroomManager(this.scene, this.outside, this.seed, this.maxAnisotropy);
     this.dragon = new DragonBossManager(this.scene, this.outside, this.maxAnisotropy);
+    this.monsterDrops = new MonsterDropManager(this.scene, this.outside);
   }
 
   resetSeed(newSeed: number): void {
@@ -114,9 +126,11 @@ export class WorldManager {
     this.cashier = new CashierStation(this.scene);
     this.weaponShop = new WeaponShop(this.scene);
     this.outfitShop = new OutfitShop(this.scene, this.maxAnisotropy);
+    this.craftingStation = new CraftingStation(this.scene, this.maxAnisotropy);
     this.slimes = new SlimeManager(this.scene, this.outside, this.seed);
     this.mushrooms = new PoisonMushroomManager(this.scene, this.outside, this.seed, this.maxAnisotropy);
     this.dragon = new DragonBossManager(this.scene, this.outside, this.maxAnisotropy);
+    this.monsterDrops = new MonsterDropManager(this.scene, this.outside);
     this.lastPlayerCx = Number.NaN;
     this.lastPlayerCz = Number.NaN;
     this.pendingCoords = [];
@@ -188,6 +202,14 @@ export class WorldManager {
     return this.outfitShop.raycastShop(origin, direction, maxDistance);
   }
 
+  raycastCraftingStation(
+    origin: THREE.Vector3,
+    direction: THREE.Vector3,
+    maxDistance = 7.5,
+  ): { point: THREE.Vector3 } | null {
+    return this.craftingStation.raycastStation(origin, direction, maxDistance);
+  }
+
   isShopItemOwned(itemId: ShopItemId): boolean {
     return this.weaponShop.isOwned(itemId);
   }
@@ -200,8 +222,14 @@ export class WorldManager {
     return this.trees.getBackpackItems();
   }
 
-  getBackpackSlotKind(slotIndex: number): 'wood' | 'potion' | null {
+  getBackpackSlotKind(
+    slotIndex: number,
+  ): 'wood' | 'potion' | 'slime_orb' | 'mushroom_item' | 'katana' | null {
     return this.trees.getSlotKind(slotIndex);
+  }
+
+  getBackpackSlotItem(slotIndex: number): BackpackItem | null {
+    return this.trees.getSlotItem(slotIndex);
   }
 
   getPotionCountAtSlot(slotIndex: number): number {
@@ -210,6 +238,52 @@ export class WorldManager {
 
   addPotionToBackpack(): { added: boolean; slotIndex: number; count: number } {
     return this.trees.addPotionToBackpack();
+  }
+
+  canAddMaterialToBackpack(kind: MonsterDropKind): boolean {
+    return this.trees.canAddMaterialToBackpack(kind);
+  }
+
+  addMaterialToBackpack(
+    kind: MonsterDropKind,
+    amount = 1,
+  ): { added: boolean; slotIndex: number; count: number } {
+    return this.trees.addMaterialToBackpack(kind, amount);
+  }
+
+  hasEmptyBackpackSlot(): boolean {
+    return this.trees.hasEmptySlot();
+  }
+
+  addKatanaToBackpack(variant: BackpackKatanaVariant): { added: boolean; slotIndex: number } {
+    return this.trees.addKatanaToBackpack(variant);
+  }
+
+  swapKatanaAtSlot(
+    slotIndex: number,
+    currentEquipped: BackpackKatanaVariant | null,
+  ): { swapped: boolean; newVariant?: BackpackKatanaVariant } {
+    return this.trees.swapKatanaAtSlot(slotIndex, currentEquipped);
+  }
+
+  deleteBackpackSlot(slotIndex: number): BackpackItem | null {
+    return this.trees.deleteBackpackSlot(slotIndex);
+  }
+
+  getCraftingMaterialCounts(): {
+    mushroomCount: number;
+    slimeOrbCount: number;
+    woodCount: number;
+  } {
+    return this.trees.getCraftingMaterialCounts();
+  }
+
+  consumeCraftingMaterials(req: {
+    mushrooms: number;
+    slimeOrbs: number;
+    woods: number;
+  }): boolean {
+    return this.trees.consumeCraftingMaterials(req);
   }
 
   consumePotionFromSlot(slotIndex: number): number {
@@ -273,12 +347,17 @@ export class WorldManager {
     return this.slimes.raycastSlime(origin, direction, maxDistance);
   }
 
+  spawnMonsterDrop(kind: MonsterDropKind, x: number, y: number, z: number): void {
+    this.monsterDrops.spawnDrop(kind, x, y, z);
+  }
+
   attackSlimeWithKatana(
     cameraPos: THREE.Vector3,
     forwardDir: THREE.Vector3,
+    damage = 100,
     maxRange = 3.8,
   ): SlimeAttackResult {
-    return this.slimes.attackWithKatana(cameraPos, forwardDir, maxRange);
+    return this.slimes.attackWithKatana(cameraPos, forwardDir, damage, maxRange);
   }
 
   raycastMushroom(
@@ -292,7 +371,7 @@ export class WorldManager {
   attackMushroomWithKatana(
     cameraPos: THREE.Vector3,
     forwardDir: THREE.Vector3,
-    damage = 1,
+    damage = 100,
     maxRange = 4.0,
   ): MushroomAttackResult {
     return this.mushrooms.attackWithKatana(cameraPos, forwardDir, damage, maxRange);
@@ -321,7 +400,7 @@ export class WorldManager {
   attackDragonWithKatana(
     cameraPos: THREE.Vector3,
     forwardDir: THREE.Vector3,
-    damage = 1,
+    damage = 100,
     maxRange = 5.4,
     playerLevel = 1,
   ): DragonAttackResult {
@@ -344,11 +423,14 @@ export class WorldManager {
     slimeCallbacks?: SlimeUpdateCallbacks,
     dragonCallbacks?: DragonUpdateCallbacks,
     mushroomCallbacks?: MushroomUpdateCallbacks,
+    hasBackpack = false,
+    dropCallbacks?: MonsterDropCallbacks,
   ): void {
     this.trees.update(dt, onTreeLanded);
     this.grass.update(dt, playerX, playerZ);
     this.citadelMesh.update(dt);
     this.outfitShop.update(dt);
+    this.craftingStation.update(dt);
     this.slimes.update(dt, playerX, playerY, playerZ, playerYaw, shieldRaised, slimeCallbacks);
     this.mushrooms.update(
       dt,
@@ -360,6 +442,7 @@ export class WorldManager {
       mushroomCallbacks,
     );
     this.dragon.update(dt, playerX, playerY, playerZ, playerYaw, shieldRaised, dragonCallbacks);
+    this.monsterDrops.update(dt, playerX, playerY, playerZ, hasBackpack, dropCallbacks);
 
     const bounds = this.cashier.getConveyorDropBounds();
     const droppedOnBelt = this.trees.popFallenLogInZone(bounds);
@@ -401,6 +484,16 @@ export class WorldManager {
     const outfitShopTop = this.outfitShop.getObstacleTopY(px, py, pz, halfWidth, playerHeight);
     if (outfitShopTop !== null && (highest === null || outfitShopTop > highest)) {
       highest = outfitShopTop;
+    }
+    const craftingTop = this.craftingStation.getObstacleTopY(
+      px,
+      py,
+      pz,
+      halfWidth,
+      playerHeight,
+    );
+    if (craftingTop !== null && (highest === null || craftingTop > highest)) {
+      highest = craftingTop;
     }
     return highest;
   }
@@ -1035,9 +1128,11 @@ export class WorldManager {
     this.cashier.dispose();
     this.weaponShop.dispose();
     this.outfitShop.dispose();
+    this.craftingStation.dispose();
     this.slimes.dispose();
     this.mushrooms.dispose();
     this.dragon.dispose();
+    this.monsterDrops.dispose();
     this.chunks.clear();
     this.dirtyChunks.clear();
     this.pendingCoords = [];

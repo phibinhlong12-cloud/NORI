@@ -9,7 +9,40 @@ import { isOutfitCompatibleWithGender, OutfitId, OUTFITS } from './outfits';
 
 export interface KatanaAssetHandles extends FirstPersonArmHandles {}
 
-export type KatanaVisualVariant = 'normal' | 'ice' | 'crimson';
+export type KatanaVisualVariant = 'normal' | 'ice' | 'crimson' | 'leaf';
+
+export const BASE_KATANA_DAMAGE = 100;
+
+export function getKatanaDamage(variant: KatanaVisualVariant | null): number {
+  switch (variant) {
+    case 'leaf':
+      return Math.round(BASE_KATANA_DAMAGE * 1.2); // 120 (+20% so với kiếm thường)
+    case 'ice':
+      return Math.round(BASE_KATANA_DAMAGE * 2.0); // 200 (giữ sức mạnh x2 tạm thời cho đến khi cập nhật sau)
+    case 'crimson':
+    case 'normal':
+      return BASE_KATANA_DAMAGE;
+    default:
+      return 0;
+  }
+}
+
+export function getKatanaMoveSpeedMultiplier(variant: KatanaVisualVariant | null): number {
+  return variant === 'leaf' ? 1.2 : 1.0;
+}
+
+export function getKatanaDisplayName(variant: KatanaVisualVariant): string {
+  switch (variant) {
+    case 'ice':
+      return 'Katana Băng';
+    case 'leaf':
+      return 'Kiếm Lá';
+    case 'crimson':
+      return 'Katana Huyết';
+    default:
+      return 'Katana';
+  }
+}
 
 function createCurvedBladeGeometry(
   length: number,
@@ -51,25 +84,36 @@ export function createKatanaMeshGroup(
   const resolvedVariant: KatanaVisualVariant = variant ?? (isIce ? 'ice' : 'normal');
   const iceMode = resolvedVariant === 'ice';
   const crimsonMode = resolvedVariant === 'crimson';
+  const leafMode = resolvedVariant === 'leaf';
 
   const group = new THREE.Group();
 
   const hiltMat = new THREE.MeshStandardMaterial({
-    color: iceMode ? '#0c4a6e' : '#18181b',
+    color: iceMode ? '#0c4a6e' : leafMode ? '#e7dfd0' : '#18181b',
     roughness: 0.74,
     metalness: 0.14,
   });
   const wrapMat = new THREE.MeshStandardMaterial({
-    color: iceMode ? '#0284c7' : crimsonMode ? '#991b1b' : '#b45309',
+    color: iceMode ? '#0284c7' : crimsonMode || leafMode ? '#991b1b' : '#b45309',
     roughness: 0.78,
     metalness: 0.12,
   });
   const goldMat = new THREE.MeshStandardMaterial({
-    color: iceMode ? '#7dd3fc' : '#eab308',
+    color: iceMode ? '#7dd3fc' : leafMode ? '#d4af37' : '#eab308',
     roughness: 0.24,
     metalness: 0.88,
   });
+  const guardMat = leafMode
+    ? new THREE.MeshStandardMaterial({
+        color: '#27272a',
+        roughness: 0.36,
+        metalness: 0.78,
+      })
+    : goldMat;
   handles.materials.push(hiltMat, wrapMat, goldMat);
+  if (guardMat !== goldMat) {
+    handles.materials.push(guardMat);
+  }
 
   // Tay cầm (Tsuka) bo tròn không góc 90 độ
   const hiltGeo = new THREE.CapsuleGeometry(0.021, 0.21, 6, 12);
@@ -81,7 +125,7 @@ export function createKatanaMeshGroup(
   // Chụp chuôi kiếm (Kashira)
   const pommelGeo = new THREE.CylinderGeometry(0.025, 0.023, 0.024, 14);
   handles.geometries.push(pommelGeo);
-  const pommel = new THREE.Mesh(pommelGeo, goldMat);
+  const pommel = new THREE.Mesh(pommelGeo, guardMat);
   pommel.position.set(0, 0.014, 0);
   group.add(pommel);
 
@@ -99,9 +143,19 @@ export function createKatanaMeshGroup(
   // Chắn tay (Tsuba) bo tròn cạnh
   const guardGeo = new THREE.CylinderGeometry(0.052, 0.052, 0.015, 20);
   handles.geometries.push(guardGeo);
-  const guard = new THREE.Mesh(guardGeo, goldMat);
+  const guard = new THREE.Mesh(guardGeo, guardMat);
   guard.position.set(0, 0.245, 0);
   group.add(guard);
+
+  if (leafMode) {
+    // Khâu đồng vàng (Habaki) ôm sát gốc lưỡi Kiếm Lá
+    const habakiGeo = new THREE.CylinderGeometry(0.019, 0.021, 0.036, 12);
+    handles.geometries.push(habakiGeo);
+    const habaki = new THREE.Mesh(habakiGeo, goldMat);
+    habaki.position.set(0, 0.27, 0);
+    habaki.scale.set(0.7, 1, 1.35);
+    group.add(habaki);
+  }
 
   if (!sheathed) {
     const bladeMat = iceMode
@@ -114,23 +168,33 @@ export function createKatanaMeshGroup(
           clearcoat: 1.0,
           clearcoatRoughness: 0.08,
         })
-      : crimsonMode
+      : leafMode
         ? new THREE.MeshPhysicalMaterial({
-            color: '#fecdd3',
-            emissive: '#e11d48',
-            emissiveIntensity: 0.7,
-            roughness: 0.14,
-            metalness: 0.65,
-            clearcoat: 1.0,
-            clearcoatRoughness: 0.08,
+            color: '#15803d',
+            emissive: '#052e16',
+            emissiveIntensity: 0.28,
+            roughness: 0.16,
+            metalness: 0.56,
+            clearcoat: 0.92,
+            clearcoatRoughness: 0.1,
           })
-        : new THREE.MeshStandardMaterial({
-            color: '#e2e8f0',
-            roughness: 0.14,
-            metalness: 0.92,
-          });
+        : crimsonMode
+          ? new THREE.MeshPhysicalMaterial({
+              color: '#fecdd3',
+              emissive: '#e11d48',
+              emissiveIntensity: 0.7,
+              roughness: 0.14,
+              metalness: 0.65,
+              clearcoat: 1.0,
+              clearcoatRoughness: 0.08,
+            })
+          : new THREE.MeshStandardMaterial({
+              color: '#e2e8f0',
+              roughness: 0.14,
+              metalness: 0.92,
+            });
     const spineMat = new THREE.MeshStandardMaterial({
-      color: iceMode ? '#0ea5e9' : crimsonMode ? '#27272a' : '#64748b',
+      color: iceMode ? '#0ea5e9' : leafMode ? '#14532d' : crimsonMode ? '#27272a' : '#64748b',
       roughness: 0.28,
       metalness: 0.78,
     });
@@ -149,6 +213,23 @@ export function createKatanaMeshGroup(
     const spine = new THREE.Mesh(spineGeo, spineMat);
     spine.position.set(0, 0.252, 0.012);
     group.add(spine);
+
+    if (leafMode) {
+      // Mép lưỡi cắt bạc sáng (Hamon) đặc trưng của Kiếm Lá
+      const silverEdgeMat = new THREE.MeshStandardMaterial({
+        color: '#f1f5f9',
+        emissive: '#86efac',
+        emissiveIntensity: 0.22,
+        roughness: 0.12,
+        metalness: 0.9,
+      });
+      handles.materials.push(silverEdgeMat);
+      const silverEdgeGeo = createCurvedBladeGeometry(0.69, 0.011, 0.0045, -0.044);
+      handles.geometries.push(silverEdgeGeo);
+      const silverEdge = new THREE.Mesh(silverEdgeGeo, silverEdgeMat);
+      silverEdge.position.set(0, 0.254, -0.014);
+      group.add(silverEdge);
+    }
   }
 
   // Hiệu ứng tinh thể/ánh sáng cho Katana Băng hoặc Crimson
@@ -242,7 +323,7 @@ export class KatanaViewModel {
   private slashArcMat: THREE.MeshBasicMaterial | null = null;
 
   private assets: KatanaAssetHandles = { geometries: [], materials: [], skeletons: [] };
-  private isIce = false;
+  private variant: KatanaVisualVariant = 'normal';
   private gender: CharacterGender = 'male';
   private outfit: OutfitId = 'default';
 
@@ -292,7 +373,7 @@ export class KatanaViewModel {
     this.leftArmGroup = leftArm;
     this.leftArmRig = leftRig;
 
-    const katana = createKatanaMeshGroup(this.assets, this.isIce);
+    const katana = createKatanaMeshGroup(this.assets, this.variant === 'ice', this.variant);
     katana.add(leftArm);
     if (rig) {
       // Đặt katana vào trực tiếp trong xương cổ tay theo ma trận nghịch đảo của tay ở tư thế nghỉ
@@ -312,9 +393,12 @@ export class KatanaViewModel {
     const activeOutfit: OutfitId = isOutfitCompatibleWithGender(this.outfit, this.gender)
       ? this.outfit
       : 'default';
-    const arcColor = this.isIce
-      ? '#7dd3fc'
-      : OUTFITS[activeOutfit]?.slashArcColor ?? '#f8fafc';
+    const arcColor =
+      this.variant === 'ice'
+        ? '#7dd3fc'
+        : this.variant === 'leaf'
+          ? '#4ade80'
+          : OUTFITS[activeOutfit]?.slashArcColor ?? '#f8fafc';
     const arcGeo = createSlashCrescentGeometry();
     const arcMat = new THREE.MeshBasicMaterial({
       color: arcColor,
@@ -350,9 +434,9 @@ export class KatanaViewModel {
     this.rebuildGroup();
   }
 
-  setIceVariant(enabled: boolean): void {
-    if (this.isIce === enabled) return;
-    this.isIce = enabled;
+  setVariant(variant: KatanaVisualVariant): void {
+    if (this.variant === variant) return;
+    this.variant = variant;
     this.rebuildGroup();
   }
 

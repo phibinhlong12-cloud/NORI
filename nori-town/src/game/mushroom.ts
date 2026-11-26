@@ -75,6 +75,9 @@ export interface MushroomAttackResult {
   xpReward: number;
   remainingHp: number;
   maxHp: number;
+  x: number;
+  y: number;
+  z: number;
 }
 
 export interface MushroomUpdateCallbacks {
@@ -826,7 +829,7 @@ export class PoisonMushroomManager {
         const isLarge = level === 12;
         const isMedium = level === 10;
 
-        const maxHp = isLarge ? 15 : isMedium ? 10 : 6;
+        const maxHp = isLarge ? 1500 : isMedium ? 1000 : 600;
         const damage = isLarge ? 2.0 : isMedium ? 1.5 : 1.0;
         const xpReward = isLarge ? 500 : isMedium ? 300 : 200;
         const scale = isLarge ? 1.48 : isMedium ? 1.05 : 0.74;
@@ -1139,7 +1142,7 @@ export class PoisonMushroomManager {
   attackWithKatana(
     cameraPos: THREE.Vector3,
     forwardDir: THREE.Vector3,
-    damage = 1,
+    damage = 100,
     maxRange = 3.8,
   ): MushroomAttackResult {
     let target: MushroomEntity | null = null;
@@ -1178,6 +1181,9 @@ export class PoisonMushroomManager {
         xpReward: 0,
         remainingHp: 0,
         maxHp: 0,
+        x: 0,
+        y: 0,
+        z: 0,
       };
     }
 
@@ -1207,6 +1213,9 @@ export class PoisonMushroomManager {
         xpReward: target.xpReward,
         remainingHp: 0,
         maxHp: target.maxHp,
+        x: target.x,
+        y: target.y,
+        z: target.z,
       };
     }
 
@@ -1223,6 +1232,9 @@ export class PoisonMushroomManager {
       xpReward: 0,
       remainingHp: target.hp,
       maxHp: target.maxHp,
+      x: target.x,
+      y: target.y,
+      z: target.z,
     };
   }
 

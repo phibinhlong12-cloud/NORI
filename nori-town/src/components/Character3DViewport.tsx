@@ -9,13 +9,14 @@ import {
   disposeCharacterAssets,
 } from '../game/characterModel';
 import { CharacterGender } from '../game/firstPersonArms';
+import { KatanaVisualVariant } from '../game/katana';
 import { OutfitId } from '../game/outfits';
 
 interface Character3DViewportProps {
   gender: CharacterGender;
   outfit?: OutfitId;
   hasKatana?: boolean;
-  hasIceKatana?: boolean;
+  katanaVariant?: KatanaVisualVariant | null;
   hasShield?: boolean;
   previewWeapon?: boolean;
   interactiveRotate?: boolean;
@@ -42,7 +43,7 @@ export const Character3DViewport = memo(function Character3DViewport({
   gender,
   outfit = 'default',
   hasKatana = false,
-  hasIceKatana = false,
+  katanaVariant = null,
   hasShield = false,
   previewWeapon = false,
   interactiveRotate = true,
@@ -63,11 +64,11 @@ export const Character3DViewport = memo(function Character3DViewport({
   const optionsRef = useRef<CharacterBuildOptions>({
     outfit,
     hasKatana,
-    hasIceKatana,
+    katanaVariant,
     hasShield,
     previewWeapon,
   });
-  optionsRef.current = { outfit, hasKatana, hasIceKatana, hasShield, previewWeapon };
+  optionsRef.current = { outfit, hasKatana, katanaVariant, hasShield, previewWeapon };
 
   useEffect(() => {
     const container = mountRef.current;
@@ -358,7 +359,7 @@ export const Character3DViewport = memo(function Character3DViewport({
         container.removeChild(renderer.domElement);
       }
     };
-  }, [gender, outfit, hasKatana, hasIceKatana, hasShield, previewWeapon, interactiveRotate, initialYaw]);
+  }, [gender, outfit, hasKatana, katanaVariant, hasShield, previewWeapon, interactiveRotate, initialYaw]);
 
   const endDrag = (e: React.PointerEvent<HTMLDivElement>) => {
     if (activePointerIdRef.current !== e.pointerId) return;

@@ -2,6 +2,7 @@ import { memo, useEffect, useState } from 'react';
 import { Snowflake } from 'lucide-react';
 import {
   DRAGON_LEVEL,
+  DRAGON_MAX_HP,
   DRAGON_MIN_ATTACK_LEVEL,
   DragonBossHudState,
 } from '../game/dragon';
@@ -20,8 +21,8 @@ const INITIAL_BOSS_HUD: DragonBossHudState = {
   visible: false,
   alive: true,
   level: DRAGON_LEVEL,
-  hp: 100,
-  maxHp: 100,
+  hp: DRAGON_MAX_HP,
+  maxHp: DRAGON_MAX_HP,
   activeSkill: null,
   phase: 'idle',
   warningLabel: null,
@@ -83,7 +84,7 @@ export const BossHealthBar = memo(function BossHealthBar({ engine }: BossHealthB
               )}
             </div>
             <span className="font-mono-tech text-cyan-200 tabular-nums">
-              {boss.hp} / {boss.maxHp}
+              {boss.hp.toLocaleString('vi-VN')} / {boss.maxHp.toLocaleString('vi-VN')}
             </span>
           </div>
           <div className="w-full h-2.5 sm:h-3 rounded-md bg-slate-900 border border-white/10 overflow-hidden">

@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { Backpack, Coins, FlaskConical, Shield, Sword, TreePine, User, Zap } from 'lucide-react';
 import { HudStats, VoxelEngine } from '../game/engine';
-import { BACKPACK_CAPACITY } from '../game/trees';
+import { BACKPACK_CAPACITY, BackpackKatanaVariant } from '../game/trees';
 
 interface MobileControlsProps {
   visible: boolean;
@@ -13,11 +13,12 @@ interface MobileControlsProps {
 interface MobileHudState {
   hasBackpack: boolean;
   hasKatana: boolean;
-  hasIceKatana: boolean;
+  equippedKatana: BackpackKatanaVariant | null;
   hasShield: boolean;
   backpackOpen: boolean;
   shopOpen: boolean;
   outfitShopOpen: boolean;
+  craftingOpen: boolean;
   characterWindowOpen: boolean;
   holdingKatana: boolean;
   holdingPotionSlot: number | null;
@@ -34,11 +35,12 @@ interface MobileHudState {
 const INITIAL_MOBILE_HUD: MobileHudState = {
   hasBackpack: false,
   hasKatana: false,
-  hasIceKatana: false,
+  equippedKatana: null,
   hasShield: false,
   backpackOpen: false,
   shopOpen: false,
   outfitShopOpen: false,
+  craftingOpen: false,
   characterWindowOpen: false,
   holdingKatana: false,
   holdingPotionSlot: null,
@@ -125,11 +127,12 @@ export const MobileControls = memo(function MobileControls({
         if (
           prev.hasBackpack === stats.hasBackpack &&
           prev.hasKatana === stats.hasKatana &&
-          prev.hasIceKatana === stats.hasIceKatana &&
+          prev.equippedKatana === stats.equippedKatana &&
           prev.hasShield === stats.hasShield &&
           prev.backpackOpen === stats.backpackOpen &&
           prev.shopOpen === stats.shopOpen &&
           prev.outfitShopOpen === stats.outfitShopOpen &&
+          prev.craftingOpen === stats.craftingOpen &&
           prev.characterWindowOpen === stats.characterWindowOpen &&
           prev.holdingKatana === stats.holdingKatana &&
           prev.holdingPotionSlot === stats.holdingPotionSlot &&
@@ -147,11 +150,12 @@ export const MobileControls = memo(function MobileControls({
         return {
           hasBackpack: stats.hasBackpack,
           hasKatana: stats.hasKatana,
-          hasIceKatana: stats.hasIceKatana,
+          equippedKatana: stats.equippedKatana,
           hasShield: stats.hasShield,
           backpackOpen: stats.backpackOpen,
           shopOpen: stats.shopOpen,
           outfitShopOpen: stats.outfitShopOpen,
+          craftingOpen: stats.craftingOpen,
           characterWindowOpen: stats.characterWindowOpen,
           holdingKatana: stats.holdingKatana,
           holdingPotionSlot: stats.holdingPotionSlot,
@@ -169,7 +173,7 @@ export const MobileControls = memo(function MobileControls({
   }, [engine]);
 
   useEffect(() => {
-    if (!visible || hud.shopOpen || hud.outfitShopOpen || hud.characterWindowOpen) {
+    if (!visible || hud.shopOpen || hud.outfitShopOpen || hud.craftingOpen || hud.characterWindowOpen) {
       if (sprinting) {
         setSprinting(false);
         onVirtualKey('ShiftLeft', false);
@@ -180,6 +184,7 @@ export const MobileControls = memo(function MobileControls({
     visible,
     hud.shopOpen,
     hud.outfitShopOpen,
+    hud.craftingOpen,
     hud.characterWindowOpen,
     sprinting,
     onVirtualKey,
@@ -193,7 +198,7 @@ export const MobileControls = memo(function MobileControls({
     };
   }, [onVirtualKey, onJoystickMove]);
 
-  if (!visible || hud.shopOpen || hud.outfitShopOpen || hud.characterWindowOpen) return null;
+  if (!visible || hud.shopOpen || hud.outfitShopOpen || hud.craftingOpen || hud.characterWindowOpen) return null;
 
   const bindKeyProps = (code: string) => ({
     onPointerDown: (e: React.PointerEvent) => {
@@ -369,17 +374,27 @@ export const MobileControls = memo(function MobileControls({
                   engine?.toggleKatana();
                 }}
                 className={`h-9 px-2.5 rounded-xl border text-[11px] font-bold flex items-center gap-1 active:scale-95 transition ${
-                  hud.hasIceKatana
+                  hud.equippedKatana === 'leaf'
                     ? hud.holdingKatana
-                      ? 'bg-cyan-400/90 border-cyan-200 text-slate-950'
-                      : 'bg-sky-950/85 border-cyan-400/50 text-cyan-200'
-                    : hud.holdingKatana
-                      ? 'bg-sky-500/90 border-sky-300 text-slate-950'
-                      : 'bg-slate-950/80 border-white/20 text-slate-200'
+                      ? 'bg-emerald-400/90 border-emerald-200 text-slate-950'
+                      : 'bg-emerald-950/85 border-emerald-400/50 text-emerald-200'
+                    : hud.equippedKatana === 'ice'
+                      ? hud.holdingKatana
+                        ? 'bg-cyan-400/90 border-cyan-200 text-slate-950'
+                        : 'bg-sky-950/85 border-cyan-400/50 text-cyan-200'
+                      : hud.holdingKatana
+                        ? 'bg-sky-500/90 border-sky-300 text-slate-950'
+                        : 'bg-slate-950/80 border-white/20 text-slate-200'
                 }`}
               >
                 <Sword className="w-3.5 h-3.5" />
-                <span>{hud.hasIceKatana ? 'Băng' : 'Kiếm'}</span>
+                <span>
+                  {hud.equippedKatana === 'leaf'
+                    ? 'Lá'
+                    : hud.equippedKatana === 'ice'
+                      ? 'Băng'
+                      : 'Kiếm'}
+                </span>
               </button>
             )}
 

@@ -44,10 +44,12 @@ export interface DragonUpdateCallbacks {
   ) => void;
   onSkillWarning?: (skillId: DragonSkillId) => void;
   onSkillExecute?: (skillId: DragonSkillId) => void;
+  canCollectIceKatana?: () => boolean;
+  onIceKatanaBlocked?: () => void;
   onCollectIceKatana?: () => void;
 }
 
-const DRAGON_MAX_HP = 100;
+export const DRAGON_MAX_HP = 10000;
 export const DRAGON_LEVEL = 20;
 export const DRAGON_MIN_ATTACK_LEVEL = 15;
 const DRAGON_XP_REWARD = 5000;
@@ -122,6 +124,7 @@ export class DragonBossManager {
   private readonly dropRingMesh: THREE.Mesh;
   private readonly dropHitSphere: THREE.Mesh;
   private dropActive = false;
+  private dropState: 'idle' | 'flying' = 'idle';
   private dropX = DRAGON_ZONE_SPEC.x;
   private dropY = 4;
   private dropZ = DRAGON_ZONE_SPEC.z;
@@ -1283,7 +1286,11 @@ export class DragonBossManager {
 
     ctx.fillStyle = '#ffffff';
     ctx.font = 'bold 14px monospace';
-    ctx.fillText(`${hp} / ${DRAGON_MAX_HP}`, 160, barY + barH / 2 + 1);
+    ctx.fillText(
+      `${hp.toLocaleString('vi-VN')} / ${DRAGON_MAX_HP.toLocaleString('vi-VN')}`,
+      160,
+      barY + barH / 2 + 1,
+    );
 
     const tex = new THREE.CanvasTexture(canvas);
     tex.colorSpace = THREE.SRGBColorSpace;
@@ -1403,16 +1410,19 @@ export class DragonBossManager {
 
   tryCollectIceKatana(callbacks?: DragonUpdateCallbacks): boolean {
     if (!this.dropActive) return false;
-    this.dropActive = false;
-    this.dropRoot.visible = false;
-    callbacks?.onCollectIceKatana?.();
+    if (callbacks?.canCollectIceKatana && !callbacks.canCollectIceKatana()) {
+      callbacks.onIceKatanaBlocked?.();
+      return false;
+    }
+    this.dropState = 'flying';
+    this.dropRingMesh.visible = false;
     return true;
   }
 
   attackWithKatana(
     cameraPos: THREE.Vector3,
     forwardDir: THREE.Vector3,
-    damage = 1,
+    damage = 100,
     maxRange = 5.4,
     playerLevel = 1,
   ): DragonAttackResult {
@@ -1487,6 +1497,9 @@ export class DragonBossManager {
       this.dropY = this.outside.getHeightAt(this.dropX, this.dropZ) + 1.05;
       this.dropAge = 0;
       this.dropActive = true;
+      this.dropState = 'idle';
+      this.dropRingMesh.visible = true;
+      this.dropKatanaGroup.scale.setScalar(1);
       this.dropRoot.position.set(this.dropX, this.dropY, this.dropZ);
       this.dropRoot.visible = true;
 
@@ -1693,17 +1706,56 @@ export class DragonBossManager {
   ): void {
     this.animTime += dt;
 
-    // Hoạt ảnh xoay nhẹ của Katana Băng khi rơi trên mặt đất + tự nhặt nếu bước sát vào
+    // Hoạt ảnh xoay nhẹ của Katana Băng khi rơi trên mặt đất + bay vào ô balo khi người chơi nhặt
     if (this.dropActive) {
       this.dropAge += dt;
-      this.dropKatanaGroup.rotation.y += dt * 1.8;
-      this.dropKatanaGroup.position.y = Math.sin(this.dropAge * 2.8) * 0.14;
-      const pulse = 1 + Math.sin(this.dropAge * 4.5) * 0.12;
-      this.dropRingMesh.scale.set(pulse, 1, pulse);
+      if (this.dropState === 'idle') {
+        this.dropKatanaGroup.rotation.y += dt * 1.8;
+        this.dropKatanaGroup.position.y = Math.sin(this.dropAge * 2.8) * 0.14;
+        const pulse = 1 + Math.sin(this.dropAge * 4.5) * 0.12;
+        this.dropRingMesh.scale.set(pulse, 1, pulse);
 
-      const distToDrop = Math.hypot(playerX - this.dropX, playerZ - this.dropZ);
-      if (this.dropAge >= 0.75 && distToDrop <= 1.85) {
-        this.tryCollectIceKatana(callbacks);
+        const distToDrop = Math.hypot(playerX - this.dropX, playerZ - this.dropZ);
+        if (this.dropAge >= 0.75 && distToDrop <= 4.4) {
+          if (!callbacks?.canCollectIceKatana || callbacks.canCollectIceKatana()) {
+            this.dropState = 'flying';
+            this.dropRingMesh.visible = false;
+          } else if (distToDrop <= 2.1) {
+            callbacks.onIceKatanaBlocked?.();
+          }
+        }
+      } else {
+        const targetY = playerY + 0.95;
+        const dx = playerX - this.dropX;
+        const dy = targetY - this.dropY;
+        const dz = playerZ - this.dropZ;
+        const dist = Math.hypot(dx, dy, dz);
+        const speed = 15.0;
+        if (dist <= Math.max(0.45, speed * dt)) {
+          if (!callbacks?.canCollectIceKatana || callbacks.canCollectIceKatana()) {
+            this.dropActive = false;
+            this.dropState = 'idle';
+            this.dropRoot.visible = false;
+            this.dropKatanaGroup.scale.setScalar(1);
+            callbacks?.onCollectIceKatana?.();
+          } else {
+            this.dropState = 'idle';
+            this.dropRingMesh.visible = true;
+            this.dropKatanaGroup.scale.setScalar(1);
+            this.dropY = this.outside.getHeightAt(this.dropX, this.dropZ) + 1.05;
+            this.dropRoot.position.set(this.dropX, this.dropY, this.dropZ);
+            callbacks?.onIceKatanaBlocked?.();
+          }
+        } else {
+          const step = (speed * dt) / dist;
+          this.dropX += dx * step;
+          this.dropY += dy * step;
+          this.dropZ += dz * step;
+          this.dropRoot.position.set(this.dropX, this.dropY, this.dropZ);
+          this.dropKatanaGroup.rotation.y += dt * 7.5;
+          const shrink = Math.max(0.4, Math.min(1, dist / 2.6));
+          this.dropKatanaGroup.scale.setScalar(shrink);
+        }
       }
     }
 

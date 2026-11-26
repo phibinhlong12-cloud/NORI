@@ -51,6 +51,9 @@ export interface SlimeAttackResult {
   xpReward: number;
   remainingHp: number;
   maxHp: number;
+  x: number;
+  y: number;
+  z: number;
 }
 
 export interface SlimeUpdateCallbacks {
@@ -379,20 +382,39 @@ export class SlimeManager {
     ctx.font = 'bold 24px sans-serif';
     ctx.fillText(level === 3 ? `★ Slime Lv.${level}` : `Slime Lv.${level}`, 112, 24);
 
-    // Thanh máu chia vạch bo tròn
+    // Thanh máu chia vạch theo mốc 100 HP + hiển thị số máu
     const barW = 176;
     const barX = 24;
-    const barY = 42;
-    const barH = 12;
-    const gap = 4;
-    const segW = (barW - gap * (maxHp - 1)) / maxHp;
+    const barY = 40;
+    const barH = 15;
+    const ratio = Math.max(0, Math.min(1, hp / Math.max(1, maxHp)));
 
-    for (let i = 0; i < maxHp; i++) {
-      ctx.fillStyle = i < hp ? '#fb7185' : '#334155';
+    ctx.fillStyle = '#1e293b';
+    ctx.beginPath();
+    ctx.roundRect(barX, barY, barW, barH, 4);
+    ctx.fill();
+
+    if (ratio > 0) {
+      ctx.fillStyle = '#fb7185';
       ctx.beginPath();
-      ctx.roundRect(barX + i * (segW + gap), barY, segW, barH, 3);
+      ctx.roundRect(barX, barY, barW * ratio, barH, 4);
       ctx.fill();
     }
+
+    const sections = Math.max(1, Math.min(10, Math.round(maxHp / 100)));
+    ctx.strokeStyle = 'rgba(10, 18, 34, 0.72)';
+    ctx.lineWidth = 2;
+    for (let i = 1; i < sections; i++) {
+      const sx = barX + (barW * i) / sections;
+      ctx.beginPath();
+      ctx.moveTo(sx, barY + 1);
+      ctx.lineTo(sx, barY + barH - 1);
+      ctx.stroke();
+    }
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 11px monospace';
+    ctx.fillText(`${hp}/${maxHp}`, 112, barY + barH * 0.5 + 0.5);
 
     const tex = new THREE.CanvasTexture(canvas);
     tex.colorSpace = THREE.SRGBColorSpace;
@@ -488,12 +510,12 @@ export class SlimeManager {
     let globalIdx = 0;
 
     for (const zone of SLIME_ZONE_SPECS) {
-      // Mỗi vùng có: 1 con Lv3 (6 chém, 200 XP), 2 con Lv2 (4 chém, 100 XP), 7 con Lv1 (2 chém, 20 XP)
+      // Mỗi vùng có: 1 con Lv3 (600 HP, 200 XP), 2 con Lv2 (400 HP, 100 XP), 7 con Lv1 (200 HP, 20 XP)
       const levels: SlimeLevel[] = [3, 2, 2, 1, 1, 1, 1, 1, 1, 1];
 
       levels.forEach((level, idx) => {
         globalIdx++;
-        const maxHp = level === 3 ? 6 : level === 2 ? 4 : 2;
+        const maxHp = level === 3 ? 600 : level === 2 ? 400 : 200;
         const xpReward = level === 3 ? 200 : level === 2 ? 100 : 20;
         const scale = level === 3 ? 1.52 : level === 2 ? 1.12 : 0.78;
         const radius = 0.52 * scale;
@@ -678,6 +700,7 @@ export class SlimeManager {
   attackWithKatana(
     cameraPos: THREE.Vector3,
     forwardDir: THREE.Vector3,
+    damage = 100,
     maxRange = 3.8,
   ): SlimeAttackResult {
     let target: SlimeEntity | null = null;
@@ -716,10 +739,13 @@ export class SlimeManager {
         xpReward: 0,
         remainingHp: 0,
         maxHp: 0,
+        x: 0,
+        y: 0,
+        z: 0,
       };
     }
 
-    target.hp = Math.max(0, target.hp - 1);
+    target.hp = Math.max(0, target.hp - Math.max(1, damage));
     target.hitFlashTimer = 0.14;
     this.setSlimeFlash(target, true);
 
@@ -744,6 +770,9 @@ export class SlimeManager {
         xpReward: target.xpReward,
         remainingHp: 0,
         maxHp: target.maxHp,
+        x: target.x,
+        y: target.y,
+        z: target.z,
       };
     }
 
@@ -760,6 +789,9 @@ export class SlimeManager {
       xpReward: 0,
       remainingHp: target.hp,
       maxHp: target.maxHp,
+      x: target.x,
+      y: target.y,
+      z: target.z,
     };
   }
 

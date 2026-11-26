@@ -15,15 +15,15 @@ export const SHOP_ITEM_PRICES: Record<ShopItemId, number> = {
 };
 
 export const SHOP_ITEM_NAMES: Record<ShopItemId, string> = {
-  backpack: 'Balo (9 ô)',
+  backpack: 'Balo (18 ô)',
   katana: 'Katana',
   shield: 'Khiên chắn',
   potion: 'Lọ thuốc hồi máu',
 };
 
 export const SHOP_ITEM_DESCRIPTIONS: Record<ShopItemId, string> = {
-  backpack: 'Mở rộng 9 ô chứa gỗ và thuốc hồi máu (mở bằng phím E).',
-  katana: 'Chém Slime & Rồng Băng, chặt đổ cây ngay lập tức với 1 click chuột trái.',
+  backpack: 'Mở rộng 18 ô chứa gỗ, thuốc hồi máu, nguyên liệu và kiếm (mở bằng phím E).',
+  katana: 'Gây 100 sát thương khi chém quái vật & Rồng Băng, chặt đổ cây ngay lập tức với 1 click chuột trái.',
   shield: 'Nhấn R để giơ khiên đỡ đòn Slime và giảm sát thương dậm đất từ Rồng.',
   potion: 'Dùng chuột phải để uống khi cầm trên tay, hồi ngay +2 tim (tối đa 50 lọ/ô).',
 };

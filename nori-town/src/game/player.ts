@@ -19,6 +19,7 @@ export class FirstPersonPlayer {
 
   walkSpeed = 5.4;
   sprintSpeed = 8.6;
+  moveSpeedMultiplier = 1.0;
   // Thời gian nhảy lên + rớt xuống trên mặt phẳng = ~0.70 giây (t_up ≈ 0.365s, t_down ≈ 0.335s, cao ~1.50 block)
   jumpForce = 8.22;
   upGravity = 22.52;
@@ -232,7 +233,8 @@ export class FirstPersonPlayer {
     }
 
     const isSprinting = Boolean(this.keys['ShiftLeft'] || this.keys['ShiftRight']);
-    const targetSpeed = isSprinting ? this.sprintSpeed : this.walkSpeed;
+    const targetSpeed =
+      (isSprinting ? this.sprintSpeed : this.walkSpeed) * this.moveSpeedMultiplier;
 
     const accel = this.onGround ? 14.0 : 5.5;
     const blend = Math.min(1, accel * clampedDt);

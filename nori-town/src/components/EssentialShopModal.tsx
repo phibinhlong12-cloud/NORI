@@ -10,7 +10,7 @@ import {
   X,
 } from 'lucide-react';
 import { HudStats, VoxelEngine } from '../game/engine';
-import { MAX_POTION_STACK } from '../game/trees';
+import { BackpackKatanaVariant, MAX_POTION_STACK } from '../game/trees';
 import {
   SHOP_ITEM_DESCRIPTIONS,
   SHOP_ITEM_NAMES,
@@ -27,8 +27,8 @@ interface ShopModalState {
   open: boolean;
   money: number;
   hasBackpack: boolean;
-  hasKatana: boolean;
-  hasIceKatana: boolean;
+  ownsBaseKatana: boolean;
+  equippedKatana: BackpackKatanaVariant | null;
   hasShield: boolean;
   potionCount: number;
 }
@@ -37,20 +37,26 @@ const INITIAL_SHOP_STATE: ShopModalState = {
   open: false,
   money: 0,
   hasBackpack: false,
-  hasKatana: false,
-  hasIceKatana: false,
+  ownsBaseKatana: false,
+  equippedKatana: null,
   hasShield: false,
   potionCount: 0,
 };
 
-function renderItemIcon(itemId: ShopItemId, hasIceKatana: boolean) {
+function renderItemIcon(itemId: ShopItemId, equippedKatana: BackpackKatanaVariant | null) {
   switch (itemId) {
     case 'backpack':
       return <Backpack className="w-6 h-6 text-amber-300" />;
     case 'katana':
       return (
         <Sword
-          className={`w-6 h-6 ${hasIceKatana ? 'text-cyan-300' : 'text-sky-300'}`}
+          className={`w-6 h-6 ${
+            equippedKatana === 'leaf'
+              ? 'text-emerald-300'
+              : equippedKatana === 'ice'
+                ? 'text-cyan-300'
+                : 'text-sky-300'
+          }`}
         />
       );
     case 'shield':
@@ -82,8 +88,8 @@ export const EssentialShopModal = memo(function EssentialShopModal({
           prev.open === stats.shopOpen &&
           prev.money === stats.money &&
           prev.hasBackpack === stats.hasBackpack &&
-          prev.hasKatana === stats.hasKatana &&
-          prev.hasIceKatana === stats.hasIceKatana &&
+          prev.ownsBaseKatana === stats.ownsBaseKatana &&
+          prev.equippedKatana === stats.equippedKatana &&
           prev.hasShield === stats.hasShield &&
           prev.potionCount === potionCount
         ) {
@@ -93,8 +99,8 @@ export const EssentialShopModal = memo(function EssentialShopModal({
           open: stats.shopOpen,
           money: stats.money,
           hasBackpack: stats.hasBackpack,
-          hasKatana: stats.hasKatana,
-          hasIceKatana: stats.hasIceKatana,
+          ownsBaseKatana: stats.ownsBaseKatana,
+          equippedKatana: stats.equippedKatana,
           hasShield: stats.hasShield,
           potionCount,
         };
@@ -106,7 +112,7 @@ export const EssentialShopModal = memo(function EssentialShopModal({
 
   const isOwned = (itemId: ShopItemId): boolean => {
     if (itemId === 'backpack') return state.hasBackpack;
-    if (itemId === 'katana') return state.hasKatana;
+    if (itemId === 'katana') return state.ownsBaseKatana;
     if (itemId === 'shield') return state.hasShield;
     return false;
   };
@@ -161,10 +167,7 @@ export const EssentialShopModal = memo(function EssentialShopModal({
             const price = SHOP_ITEM_PRICES[itemId];
             const canAfford = state.money >= price;
             const needsBackpackForPotion = itemId === 'potion' && !state.hasBackpack;
-            const title =
-              itemId === 'katana' && state.hasIceKatana
-                ? 'Katana Băng (Đã nâng cấp)'
-                : SHOP_ITEM_NAMES[itemId];
+            const title = SHOP_ITEM_NAMES[itemId];
 
             return (
               <div
@@ -177,7 +180,7 @@ export const EssentialShopModal = memo(function EssentialShopModal({
               >
                 <div className="flex items-start gap-3">
                   <div className="w-11 h-11 rounded-xl bg-slate-950/80 border border-white/10 flex items-center justify-center shrink-0">
-                    {renderItemIcon(itemId, state.hasIceKatana)}
+                    {renderItemIcon(itemId, state.equippedKatana)}
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center justify-between gap-2">

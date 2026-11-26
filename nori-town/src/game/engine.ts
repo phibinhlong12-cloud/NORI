@@ -10,13 +10,21 @@ import {
   HOTBAR_BLOCKS,
 } from './constants';
 import { CashierStation, isPlayerInSellZone } from './counter';
+import { CRAFTING_RECIPES, CraftingRecipeId } from './crafting';
 import {
   DRAGON_LEVEL,
+  DRAGON_MAX_HP,
   DRAGON_MIN_ATTACK_LEVEL,
   DragonBossHudState,
 } from './dragon';
+import { MonsterDropKind } from './drops';
 import { CharacterGender } from './firstPersonArms';
-import { KatanaViewModel } from './katana';
+import {
+  getKatanaDamage,
+  getKatanaDisplayName,
+  getKatanaMoveSpeedMultiplier,
+  KatanaViewModel,
+} from './katana';
 import { MushroomEntity } from './mushroom';
 import {
   getOutfitName,
@@ -38,7 +46,13 @@ import {
   MAX_PLAYER_HP,
 } from './slimeZones';
 import { createSolidVoxelMaterial } from './textures';
-import { BackpackItem, DetachedLog, InteractiveTree } from './trees';
+import {
+  BACKPACK_CAPACITY,
+  BackpackItem,
+  BackpackKatanaVariant,
+  DetachedLog,
+  InteractiveTree,
+} from './trees';
 import { SHOP_ITEM_NAMES, SHOP_ITEM_PRICES, ShopItemId } from './weaponShop';
 import { WorldManager } from './world';
 
@@ -56,11 +70,13 @@ export interface HudStats {
   xpToNext: number;
   hasBackpack: boolean;
   hasKatana: boolean;
-  hasIceKatana: boolean;
+  ownsBaseKatana: boolean;
+  equippedKatana: BackpackKatanaVariant | null;
   hasShield: boolean;
   backpackOpen: boolean;
   shopOpen: boolean;
   outfitShopOpen: boolean;
+  craftingOpen: boolean;
   characterWindowOpen: boolean;
   gender: CharacterGender;
   ownedOutfits: OutfitId[];
@@ -74,8 +90,14 @@ export interface HudStats {
   carriedLogValue: number;
   isShopTarget: boolean;
   isOutfitShopTarget: boolean;
+  isCraftingTarget: boolean;
   isConveyorTarget: boolean;
   chopProgress: number;
+  craftingMaterialCounts: {
+    mushroomCount: number;
+    slimeOrbCount: number;
+    woodCount: number;
+  };
   backpackItems: Array<BackpackItem | null>;
   bossHud: DragonBossHudState;
   targetName: string | null;
@@ -392,12 +414,14 @@ export class VoxelEngine {
   private backpackOpen = false;
   private shopOpen = false;
   private outfitShopOpen = false;
+  private craftingOpen = false;
   private characterWindowOpen = false;
   private playerGender: CharacterGender = 'male';
   private holdingKatana = false;
   private holdingPotionSlot: number | null = null;
-  private hasIceKatana = false;
+  private equippedKatana: BackpackKatanaVariant | null = null;
   private shieldRaised = false;
+  private lastDropBlockedToastAt = 0;
   private currentTarget: RaycastHit | null = null;
   private currentTreeTarget: TreeTarget | null = null;
   private ownedOutfits: OutfitId[] = ['default'];
@@ -406,6 +430,7 @@ export class VoxelEngine {
   private currentConveyorTarget: { point: THREE.Vector3 } | null = null;
   private currentShopTarget: { point: THREE.Vector3 } | null = null;
   private currentOutfitShopTarget: { point: THREE.Vector3 } | null = null;
+  private currentCraftingTarget: { point: THREE.Vector3 } | null = null;
   private currentSlimeTarget: { slime: SlimeEntity; point: THREE.Vector3 } | null = null;
   private currentMushroomTarget: { mushroom: MushroomEntity; point: THREE.Vector3 } | null = null;
   private currentDragonTarget: { point: THREE.Vector3; hp: number; maxHp: number } | null = null;
@@ -424,11 +449,13 @@ export class VoxelEngine {
     xpToNext: getXpForNextLevel(1),
     hasBackpack: false,
     hasKatana: false,
-    hasIceKatana: false,
+    ownsBaseKatana: false,
+    equippedKatana: null,
     hasShield: false,
     backpackOpen: false,
     shopOpen: false,
     outfitShopOpen: false,
+    craftingOpen: false,
     characterWindowOpen: false,
     gender: 'male',
     ownedOutfits: ['default'],
@@ -442,15 +469,21 @@ export class VoxelEngine {
     carriedLogValue: 0,
     isShopTarget: false,
     isOutfitShopTarget: false,
+    isCraftingTarget: false,
     isConveyorTarget: false,
     chopProgress: 0,
-    backpackItems: Array.from({ length: 9 }, () => null),
+    craftingMaterialCounts: {
+      mushroomCount: 0,
+      slimeOrbCount: 0,
+      woodCount: 0,
+    },
+    backpackItems: Array.from({ length: BACKPACK_CAPACITY }, () => null),
     bossHud: {
       visible: false,
       alive: true,
       level: DRAGON_LEVEL,
-      hp: 100,
-      maxHp: 100,
+      hp: DRAGON_MAX_HP,
+      maxHp: DRAGON_MAX_HP,
       activeSkill: null,
       phase: 'idle',
       warningLabel: null,
@@ -672,6 +705,7 @@ export class VoxelEngine {
     this.isPlaying = false;
     this.shopOpen = false;
     this.outfitShopOpen = false;
+    this.craftingOpen = false;
     this.characterWindowOpen = false;
     this.player.keys = {};
     this.player.setJoystickVector(0, 0);
@@ -694,6 +728,7 @@ export class VoxelEngine {
     if (this.shopOpen) return;
     this.shopOpen = true;
     this.outfitShopOpen = false;
+    this.craftingOpen = false;
     this.characterWindowOpen = false;
     this.backpackOpen = false;
     this.player.keys = {};
@@ -731,6 +766,7 @@ export class VoxelEngine {
     if (this.outfitShopOpen) return;
     this.outfitShopOpen = true;
     this.shopOpen = false;
+    this.craftingOpen = false;
     this.characterWindowOpen = false;
     this.backpackOpen = false;
     this.player.keys = {};
@@ -764,11 +800,101 @@ export class VoxelEngine {
     this.emitStats();
   }
 
+  openCrafting(): void {
+    if (this.craftingOpen) return;
+    this.craftingOpen = true;
+    this.shopOpen = false;
+    this.outfitShopOpen = false;
+    this.characterWindowOpen = false;
+    this.backpackOpen = false;
+    this.player.keys = {};
+    this.player.setJoystickVector(0, 0);
+    this.isMouseDragging = false;
+    this.isLeftMouseDown = false;
+    this.isTouchBreakHeld = false;
+    this.touchTreeHoldActive = false;
+    this.lookTouchId = null;
+    this.chopCompletedWaitingRelease = false;
+    this.resetChopHold();
+
+    const canvas = this.renderer.domElement;
+    if (document.pointerLockElement === canvas && document.exitPointerLock) {
+      document.exitPointerLock();
+    }
+    this.emitStats();
+  }
+
+  closeCrafting(): void {
+    if (!this.craftingOpen) return;
+    this.craftingOpen = false;
+    const canvas = this.renderer.domElement;
+    if (!this.isTouchDevice && this.isPlaying && canvas.requestPointerLock) {
+      try {
+        canvas.requestPointerLock();
+      } catch {
+        // Fallback nếu môi trường nhúng hạn chế Pointer Lock
+      }
+    }
+    this.emitStats();
+  }
+
+  craftItem(recipeId: CraftingRecipeId): void {
+    const recipe = CRAFTING_RECIPES.find((r) => r.id === recipeId);
+    if (!recipe) return;
+
+    if (!this.world.isShopItemOwned('backpack')) {
+      this.callbacks.onToast('Cần mua Balo (500 VNĐ) tại quầy vũ khí trước khi chế tạo!');
+      return;
+    }
+
+    const counts = this.world.getCraftingMaterialCounts();
+    if (
+      counts.mushroomCount < recipe.requirements.mushrooms ||
+      counts.slimeOrbCount < recipe.requirements.slimeOrbs ||
+      counts.woodCount < recipe.requirements.woods
+    ) {
+      this.callbacks.onToast(
+        `Chưa đủ nguyên liệu! Cần ${recipe.requirements.mushrooms} Nấm, ${recipe.requirements.slimeOrbs} Quả cầu Slime và ${recipe.requirements.woods} Gỗ.`,
+      );
+      return;
+    }
+
+    if (!this.world.consumeCraftingMaterials(recipe.requirements)) {
+      this.callbacks.onToast('Không thể tiêu thụ nguyên liệu chế tạo!');
+      return;
+    }
+
+    const previousSword = this.equippedKatana;
+    if (previousSword !== null) {
+      this.world.addKatanaToBackpack(previousSword);
+    }
+
+    if (this.world.isCarryingLog() && !this.world.isBackpackFull()) {
+      this.world.storeCarriedLogToBackpack();
+    }
+
+    this.equippedKatana = 'leaf';
+    this.katanaView.setVariant('leaf');
+    this.player.moveSpeedMultiplier = getKatanaMoveSpeedMultiplier(this.equippedKatana);
+    if (!this.world.isCarryingLog()) {
+      this.holdingKatana = true;
+      this.holdingPotionSlot = null;
+    }
+    this.audio.playLevelUpSound();
+    this.emitStats();
+    this.callbacks.onToast(
+      previousSword !== null
+        ? `Chế tạo thành công ${recipe.name}! ${getKatanaDisplayName(previousSword)} đã tự chuyển vào Balo.`
+        : `Chế tạo thành công & trang bị ${recipe.name}!`,
+    );
+  }
+
   openCharacterWindow(): void {
     if (this.characterWindowOpen || !this.isPlaying) return;
     this.characterWindowOpen = true;
     this.shopOpen = false;
     this.outfitShopOpen = false;
+    this.craftingOpen = false;
     this.backpackOpen = false;
     this.player.keys = {};
     this.player.setJoystickVector(0, 0);
@@ -848,6 +974,35 @@ export class VoxelEngine {
     if (this.money < price) {
       this.callbacks.onToast(
         `Chưa đủ ${price.toLocaleString('vi-VN')} VNĐ để mua ${SHOP_ITEM_NAMES[itemId]}!`,
+      );
+      return;
+    }
+
+    if (itemId === 'katana') {
+      if (this.equippedKatana !== null) {
+        if (!this.world.isShopItemOwned('backpack') || !this.world.hasEmptyBackpackSlot()) {
+          this.callbacks.onToast('Bạn đang trang bị kiếm khác, cần ô trống trong Balo để chứa Katana!');
+          return;
+        }
+        this.money -= price;
+        this.world.markShopItemOwned('katana');
+        const added = this.world.addKatanaToBackpack('normal');
+        this.audio.playCashSound();
+        this.emitStats();
+        this.callbacks.onToast(
+          `Đã mua Katana (-${price.toLocaleString('vi-VN')} VNĐ) · Đã cất vào Ô ${added.slotIndex + 1} Balo!`,
+        );
+        return;
+      }
+      this.money -= price;
+      this.world.markShopItemOwned('katana');
+      this.equippedKatana = 'normal';
+      this.katanaView.setVariant('normal');
+      this.player.moveSpeedMultiplier = getKatanaMoveSpeedMultiplier(this.equippedKatana);
+      this.audio.playCashSound();
+      this.emitStats();
+      this.callbacks.onToast(
+        `Đã mua ${SHOP_ITEM_NAMES[itemId]} (-${price.toLocaleString('vi-VN')} VNĐ)!`,
       );
       return;
     }
@@ -964,11 +1119,21 @@ export class VoxelEngine {
       this.katanaView.triggerSlash();
       this.audio.playSlashSound();
 
+      const katanaDmg = getKatanaDamage(this.equippedKatana);
+
       this.camera.getWorldDirection(this.rayDir);
-      const atk = this.world.attackSlimeWithKatana(this.camera.position, this.rayDir, 3.8);
+      const atk = this.world.attackSlimeWithKatana(
+        this.camera.position,
+        this.rayDir,
+        katanaDmg,
+        3.8,
+      );
       if (atk.hit) {
         this.audio.playSlimeHitSound();
         if (atk.killed) {
+          if (Math.random() < 0.5) {
+            this.world.spawnMonsterDrop('slime_orb', atk.x, atk.y, atk.z);
+          }
           const prevLevel = this.level;
           this.grantXp(atk.xpReward);
           if (this.level === prevLevel && this.level < MAX_LEVEL) {
@@ -980,7 +1145,6 @@ export class VoxelEngine {
         return;
       }
 
-      const katanaDmg = this.hasIceKatana ? 2 : 1;
       const mushroomAtk = this.world.attackMushroomWithKatana(
         this.camera.position,
         this.rayDir,
@@ -990,6 +1154,14 @@ export class VoxelEngine {
       if (mushroomAtk.hit) {
         this.audio.playSlimeHitSound();
         if (mushroomAtk.killed) {
+          if (Math.random() < 0.5) {
+            this.world.spawnMonsterDrop(
+              'mushroom_item',
+              mushroomAtk.x,
+              mushroomAtk.y,
+              mushroomAtk.z,
+            );
+          }
           const prevLevel = this.level;
           this.grantXp(mushroomAtk.xpReward);
           if (this.level === prevLevel && this.level < MAX_LEVEL) {
@@ -1003,11 +1175,10 @@ export class VoxelEngine {
         return;
       }
 
-      const dragonDmg = this.hasIceKatana ? 2 : 1;
       const dragonAtk = this.world.attackDragonWithKatana(
         this.camera.position,
         this.rayDir,
-        dragonDmg,
+        katanaDmg,
         5.4,
         this.level,
       );
@@ -1089,12 +1260,20 @@ export class VoxelEngine {
     if (this.currentIceKatanaDropTarget) {
       if (
         this.world.tryCollectIceKatana({
+          canCollectIceKatana: () =>
+            this.world.isShopItemOwned('backpack') && this.world.hasEmptyBackpackSlot(),
+          onIceKatanaBlocked: () => this.notifyDropBlocked('Katana Băng'),
           onCollectIceKatana: () => this.handleCollectIceKatana(),
         })
       ) {
         this.currentIceKatanaDropTarget = null;
         return;
       }
+    }
+
+    if (this.currentCraftingTarget && !this.world.isCarryingLog()) {
+      this.openCrafting();
+      return;
     }
 
     if (this.currentOutfitShopTarget && !this.world.isCarryingLog()) {
@@ -1174,7 +1353,9 @@ export class VoxelEngine {
         this.audio.playStowSound();
         this.emitStats();
       } else {
-        this.callbacks.onToast('Balo đã đầy (9/9)! Không thể cất thêm gỗ.');
+        this.callbacks.onToast(
+          `Balo đã đầy (${BACKPACK_CAPACITY}/${BACKPACK_CAPACITY})! Không thể cất thêm gỗ.`,
+        );
       }
       return;
     }
@@ -1189,12 +1370,44 @@ export class VoxelEngine {
     }
   }
 
-  retrieveBackpackSlot(slotIndex: number): void {
+  useBackpackSlot(slotIndex: number): void {
     if (!this.world.isShopItemOwned('backpack') || !this.backpackOpen) return;
-    if (slotIndex < 0 || slotIndex >= 9) return;
+    if (slotIndex < 0 || slotIndex >= BACKPACK_CAPACITY) return;
 
-    const slotKind = this.world.getBackpackSlotKind(slotIndex);
-    if (slotKind === 'potion') {
+    const item = this.world.getBackpackSlotItem(slotIndex);
+    if (!item) {
+      this.callbacks.onToast(`Ô ${slotIndex + 1} đang trống!`);
+      return;
+    }
+
+    if (item.kind === 'katana') {
+      const res = this.world.swapKatanaAtSlot(slotIndex, this.equippedKatana);
+      if (res.swapped && res.newVariant) {
+        this.equippedKatana = res.newVariant;
+        this.katanaView.setVariant(res.newVariant);
+        this.player.moveSpeedMultiplier = getKatanaMoveSpeedMultiplier(this.equippedKatana);
+        if (!this.world.isCarryingLog()) {
+          this.holdingKatana = true;
+          this.holdingPotionSlot = null;
+        }
+        this.audio.playStowSound();
+        this.emitStats();
+        this.callbacks.onToast(
+          `Đã trang bị ${getKatanaDisplayName(res.newVariant)}!`,
+        );
+      }
+      return;
+    }
+
+    if (item.kind === 'slime_orb' || item.kind === 'mushroom_item') {
+      const label = item.kind === 'slime_orb' ? 'Quả cầu Slime' : 'Nấm đỏ';
+      this.callbacks.onToast(
+        `${label} (x${item.count}) là nguyên liệu! Hãy mang tới khu "Chế tạo" để rèn Kiếm Lá.`,
+      );
+      return;
+    }
+
+    if (item.kind === 'potion') {
       if (this.world.isCarryingLog()) {
         this.callbacks.onToast('Tay đang khiêng gỗ! Đặt xuống hoặc ấn F để cất trước.');
         return;
@@ -1226,9 +1439,33 @@ export class VoxelEngine {
       this.holdingPotionSlot = null;
       this.audio.playStowSound();
       this.emitStats();
-    } else {
-      this.callbacks.onToast(`Ô ${slotIndex + 1} đang trống!`);
     }
+  }
+
+  deleteBackpackSlot(slotIndex: number): void {
+    if (!this.world.isShopItemOwned('backpack') || !this.backpackOpen) return;
+    if (slotIndex < 0 || slotIndex >= BACKPACK_CAPACITY) return;
+
+    if (this.holdingPotionSlot === slotIndex) {
+      this.holdingPotionSlot = null;
+    }
+    const deleted = this.world.deleteBackpackSlot(slotIndex);
+    if (!deleted) return;
+
+    let label = 'vật phẩm';
+    if (deleted.kind === 'wood') label = `Thanh gỗ (${deleted.length.toFixed(1)}m)`;
+    else if (deleted.kind === 'potion') label = `Lọ thuốc máu (x${deleted.count})`;
+    else if (deleted.kind === 'slime_orb') label = `Quả cầu Slime (x${deleted.count})`;
+    else if (deleted.kind === 'mushroom_item') label = `Nấm đỏ (x${deleted.count})`;
+    else if (deleted.kind === 'katana') label = getKatanaDisplayName(deleted.variant);
+
+    this.audio.playStowSound();
+    this.emitStats();
+    this.callbacks.onToast(`Đã xóa vĩnh viễn ${label} tại Ô ${slotIndex + 1}!`);
+  }
+
+  retrieveBackpackSlot(slotIndex: number): void {
+    this.useBackpackSlot(slotIndex);
   }
 
   private placeCarriedLogInFront(): boolean {
@@ -1258,7 +1495,13 @@ export class VoxelEngine {
   }
 
   sellCarriedLog(): boolean {
-    if (!this.isPlaying || this.shopOpen || this.outfitShopOpen || this.characterWindowOpen) {
+    if (
+      !this.isPlaying ||
+      this.shopOpen ||
+      this.outfitShopOpen ||
+      this.craftingOpen ||
+      this.characterWindowOpen
+    ) {
       return false;
     }
     if (!this.world.isCarryingLog()) {
@@ -1307,7 +1550,7 @@ export class VoxelEngine {
   }
 
   toggleKatana(): void {
-    if (!this.world.isShopItemOwned('katana')) {
+    if (this.equippedKatana === null) {
       this.callbacks.onToast('Cần mua Katana (1.000 VNĐ) tại quầy vũ khí trước!');
       return;
     }
@@ -1325,7 +1568,9 @@ export class VoxelEngine {
         return;
       }
       if (this.world.isBackpackFull()) {
-        this.callbacks.onToast('Balo đã đầy (9/9), không thể cất gỗ để đổi qua Katana!');
+        this.callbacks.onToast(
+          `Balo đã đầy (${BACKPACK_CAPACITY}/${BACKPACK_CAPACITY}), không thể cất gỗ để đổi qua Katana!`,
+        );
         return;
       }
       this.world.storeCarriedLogToBackpack();
@@ -1381,17 +1626,44 @@ export class VoxelEngine {
     this.emitStats();
   }
 
+  private notifyDropBlocked(itemName: string): void {
+    const now = performance.now();
+    if (now - this.lastDropBlockedToastAt < 2400) return;
+    this.lastDropBlockedToastAt = now;
+    if (!this.world.isShopItemOwned('backpack')) {
+      this.callbacks.onToast(`Cần mua Balo (500 VNĐ) để nhặt ${itemName} vào balo!`);
+    } else {
+      this.callbacks.onToast(`Balo đã đầy (${BACKPACK_CAPACITY}/${BACKPACK_CAPACITY}), không thể nhặt ${itemName}!`);
+    }
+  }
+
+  private handleCollectMonsterDrop(kind: MonsterDropKind): void {
+    const res = this.world.addMaterialToBackpack(kind, 1);
+    const label = kind === 'slime_orb' ? 'Quả cầu Slime' : 'Nấm đỏ';
+    if (!res.added) {
+      this.notifyDropBlocked(label);
+      return;
+    }
+    this.audio.playCashSound();
+    this.emitStats();
+    this.callbacks.onToast(`Nhặt ${label} vào Ô ${res.slotIndex + 1} (x${res.count})!`);
+  }
+
   private handleCollectIceKatana(): void {
-    this.hasIceKatana = true;
-    this.world.markShopItemOwned('katana');
-    this.katanaView.setIceVariant(true);
-    if (!this.world.isCarryingLog()) {
-      this.holdingKatana = true;
-      this.holdingPotionSlot = null;
+    if (!this.world.isShopItemOwned('backpack') || !this.world.hasEmptyBackpackSlot()) {
+      this.notifyDropBlocked('Katana Băng');
+      return;
+    }
+    const res = this.world.addKatanaToBackpack('ice');
+    if (!res.added) {
+      this.notifyDropBlocked('Katana Băng');
+      return;
     }
     this.audio.playLevelUpSound();
     this.emitStats();
-    this.callbacks.onToast('Đã nhận Katana Băng! Đã thay thế Katana ban đầu.');
+    this.callbacks.onToast(
+      `Katana Băng đã bay vào Ô ${res.slotIndex + 1} trong Balo! Mở Balo (E) để sử dụng.`,
+    );
   }
 
   private syncOutfitToViewModels(): void {
@@ -1480,12 +1752,14 @@ export class VoxelEngine {
     this.latestStats.xp = this.xp;
     this.latestStats.xpToNext = getXpForNextLevel(this.level);
     this.latestStats.hasBackpack = this.world.isShopItemOwned('backpack');
-    this.latestStats.hasKatana = this.world.isShopItemOwned('katana');
-    this.latestStats.hasIceKatana = this.hasIceKatana;
+    this.latestStats.hasKatana = this.equippedKatana !== null;
+    this.latestStats.ownsBaseKatana = this.world.isShopItemOwned('katana');
+    this.latestStats.equippedKatana = this.equippedKatana;
     this.latestStats.hasShield = this.world.isShopItemOwned('shield');
     this.latestStats.backpackOpen = this.backpackOpen;
     this.latestStats.shopOpen = this.shopOpen;
     this.latestStats.outfitShopOpen = this.outfitShopOpen;
+    this.latestStats.craftingOpen = this.craftingOpen;
     this.latestStats.characterWindowOpen = this.characterWindowOpen;
     this.latestStats.gender = this.playerGender;
     this.latestStats.ownedOutfits = this.ownedOutfits;
@@ -1514,6 +1788,7 @@ export class VoxelEngine {
       heldLogLen !== null ? CashierStation.computeWoodValue(heldLogLen) : 0;
     this.latestStats.isShopTarget = Boolean(this.currentShopTarget);
     this.latestStats.isOutfitShopTarget = Boolean(this.currentOutfitShopTarget);
+    this.latestStats.isCraftingTarget = Boolean(this.currentCraftingTarget);
     this.latestStats.isConveyorTarget =
       carryingLog && Boolean(this.currentConveyorTarget);
     const chopProgress =
@@ -1522,6 +1797,7 @@ export class VoxelEngine {
         : 0;
     this.latestStats.chopProgress = chopProgress;
     this.lastHudChopProgress = chopProgress;
+    this.latestStats.craftingMaterialCounts = this.world.getCraftingMaterialCounts();
     this.latestStats.backpackItems = this.world.getBackpackItems();
     this.latestStats.bossHud = this.world.getBossHudState(
       this.player.position.x,
@@ -1530,7 +1806,7 @@ export class VoxelEngine {
 
     if (this.currentIceKatanaDropTarget) {
       const p = this.currentIceKatanaDropTarget.point;
-      this.latestStats.targetName = 'Katana Băng · Chuột phải hoặc lại gần nhận';
+      this.latestStats.targetName = 'Katana Băng · Chuột phải hoặc lại gần nhận vào Balo';
       this.latestStats.targetCoords = [
         Math.round(p.x),
         Math.round(p.y * 10) / 10,
@@ -1542,6 +1818,14 @@ export class VoxelEngine {
         this.level < DRAGON_MIN_ATTACK_LEVEL
           ? `Rồng Băng Lv.${DRAGON_LEVEL} (${hp}/${maxHp} · Cần Lv.${DRAGON_MIN_ATTACK_LEVEL} để gây sát thương)`
           : `Rồng Băng Lv.${DRAGON_LEVEL} (${hp}/${maxHp} · +5.000 XP)`;
+      this.latestStats.targetCoords = [
+        Math.round(point.x),
+        Math.round(point.y * 10) / 10,
+        Math.round(point.z),
+      ];
+    } else if (this.currentCraftingTarget && !this.world.isCarryingLog()) {
+      const { point } = this.currentCraftingTarget;
+      this.latestStats.targetName = 'Khu Chế tạo · Chuột phải để mở';
       this.latestStats.targetCoords = [
         Math.round(point.x),
         Math.round(point.y * 10) / 10,
@@ -1639,6 +1923,7 @@ export class VoxelEngine {
       this.isPlaying &&
       !this.shopOpen &&
       !this.outfitShopOpen &&
+      !this.craftingOpen &&
       !this.characterWindowOpen
     ) {
       this.pauseGame();
@@ -1646,14 +1931,30 @@ export class VoxelEngine {
   };
 
   private readonly onMouseMove = (e: MouseEvent): void => {
-    if (!this.isPlaying || this.shopOpen || this.outfitShopOpen || this.characterWindowOpen) return;
+    if (
+      !this.isPlaying ||
+      this.shopOpen ||
+      this.outfitShopOpen ||
+      this.craftingOpen ||
+      this.characterWindowOpen
+    ) {
+      return;
+    }
     if (document.pointerLockElement === this.renderer.domElement || this.isMouseDragging) {
       this.player.rotate(e.movementX, e.movementY);
     }
   };
 
   private readonly onMouseDown = (e: MouseEvent): void => {
-    if (!this.isPlaying || this.shopOpen || this.outfitShopOpen || this.characterWindowOpen) return;
+    if (
+      !this.isPlaying ||
+      this.shopOpen ||
+      this.outfitShopOpen ||
+      this.craftingOpen ||
+      this.characterWindowOpen
+    ) {
+      return;
+    }
     if (performance.now() - this.lastTouchTimestamp < 500) return;
     const canvas = this.renderer.domElement;
     if (document.pointerLockElement !== canvas && !this.isTouchDevice) {
@@ -1712,6 +2013,14 @@ export class VoxelEngine {
       return;
     }
 
+    if (this.craftingOpen) {
+      if (e.code === 'Escape' && !e.repeat) {
+        e.preventDefault();
+        this.closeCrafting();
+      }
+      return;
+    }
+
     if (this.characterWindowOpen) {
       if ((e.code === 'Escape' || e.code === 'KeyB') && !e.repeat) {
         e.preventDefault();
@@ -1745,7 +2054,7 @@ export class VoxelEngine {
       } else if (this.backpackOpen) {
         const digitMatch = /^(?:Digit|Numpad)([1-9])$/.exec(e.code);
         if (digitMatch) {
-          this.retrieveBackpackSlot(parseInt(digitMatch[1], 10) - 1);
+          this.useBackpackSlot(parseInt(digitMatch[1], 10) - 1);
         }
       }
     }
@@ -1760,7 +2069,15 @@ export class VoxelEngine {
   };
 
   private readonly onWheel = (e: WheelEvent): void => {
-    if (!this.isPlaying || this.shopOpen || this.outfitShopOpen || this.characterWindowOpen) return;
+    if (
+      !this.isPlaying ||
+      this.shopOpen ||
+      this.outfitShopOpen ||
+      this.craftingOpen ||
+      this.characterWindowOpen
+    ) {
+      return;
+    }
     if (e.deltaY > 0) {
       this.selectSlot(this.selectedSlotIndex + 1);
     } else if (e.deltaY < 0) {
@@ -1827,6 +2144,10 @@ export class VoxelEngine {
       ray,
       this.world.raycastDroppedIceKatana(ray.origin, ray.direction, 7.0),
     );
+    const craftingHit = this.raycastUnblockedTouchTarget(
+      ray,
+      this.world.raycastCraftingStation(ray.origin, ray.direction, 7.5),
+    );
     const outfitShopHit = this.raycastUnblockedTouchTarget(
       ray,
       this.world.raycastOutfitShop(ray.origin, ray.direction, 7.5),
@@ -1841,13 +2162,23 @@ export class VoxelEngine {
     );
 
     const dropDist = dropHit ? dropHit.point.distanceTo(ray.origin) : Infinity;
+    const craftingDist = craftingHit ? craftingHit.point.distanceTo(ray.origin) : Infinity;
     const outfitShopDist = outfitShopHit ? outfitShopHit.point.distanceTo(ray.origin) : Infinity;
     const shopDist = shopHit ? shopHit.point.distanceTo(ray.origin) : Infinity;
     const logDist = logHit ? logHit.point.distanceTo(ray.origin) : Infinity;
 
-    if (dropHit && dropDist <= outfitShopDist && dropDist <= shopDist && dropDist <= logDist) {
+    if (
+      dropHit &&
+      dropDist <= craftingDist &&
+      dropDist <= outfitShopDist &&
+      dropDist <= shopDist &&
+      dropDist <= logDist
+    ) {
       if (
         this.world.tryCollectIceKatana({
+          canCollectIceKatana: () =>
+            this.world.isShopItemOwned('backpack') && this.world.hasEmptyBackpackSlot(),
+          onIceKatanaBlocked: () => this.notifyDropBlocked('Katana Băng'),
           onCollectIceKatana: () => this.handleCollectIceKatana(),
         })
       ) {
@@ -1880,6 +2211,18 @@ export class VoxelEngine {
       const monsterDist = Math.min(slimeDist, mushroomDist, dragonDist);
 
       if (
+        craftingHit &&
+        craftingDist <= outfitShopDist &&
+        craftingDist <= shopDist &&
+        craftingDist < monsterDist &&
+        craftingDist <= logDist &&
+        craftingDist <= treeDist
+      ) {
+        this.openCrafting();
+        return;
+      }
+
+      if (
         outfitShopHit &&
         outfitShopDist <= shopDist &&
         outfitShopDist < monsterDist &&
@@ -1909,14 +2252,24 @@ export class VoxelEngine {
       this.katanaView.triggerSlash();
       this.audio.playSlashSound();
 
+      const katanaDmg = getKatanaDamage(this.equippedKatana);
+
       this.camera.getWorldDirection(this.rayDir);
-      let atk = this.world.attackSlimeWithKatana(ray.origin, ray.direction, 4.2);
+      let atk = this.world.attackSlimeWithKatana(ray.origin, ray.direction, katanaDmg, 4.2);
       if (!atk.hit) {
-        atk = this.world.attackSlimeWithKatana(this.camera.position, this.rayDir, 3.8);
+        atk = this.world.attackSlimeWithKatana(
+          this.camera.position,
+          this.rayDir,
+          katanaDmg,
+          3.8,
+        );
       }
       if (atk.hit) {
         this.audio.playSlimeHitSound();
         if (atk.killed) {
+          if (Math.random() < 0.5) {
+            this.world.spawnMonsterDrop('slime_orb', atk.x, atk.y, atk.z);
+          }
           const prevLevel = this.level;
           this.grantXp(atk.xpReward);
           if (this.level === prevLevel && this.level < MAX_LEVEL) {
@@ -1928,7 +2281,6 @@ export class VoxelEngine {
         return;
       }
 
-      const katanaDmg = this.hasIceKatana ? 2 : 1;
       let mushroomAtk = this.world.attackMushroomWithKatana(
         ray.origin,
         ray.direction,
@@ -1946,6 +2298,14 @@ export class VoxelEngine {
       if (mushroomAtk.hit) {
         this.audio.playSlimeHitSound();
         if (mushroomAtk.killed) {
+          if (Math.random() < 0.5) {
+            this.world.spawnMonsterDrop(
+              'mushroom_item',
+              mushroomAtk.x,
+              mushroomAtk.y,
+              mushroomAtk.z,
+            );
+          }
           const prevLevel = this.level;
           this.grantXp(mushroomAtk.xpReward);
           if (this.level === prevLevel && this.level < MAX_LEVEL) {
@@ -1959,11 +2319,10 @@ export class VoxelEngine {
         return;
       }
 
-      const dragonDmg = this.hasIceKatana ? 2 : 1;
       let dragonAtk = this.world.attackDragonWithKatana(
         ray.origin,
         ray.direction,
-        dragonDmg,
+        katanaDmg,
         5.6,
         this.level,
       );
@@ -1971,7 +2330,7 @@ export class VoxelEngine {
         dragonAtk = this.world.attackDragonWithKatana(
           this.camera.position,
           this.rayDir,
-          dragonDmg,
+          katanaDmg,
           5.4,
           this.level,
         );
@@ -2014,6 +2373,16 @@ export class VoxelEngine {
       return;
     }
 
+    if (
+      craftingHit &&
+      craftingDist <= outfitShopDist &&
+      craftingDist <= shopDist &&
+      craftingDist <= logDist
+    ) {
+      this.openCrafting();
+      return;
+    }
+
     if (outfitShopHit && outfitShopDist <= shopDist && outfitShopDist <= logDist) {
       this.openOutfitShop();
       return;
@@ -2052,7 +2421,15 @@ export class VoxelEngine {
 
   private readonly onTouchStart = (e: TouchEvent): void => {
     this.lastTouchTimestamp = performance.now();
-    if (!this.isPlaying || this.shopOpen || this.outfitShopOpen || this.characterWindowOpen) return;
+    if (
+      !this.isPlaying ||
+      this.shopOpen ||
+      this.outfitShopOpen ||
+      this.craftingOpen ||
+      this.characterWindowOpen
+    ) {
+      return;
+    }
     if (this.lookTouchId === null && e.changedTouches.length > 0) {
       const touch = e.changedTouches[0];
       this.lookTouchId = touch.identifier;
@@ -2072,6 +2449,12 @@ export class VoxelEngine {
             ? this.raycastUnblockedTouchTarget(
                 ray,
                 this.world.raycastDroppedIceKatana(ray.origin, ray.direction, 7.0),
+              )
+            : null;
+          const craftingHit = ray
+            ? this.raycastUnblockedTouchTarget(
+                ray,
+                this.world.raycastCraftingStation(ray.origin, ray.direction, 7.5),
               )
             : null;
           const outfitShopHit = ray
@@ -2094,6 +2477,7 @@ export class VoxelEngine {
             : null;
           const blockerDist = Math.min(
             dropHit && ray ? dropHit.point.distanceTo(ray.origin) : Infinity,
+            craftingHit && ray ? craftingHit.point.distanceTo(ray.origin) : Infinity,
             outfitShopHit && ray ? outfitShopHit.point.distanceTo(ray.origin) : Infinity,
             shopHit && ray ? shopHit.point.distanceTo(ray.origin) : Infinity,
             logHit && ray ? logHit.point.distanceTo(ray.origin) : Infinity,
@@ -2118,6 +2502,7 @@ export class VoxelEngine {
       !this.isPlaying ||
       this.shopOpen ||
       this.outfitShopOpen ||
+      this.craftingOpen ||
       this.characterWindowOpen ||
       this.lookTouchId === null
     ) {
@@ -2168,6 +2553,7 @@ export class VoxelEngine {
           this.isPlaying &&
           !this.shopOpen &&
           !this.outfitShopOpen &&
+          !this.craftingOpen &&
           !this.characterWindowOpen
         ) {
           this.performScreenTapInteract(endX, endY);
@@ -2288,7 +2674,14 @@ export class VoxelEngine {
       this.fpsTimer = 0;
     }
 
-    if (this.isPlaying && !this.shopOpen && !this.outfitShopOpen && !this.characterWindowOpen) {
+    if (
+      this.isPlaying &&
+      !this.shopOpen &&
+      !this.outfitShopOpen &&
+      !this.craftingOpen &&
+      !this.characterWindowOpen
+    ) {
+      this.player.moveSpeedMultiplier = getKatanaMoveSpeedMultiplier(this.equippedKatana);
       const jumpState = this.player.update(dt);
       if (jumpState.jumped) {
         this.audio.playJumpSound();
@@ -2400,6 +2793,9 @@ export class VoxelEngine {
           }
           this.emitStats();
         },
+        canCollectIceKatana: () =>
+          this.world.isShopItemOwned('backpack') && this.world.hasEmptyBackpackSlot(),
+        onIceKatanaBlocked: () => this.notifyDropBlocked('Katana Băng'),
         onCollectIceKatana: () => {
           this.handleCollectIceKatana();
         },
@@ -2440,6 +2836,13 @@ export class VoxelEngine {
             `Khiên đã đỡ đòn phun độc của Nấm Độc Lv.${mushroomLevel}!`,
           );
         },
+      },
+      this.world.isShopItemOwned('backpack'),
+      {
+        canCollect: (kind) => this.world.canAddMaterialToBackpack(kind),
+        onCollect: (kind) => this.handleCollectMonsterDrop(kind),
+        onBlocked: (kind) =>
+          this.notifyDropBlocked(kind === 'slime_orb' ? 'Quả cầu Slime' : 'Nấm đỏ'),
       },
     );
     if (!this.hasStarted && !this.isPlaying) {
@@ -2482,6 +2885,10 @@ export class VoxelEngine {
 
     this.camera.getWorldDirection(this.rayDir);
     const dropHit = this.world.raycastDroppedIceKatana(this.camera.position, this.rayDir, 6.5);
+    const craftingHit = this.world.raycastCraftingStation(this.camera.position, this.rayDir, 7.5);
+    const craftingDist = craftingHit
+      ? craftingHit.point.distanceTo(this.camera.position)
+      : Infinity;
     const outfitShopHit = this.world.raycastOutfitShop(this.camera.position, this.rayDir, 7.5);
     const outfitShopDist = outfitShopHit
       ? outfitShopHit.point.distanceTo(this.camera.position)
@@ -2492,6 +2899,7 @@ export class VoxelEngine {
     if (dropHit) {
       this.currentIceKatanaDropTarget = dropHit;
       this.currentDragonTarget = null;
+      this.currentCraftingTarget = null;
       this.currentOutfitShopTarget = null;
       this.currentShopTarget = null;
       this.currentSlimeTarget = null;
@@ -2517,6 +2925,25 @@ export class VoxelEngine {
       const logDist = logHit ? logHit.point.distanceTo(this.camera.position) : Infinity;
 
       if (
+        craftingHit &&
+        craftingDist <= outfitShopDist &&
+        craftingDist <= shopDist &&
+        craftingDist <= dragonDist &&
+        craftingDist <= slimeDist &&
+        craftingDist <= mushroomDist &&
+        craftingDist <= treeDist &&
+        craftingDist <= logDist
+      ) {
+        const wallHit = voxelRaycast(this.world, this.camera.position, this.rayDir, craftingDist);
+        this.currentCraftingTarget = wallHit ? null : craftingHit;
+        this.currentOutfitShopTarget = null;
+        this.currentShopTarget = null;
+        this.currentDragonTarget = null;
+        this.currentSlimeTarget = null;
+        this.currentMushroomTarget = null;
+        this.currentTreeTarget = null;
+        this.currentLogTarget = null;
+      } else if (
         outfitShopHit &&
         outfitShopDist <= shopDist &&
         outfitShopDist <= dragonDist &&
@@ -2527,6 +2954,7 @@ export class VoxelEngine {
       ) {
         const wallHit = voxelRaycast(this.world, this.camera.position, this.rayDir, outfitShopDist);
         this.currentOutfitShopTarget = wallHit ? null : outfitShopHit;
+        this.currentCraftingTarget = null;
         this.currentShopTarget = null;
         this.currentDragonTarget = null;
         this.currentSlimeTarget = null;
@@ -2543,6 +2971,7 @@ export class VoxelEngine {
       ) {
         const wallHit = voxelRaycast(this.world, this.camera.position, this.rayDir, shopDist);
         this.currentShopTarget = wallHit ? null : shopHit;
+        this.currentCraftingTarget = null;
         this.currentOutfitShopTarget = null;
         this.currentDragonTarget = null;
         this.currentSlimeTarget = null;
@@ -2564,6 +2993,7 @@ export class VoxelEngine {
         this.currentLogTarget = null;
         this.currentShopTarget = null;
         this.currentOutfitShopTarget = null;
+        this.currentCraftingTarget = null;
       } else if (
         slimeHit &&
         slimeDist <= mushroomDist &&
@@ -2578,6 +3008,7 @@ export class VoxelEngine {
         this.currentLogTarget = null;
         this.currentShopTarget = null;
         this.currentOutfitShopTarget = null;
+        this.currentCraftingTarget = null;
       } else if (mushroomHit && mushroomDist <= treeDist && mushroomDist <= logDist) {
         const wallHit = voxelRaycast(this.world, this.camera.position, this.rayDir, mushroomDist);
         this.currentMushroomTarget = wallHit ? null : mushroomHit;
@@ -2587,6 +3018,7 @@ export class VoxelEngine {
         this.currentLogTarget = null;
         this.currentShopTarget = null;
         this.currentOutfitShopTarget = null;
+        this.currentCraftingTarget = null;
       } else if (treeHit && treeDist <= logDist) {
         const wallHit = voxelRaycast(this.world, this.camera.position, this.rayDir, treeDist);
         this.currentTreeTarget = wallHit ? null : treeHit;
@@ -2596,6 +3028,7 @@ export class VoxelEngine {
         this.currentLogTarget = null;
         this.currentShopTarget = null;
         this.currentOutfitShopTarget = null;
+        this.currentCraftingTarget = null;
       } else if (logHit) {
         const wallHit = voxelRaycast(this.world, this.camera.position, this.rayDir, logDist);
         this.currentLogTarget = wallHit ? null : logHit;
@@ -2605,6 +3038,7 @@ export class VoxelEngine {
         this.currentTreeTarget = null;
         this.currentShopTarget = null;
         this.currentOutfitShopTarget = null;
+        this.currentCraftingTarget = null;
       } else {
         this.currentDragonTarget = null;
         this.currentSlimeTarget = null;
@@ -2613,6 +3047,7 @@ export class VoxelEngine {
         this.currentLogTarget = null;
         this.currentShopTarget = null;
         this.currentOutfitShopTarget = null;
+        this.currentCraftingTarget = null;
       }
     } else {
       this.currentIceKatanaDropTarget = null;
@@ -2629,10 +3064,12 @@ export class VoxelEngine {
         this.currentConveyorTarget = wallHit ? null : convHit;
         this.currentShopTarget = null;
         this.currentOutfitShopTarget = null;
+        this.currentCraftingTarget = null;
       } else {
         this.currentConveyorTarget = null;
         this.currentShopTarget = null;
         this.currentOutfitShopTarget = null;
+        this.currentCraftingTarget = null;
       }
     }
 

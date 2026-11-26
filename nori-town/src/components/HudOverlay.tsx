@@ -68,7 +68,10 @@ export const HudOverlay = memo(function HudOverlay({
       }
 
       const modalOpen =
-        stats.shopOpen || stats.outfitShopOpen || stats.characterWindowOpen;
+        stats.shopOpen ||
+        stats.outfitShopOpen ||
+        stats.craftingOpen ||
+        stats.characterWindowOpen;
 
       if (crosshairRef.current) {
         crosshairRef.current.style.display = modalOpen ? 'none' : 'block';

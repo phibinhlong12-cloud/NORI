@@ -4,6 +4,8 @@ import fs from 'fs';
 import path from 'path';
 import {defineConfig} from 'vite';
 
+const rootDir = import.meta.dirname;
+
 export default defineConfig(() => {
   return {
     plugins: [
@@ -19,21 +21,48 @@ export default defineConfig(() => {
           if (error) {
             return;
           }
-          const distDir = path.resolve(__dirname, 'dist');
-          const srcAssets = path.resolve(__dirname, 'src/assets');
+          const distDir = path.resolve(rootDir, 'dist');
+          const srcAssets = path.resolve(rootDir, 'src/assets');
           const distAssets = path.resolve(distDir, 'src/assets');
           if (fs.existsSync(distDir) && fs.existsSync(srcAssets)) {
             fs.cpSync(srcAssets, distAssets, {recursive: true, force: true});
+          }
+          // Strip unused AI Studio chat screenshot attachments copied from public/
+          // so the deployed production bundle stays lightweight (~1.6 MB instead of 22 MB).
+          const distUnusedAttachments = path.resolve(distDir, 'assets/aistudio');
+          if (fs.existsSync(distUnusedAttachments)) {
+            fs.rmSync(distUnusedAttachments, {recursive: true, force: true});
           }
         },
       },
     ],
     resolve: {
       alias: {
-        '@': path.resolve(__dirname, '.'),
+        '@': path.resolve(rootDir, '.'),
       },
     },
+    build: {
+      chunkSizeWarningLimit: 1000,
+      rolldownOptions: {
+        output: {
+          codeSplitting: {
+            groups: [
+              {
+                name: 'three-vendor',
+                test: /node_modules[\\/]three/,
+              },
+            ],
+          },
+        },
+      },
+    },
+    preview: {
+      port: 3000,
+      host: '0.0.0.0',
+    },
     server: {
+      port: 3000,
+      host: '0.0.0.0',
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
       // Do not modify—file watching is disabled to prevent flickering during agent edits.
       hmr: process.env.DISABLE_HMR !== 'true',

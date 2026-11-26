@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { CharacterGender } from './firstPersonArms';
-import { createKatanaMeshGroup } from './katana';
+import { createKatanaMeshGroup, KatanaVisualVariant } from './katana';
 import { isOutfitCompatibleWithGender, OutfitId } from './outfits';
 import { createParabolicEllipsoidGeometry, createParabolicLatheGeometry } from './parabolic';
 import { createShieldMeshGroup } from './shield';
@@ -17,6 +17,7 @@ export interface CharacterAssetHandles {
 export interface CharacterBuildOptions {
   hasKatana?: boolean;
   hasIceKatana?: boolean;
+  katanaVariant?: KatanaVisualVariant | null;
   hasShield?: boolean;
   previewWeapon?: boolean;
   outfit?: OutfitId;
@@ -2156,13 +2157,25 @@ export function createCharacterMeshGroup(
 
   // Thanh kiếm Katana cất gọn trong vỏ đeo bên hông trái (chuôi & chắn tay hướng ra trước, vỏ kiếm chếch ra sau)
   if (showKatana) {
+    const resolvedKatanaVariant: KatanaVisualVariant =
+      options.katanaVariant ?? (showIceKatana ? 'ice' : isMale ? 'normal' : 'crimson');
+    const scabbardColor =
+      resolvedKatanaVariant === 'leaf'
+        ? '#166534'
+        : isMale
+          ? '#b91c1c'
+          : '#dc2626';
     const scabbard = createScabbardGroup(
       handles,
-      isMale ? '#b91c1c' : '#dc2626',
-      showIceKatana,
+      scabbardColor,
+      resolvedKatanaVariant === 'ice',
     );
-    const katanaVariant = showIceKatana ? 'ice' : isMale ? 'normal' : 'crimson';
-    const sheathedKatana = createKatanaMeshGroup(handles, showIceKatana, katanaVariant, true);
+    const sheathedKatana = createKatanaMeshGroup(
+      handles,
+      resolvedKatanaVariant === 'ice',
+      resolvedKatanaVariant,
+      true,
+    );
     sheathedKatana.scale.setScalar(0.92);
     sheathedKatana.position.set(0, -0.228, 0);
     scabbard.add(sheathedKatana);
