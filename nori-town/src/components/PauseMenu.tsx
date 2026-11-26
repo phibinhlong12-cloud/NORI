@@ -103,7 +103,7 @@ const THEME_ORDER: ElementThemeKey[] = ['lightning', 'fire', 'sakura', 'rainbow'
 const GUIDE_ITEMS: Array<{ label: string; keys: string }> = [
   { label: 'Di chuyển / Chạy', keys: 'WASD + Shift' },
   { label: 'Nhảy', keys: 'Space' },
-  { label: 'Chặt cây (giữ 5s) / Katana (1 click)', keys: 'Chuột Trái' },
+  { label: 'Chặt cây (giữ 3s) / Katana (1 click)', keys: 'Chuột Trái' },
   { label: 'Khiêng / Bán / Mua', keys: 'Chuột Phải' },
   { label: 'Mở Balo / Chọn ô', keys: 'E / 1–9' },
   { label: 'Cất / Lấy nhanh (1→9)', keys: 'F' },
@@ -747,7 +747,7 @@ export const PauseMenu = memo(function PauseMenu({
                     </div>
                     {touchControlsEnabled && (
                       <div className="bg-emerald-950/60 border border-emerald-400/25 rounded-xl px-3 py-2 text-[11px] text-emerald-200 leading-relaxed">
-                        <strong>Mẹo điện thoại:</strong> Kéo cần tròn góc trái để di chuyển mọi hướng, vuốt vùng trống để xoay góc nhìn. Chạm giữ vào thân cây 5s (hoặc chạm 1 lần khi cầm Katana) để chặt cây, chạm lên quái để chém, và chạm trực tiếp vào ô Balo để chọn đồ.
+                        <strong>Mẹo điện thoại:</strong> Kéo cần tròn góc trái để di chuyển mọi hướng, vuốt vùng trống để xoay góc nhìn. Chạm giữ vào thân cây 3s (hoặc chạm 1 lần khi cầm Katana) để chặt cây, chạm lên quái để chém, và chạm trực tiếp vào ô Balo để chọn đồ.
                       </div>
                     )}
                   </div>

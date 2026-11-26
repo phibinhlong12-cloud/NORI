@@ -8,7 +8,7 @@ import { HudOverlay } from './components/HudOverlay';
 import { MobileControls } from './components/MobileControls';
 import { MoneyTracker } from './components/MoneyTracker';
 import { PauseMenu } from './components/PauseMenu';
-import { PlayerStatusBars } from './components/PlayerStatusBars';
+import { PlayerStatusBars, XpBar } from './components/PlayerStatusBars';
 import { VoxelEngine } from './game/engine';
 import { CharacterGender } from './game/firstPersonArms';
 import {
@@ -166,6 +166,7 @@ export default function App() {
         onToggleFullscreen={handleToggleFullscreen}
         onPause={handlePause}
         moneySlot={<MoneyTracker engine={engineInstance} />}
+        xpSlot={<XpBar engine={engineInstance} />}
         leftSlot={
           <BackpackHud
             engine={engineInstance}

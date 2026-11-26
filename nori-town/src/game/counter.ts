@@ -58,6 +58,7 @@ export class CashierStation {
 
   private readonly geometries: THREE.BufferGeometry[] = [];
   private readonly materials: THREE.Material[] = [];
+  private readonly textures: THREE.Texture[] = [];
   private readonly scannerLightMat: THREE.MeshBasicMaterial;
   private readonly raycaster = new THREE.Raycaster();
   private readonly beltOrientationQuat = new THREE.Quaternion().setFromAxisAngle(
@@ -175,7 +176,97 @@ export class CashierStation {
     addBox(0.46, 0.34, 0.08, posX, 5.47, posZ - 0.12, terminalMat);
     addBox(0.38, 0.24, 0.03, posX, 5.48, posZ - 0.07, screenMat);
 
+    // 3. Bảng thông báo gắn tường phía trên băng tải: "Chặt gỗ để vào đây"
+    const signX = beltCenterX - 0.1;
+    const signY = 6.62;
+    const signZ = -21.95;
+    const signFrameMat = new THREE.MeshStandardMaterial({
+      color: '#3b2416',
+      roughness: 0.78,
+      metalness: 0.06,
+    });
+    const signTrimMat = new THREE.MeshStandardMaterial({
+      color: '#b45309',
+      roughness: 0.42,
+      metalness: 0.55,
+    });
+    const signTex = this.createNoticeSignTexture();
+    const signFaceMat = new THREE.MeshStandardMaterial({
+      map: signTex,
+      emissiveMap: signTex,
+      emissive: '#ffffff',
+      emissiveIntensity: 0.24,
+      roughness: 0.42,
+      metalness: 0.08,
+    });
+    this.materials.push(signFrameMat, signTrimMat, signFaceMat);
+
+    // Thanh đỡ gắn chặt bảng vào mặt tường đá phía sau (-Z)
+    addBox(0.18, 0.2, 0.92, signX - 2.1, signY, signZ - 0.46, frameMat);
+    addBox(0.18, 0.2, 0.92, signX + 2.1, signY, signZ - 0.46, frameMat);
+
+    // Khung gỗ & viền trên dưới của bảng
+    addBox(5.9, 1.12, 0.16, signX, signY, signZ, signFrameMat);
+    addBox(6.04, 0.09, 0.2, signX, signY + 0.58, signZ, signTrimMat);
+    addBox(6.04, 0.09, 0.2, signX, signY - 0.58, signZ, signTrimMat);
+
+    const signGeo = new THREE.PlaneGeometry(5.68, 0.94);
+    this.geometries.push(signGeo);
+    const signMesh = new THREE.Mesh(signGeo, signFaceMat);
+    signMesh.position.set(signX, signY, signZ + 0.09);
+    signMesh.matrixAutoUpdate = false;
+    signMesh.updateMatrix();
+    this.rootGroup.add(signMesh);
+
     this.scene.add(this.rootGroup);
+  }
+
+  private createNoticeSignTexture(): THREE.CanvasTexture {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1024;
+    canvas.height = 192;
+    const ctx = canvas.getContext('2d')!;
+
+    const grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+    grad.addColorStop(0, '#0f172a');
+    grad.addColorStop(1, '#1e293b');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.strokeStyle = '#f59e0b';
+    ctx.lineWidth = 8;
+    ctx.strokeRect(10, 10, canvas.width - 20, canvas.height - 20);
+
+    ctx.strokeStyle = 'rgba(251, 191, 36, 0.35)';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(20, 20, canvas.width - 40, canvas.height - 40);
+
+    // Hai mũi tên chỉ xuống băng tải
+    const drawDownArrow = (cx: number, cy: number) => {
+      ctx.fillStyle = '#fbbf24';
+      ctx.beginPath();
+      ctx.moveTo(cx - 18, cy - 12);
+      ctx.lineTo(cx + 18, cy - 12);
+      ctx.lineTo(cx, cy + 16);
+      ctx.closePath();
+      ctx.fill();
+    };
+    drawDownArrow(84, canvas.height / 2 + 2);
+    drawDownArrow(canvas.width - 84, canvas.height / 2 + 2);
+
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = 'bold 64px sans-serif';
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
+    ctx.fillText('Chặt gỗ để vào đây', canvas.width / 2, canvas.height / 2 + 6);
+    ctx.fillStyle = '#fef3c7';
+    ctx.fillText('Chặt gỗ để vào đây', canvas.width / 2, canvas.height / 2 + 2);
+
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.anisotropy = 4;
+    this.textures.push(tex);
+    return tex;
   }
 
   static computeWoodValue(lengthInBlocks: number): number {
@@ -322,7 +413,11 @@ export class CashierStation {
     for (const mat of this.materials) {
       mat.dispose();
     }
+    for (const tex of this.textures) {
+      tex.dispose();
+    }
     this.geometries.length = 0;
     this.materials.length = 0;
+    this.textures.length = 0;
   }
 }

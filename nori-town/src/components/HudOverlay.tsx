@@ -10,6 +10,7 @@ interface HudOverlayProps {
   onToggleFullscreen: () => void;
   onPause: () => void;
   moneySlot?: ReactNode;
+  xpSlot?: ReactNode;
   leftSlot?: ReactNode;
 }
 
@@ -24,6 +25,7 @@ export const HudOverlay = memo(function HudOverlay({
   onToggleFullscreen,
   onPause,
   moneySlot,
+  xpSlot,
   leftSlot,
 }: HudOverlayProps) {
   const coordsRef = useRef<HTMLSpanElement | null>(null);
@@ -75,7 +77,7 @@ export const HudOverlay = memo(function HudOverlay({
         if (!modalOpen && stats.chopProgress > 0) {
           chopBoxRef.current.style.display = 'flex';
           chopBarRef.current.style.width = `${Math.round(stats.chopProgress * 100)}%`;
-          chopTextRef.current.textContent = `${(stats.chopProgress * 5).toFixed(1)} / 5.0s`;
+          chopTextRef.current.textContent = `${(stats.chopProgress * 3).toFixed(1)} / 3.0s`;
         } else {
           chopBoxRef.current.style.display = 'none';
         }
@@ -112,7 +114,7 @@ export const HudOverlay = memo(function HudOverlay({
             <div className="w-full flex items-center justify-between gap-2 text-[10px] font-semibold text-amber-200">
               <span>Đang chặt cây...</span>
               <span ref={chopTextRef} className="font-mono-tech text-emerald-300">
-                0.0 / 5.0s
+                0.0 / 3.0s
               </span>
             </div>
             <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
@@ -160,6 +162,8 @@ export const HudOverlay = memo(function HudOverlay({
 
           {moneySlot}
         </div>
+
+        {xpSlot}
 
         {leftSlot}
       </div>

@@ -71,7 +71,7 @@ export interface HudStats {
   targetCoords: [number, number, number] | null;
 }
 
-const TREE_HAND_CHOP_DURATION = 5.0;
+const TREE_HAND_CHOP_DURATION = 3.0;
 
 export interface VoxelEngineCallbacks {
   onPlayingChange: (isPlaying: boolean, hasStarted: boolean) => void;
@@ -875,7 +875,7 @@ export class VoxelEngine {
       if (this.chopElapsed < 0.45 && now - this.lastChopHintAt > 4000) {
         this.lastChopHintAt = now;
         this.callbacks.onToast(
-          'Chưa dùng Katana: hãy giữ chuột trái tại vị trí chặt 5 giây để cây đổ!',
+          'Chưa dùng Katana: hãy giữ chuột trái tại vị trí chặt 3 giây để cây đổ!',
         );
       }
     }
@@ -1001,7 +1001,7 @@ export class VoxelEngine {
         return;
       }
 
-      // Chưa dùng Katana: bắt đầu giữ tại vị trí chặt đủ 5 giây mới đổ
+      // Chưa dùng Katana: bắt đầu giữ tại vị trí chặt đủ 3 giây mới đổ
       this.chopTreeId = tree.id;
       this.chopCutLocalY = cutLocalY;
       this.chopElapsed = 0;
@@ -1452,7 +1452,7 @@ export class VoxelEngine {
       this.latestStats.targetName =
         this.holdingKatana && !this.world.isCarryingLog()
           ? 'Thân Cây · Chuột trái chém chặt (1 phát)'
-          : 'Thân Cây · Giữ chuột trái 5 giây tại vị trí chặt';
+          : 'Thân Cây · Giữ chuột trái 3 giây tại vị trí chặt';
       this.latestStats.targetCoords = [
         Math.round(this.currentTreeTarget.tree.x),
         Math.round(

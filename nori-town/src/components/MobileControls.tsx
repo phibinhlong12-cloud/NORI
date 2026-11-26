@@ -302,8 +302,9 @@ export const MobileControls = memo(function MobileControls({
         </div>
       </div>
 
-      {/* Cụm bên phải: Hàng trang bị nhanh + Nhân vật + Hành động chính & Nhảy */}
+      {/* Cụm bên phải: Dòng 1 (Nhân vật & Ba lô) -> Dòng 2 (Hành động) -> Dòng 3 (Nút Nhảy tròn) */}
       <div className="flex flex-col gap-2 items-end pointer-events-auto">
+        {/* Dòng 1: Nhân vật & Ba lô */}
         <div className="flex flex-wrap justify-end gap-1.5">
           <button
             type="button"
@@ -319,44 +320,34 @@ export const MobileControls = memo(function MobileControls({
           </button>
 
           {hud.hasBackpack && (
-              <>
-                <button
-                  type="button"
-                  onPointerDown={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    engine?.toggleBackpack();
-                  }}
-                  className={`h-9 px-2.5 rounded-xl border text-[11px] font-bold flex items-center gap-1 active:scale-95 transition ${
-                    hud.backpackOpen
-                      ? 'bg-amber-500/90 border-amber-300 text-slate-950'
-                      : 'bg-slate-950/80 border-amber-400/35 text-amber-200'
-                  }`}
-                >
-                  <Backpack className="w-3.5 h-3.5" />
-                  <span>
-                    {hud.backpackUsed}/{BACKPACK_CAPACITY}
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  onPointerDown={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    engine?.interactBackpackWood();
-                  }}
-                  className={`h-9 px-2.5 rounded-xl border text-[11px] font-bold flex items-center gap-1 active:scale-95 transition ${
-                    hud.carryingLog
-                      ? 'bg-emerald-500/85 border-emerald-300 text-slate-950'
-                      : 'bg-slate-950/80 border-white/20 text-amber-200'
-                  }`}
-                >
-                  <TreePine className="w-3.5 h-3.5" />
-                  <span>{hud.carryingLog ? 'Cất' : 'Gỗ'}</span>
-                </button>
-              </>
-            )}
+            <button
+              type="button"
+              onPointerDown={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                engine?.toggleBackpack();
+              }}
+              className={`h-9 px-2.5 rounded-xl border text-[11px] font-bold flex items-center gap-1 active:scale-95 transition ${
+                hud.backpackOpen
+                  ? 'bg-amber-500/90 border-amber-300 text-slate-950'
+                  : 'bg-slate-950/80 border-amber-400/35 text-amber-200'
+              }`}
+            >
+              <Backpack className="w-3.5 h-3.5" />
+              <span>
+                Ba lô {hud.backpackUsed}/{BACKPACK_CAPACITY}
+              </span>
+            </button>
+          )}
+        </div>
 
+        {/* Dòng 2: Các nút hành động (Kiếm, Khiên, Hồi máu, Cất/Lấy gỗ, Bán đồ) */}
+        {(hud.hasKatana ||
+          hud.hasShield ||
+          (holdingPotion && !hud.carryingLog) ||
+          hud.hasBackpack ||
+          hud.inSellZone) && (
+          <div className="flex flex-wrap justify-end gap-1.5">
             {hud.hasKatana && (
               <button
                 type="button"
@@ -398,55 +389,90 @@ export const MobileControls = memo(function MobileControls({
                 <span>Khiên</span>
               </button>
             )}
-        </div>
 
-        <div className="flex items-end gap-1.5">
-          {hud.inSellZone && (
-            <button
-              type="button"
-              onPointerDown={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                engine?.sellCarriedLog();
-              }}
-              className={`h-12 px-3.5 rounded-xl border font-bold text-xs active:scale-95 transition flex items-center gap-1.5 shadow-lg ${
-                hud.carryingLog
-                  ? 'bg-emerald-500/95 border-emerald-200 text-slate-950 shadow-[0_0_18px_rgba(16,185,129,0.45)]'
-                  : 'bg-slate-950/85 border-emerald-400/45 text-emerald-200'
-              }`}
+            {holdingPotion && !hud.carryingLog && (
+              <button
+                type="button"
+                onPointerDown={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  engine?.drinkHeldPotion();
+                }}
+                className="h-9 px-2.5 rounded-xl border text-[11px] font-bold active:scale-95 transition flex items-center gap-1 bg-rose-950/90 border-rose-400 text-rose-200 active:bg-rose-500/40"
+              >
+                <FlaskConical className="w-3.5 h-3.5 text-rose-300 shrink-0" />
+                <span>Hồi máu</span>
+              </button>
+            )}
+
+            {hud.hasBackpack && (
+              <button
+                type="button"
+                onPointerDown={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  engine?.interactBackpackWood();
+                }}
+                className={`h-9 px-2.5 rounded-xl border text-[11px] font-bold flex items-center gap-1 active:scale-95 transition ${
+                  hud.carryingLog
+                    ? 'bg-emerald-500/85 border-emerald-300 text-slate-950'
+                    : 'bg-slate-950/80 border-white/20 text-amber-200'
+                }`}
+              >
+                <TreePine className="w-3.5 h-3.5" />
+                <span>{hud.carryingLog ? 'Cất gỗ' : 'Lấy gỗ'}</span>
+              </button>
+            )}
+
+            {hud.inSellZone && (
+              <button
+                type="button"
+                onPointerDown={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  engine?.sellCarriedLog();
+                }}
+                className={`h-9 px-2.5 rounded-xl border font-bold text-[11px] active:scale-95 transition flex items-center gap-1 shadow-lg ${
+                  hud.carryingLog
+                    ? 'bg-emerald-500/95 border-emerald-200 text-slate-950 shadow-[0_0_16px_rgba(16,185,129,0.45)]'
+                    : 'bg-slate-950/85 border-emerald-400/45 text-emerald-200'
+                }`}
+              >
+                <Coins className="w-3.5 h-3.5 shrink-0" />
+                <span>
+                  {hud.carryingLog && hud.carriedLogValue > 0
+                    ? `Bán (${hud.carriedLogValue.toLocaleString('vi-VN')}đ)`
+                    : 'Bán đồ'}
+                </span>
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Dòng 3: Nút Nhảy hình tròn chỉ hiển thị icon */}
+        <button
+          type="button"
+          aria-label="Nhảy"
+          {...bindKeyProps('Space')}
+          className="relative w-14 h-14 rounded-full p-[2.5px] bg-gradient-to-tr from-sky-400 via-violet-500 to-fuchsia-400 shadow-[0_0_16px_rgba(192,132,252,0.45)] active:scale-95 transition flex items-center justify-center"
+        >
+          <span className="w-full h-full rounded-full bg-slate-900/85 flex items-center justify-center">
+            <svg
+              viewBox="0 0 64 64"
+              className="w-9 h-9 text-slate-100"
+              fill="currentColor"
+              aria-hidden="true"
             >
-              <Coins className="w-4 h-4 shrink-0" />
-              <span>
-                {hud.carryingLog && hud.carriedLogValue > 0
-                  ? `Bán đồ (+${hud.carriedLogValue.toLocaleString('vi-VN')}đ)`
-                  : 'Bán đồ'}
-              </span>
-            </button>
-          )}
-
-          {holdingPotion && !hud.carryingLog && (
-            <button
-              type="button"
-              onPointerDown={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                engine?.drinkHeldPotion();
-              }}
-              className="h-12 px-3.5 rounded-xl border font-bold text-xs active:scale-95 transition flex items-center gap-1 bg-rose-950/90 border-rose-400 text-rose-200 active:bg-rose-500/40"
-            >
-              <FlaskConical className="w-3.5 h-3.5 text-rose-300 shrink-0" />
-              <span>Uống (+2)</span>
-            </button>
-          )}
-
-          <button
-            type="button"
-            {...bindKeyProps('Space')}
-            className="w-16 h-12 bg-slate-950/80 border border-amber-400/45 rounded-xl text-amber-300 font-bold text-xs flex items-center justify-center active:bg-amber-400/30 active:scale-95 transition"
-          >
-            NHẢY
-          </button>
-        </div>
+              {/* Đầu */}
+              <circle cx="23.5" cy="16" r="4.5" />
+              {/* Thân & tư thế nhảy bật trên không */}
+              <path d="M22.8 21.8c2.6-.9 5.5.2 7.6 1.9l9.2 1.7c1.2.2 2 1.3 1.8 2.5-.2 1.1-1.2 1.8-2.3 1.7l-7.2-.9 2.9 6.6 5 8.1c.7 1.1.3 2.5-.8 3.2-1 .6-2.3.3-3-.6l-5.7-7.7-4.5 2.4 3.4 6.5c.6 1.1.2 2.4-.9 3-1 .6-2.3.2-2.9-.8l-4.8-8.3c-.7-1.2-.3-2.7.9-3.4l5.4-3.1-3.1-5.6-3.7 3.7c-.9.9-2.4.9-3.2 0-.8-.8-.8-2.2 0-3l5.5-5.8c.9-.9 2.2-2.7 3.4-3.1z" />
+              {/* Thanh kiếm gọn sau tay */}
+              <path d="M44.2 16.5l2.5.8-3.8 18.2-2.2-.5 3.5-18.5z" opacity="0.92" />
+              <rect x="40.3" y="25.2" width="6.2" height="1.8" rx="0.8" transform="rotate(14 43.4 26.1)" opacity="0.92" />
+            </svg>
+          </span>
+        </button>
       </div>
     </div>
   );

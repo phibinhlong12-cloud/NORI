@@ -24,10 +24,7 @@ const INITIAL_STATUS: StatusState = {
   xpToNext: getXpForNextLevel(1),
 };
 
-export const PlayerStatusBars = memo(function PlayerStatusBars({
-  engine,
-  touchMode = false,
-}: PlayerStatusBarsProps) {
+function useStatusState(engine: VoxelEngine | null): StatusState {
   const [status, setStatus] = useState<StatusState>(INITIAL_STATUS);
 
   useEffect(() => {
@@ -58,12 +55,52 @@ export const PlayerStatusBars = memo(function PlayerStatusBars({
     });
   }, [engine]);
 
+  return status;
+}
+
+export const XpBar = memo(function XpBar({ engine }: { engine: VoxelEngine | null }) {
+  const status = useStatusState(engine);
   const isMaxLevel = status.level >= MAX_LEVEL;
   const xpPercent = isMaxLevel
     ? 100
     : status.xpToNext > 0
       ? Math.min(100, (status.xp / status.xpToNext) * 100)
       : 0;
+
+  return (
+    <div className="bg-slate-950/85 border border-emerald-400/25 text-white px-2.5 py-1.5 sm:px-3.5 sm:py-2 rounded-xl shadow-lg pointer-events-none w-[184px] sm:w-[216px] space-y-1">
+      <div className="flex items-center justify-between gap-2 text-[10px] sm:text-[11px] font-mono-tech">
+        <span className="flex items-center gap-1 font-bold text-emerald-300 whitespace-nowrap">
+          <Sparkles className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-emerald-400 shrink-0" />
+          <span>Lv.{status.level}</span>
+          {isMaxLevel && (
+            <span className="px-1 py-0.5 rounded bg-amber-500 text-slate-950 text-[8px] font-bold leading-none">
+              MAX
+            </span>
+          )}
+        </span>
+        <span className="text-slate-300 tabular-nums whitespace-nowrap">
+          {isMaxLevel
+            ? 'Tối đa (30)'
+            : `${status.xp.toLocaleString('vi-VN')} / ${status.xpToNext.toLocaleString('vi-VN')} XP`}
+        </span>
+      </div>
+
+      <div className="h-1.5 sm:h-2 w-full rounded-full bg-slate-800 border border-white/10 overflow-hidden">
+        <div
+          className="h-full bg-emerald-400 transition-[width] duration-200"
+          style={{ width: `${xpPercent}%` }}
+        />
+      </div>
+    </div>
+  );
+});
+
+export const PlayerStatusBars = memo(function PlayerStatusBars({
+  engine,
+  touchMode = false,
+}: PlayerStatusBarsProps) {
+  const status = useStatusState(engine);
 
   const hpDisplay = Number.isInteger(status.hp)
     ? String(status.hp)
@@ -77,36 +114,9 @@ export const PlayerStatusBars = memo(function PlayerStatusBars({
           : 'bottom-3 w-[min(92vw,420px)]'
       }`}
     >
-      <div className="bg-slate-950/90 border border-white/15 rounded-2xl px-2.5 py-1.5 sm:px-3.5 sm:py-2.5 shadow-xl space-y-1.5 sm:space-y-2">
-        {/* Thanh trên: Thanh kinh nghiệm + Level */}
-        <div className="space-y-1">
-          <div className="flex items-center justify-between text-[10px] sm:text-[11px] font-mono-tech">
-            <span className="flex items-center gap-1 sm:gap-1.5 font-bold text-emerald-300">
-              <Sparkles className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-emerald-400" />
-              <span>Lv.{status.level}</span>
-              {isMaxLevel && (
-                <span className="px-1.5 py-0.5 rounded bg-amber-500 text-slate-950 text-[9px] font-bold">
-                  MAX
-                </span>
-              )}
-            </span>
-            <span className="text-slate-300 tabular-nums">
-              {isMaxLevel
-                ? 'Tối đa (30)'
-                : `${status.xp.toLocaleString('vi-VN')} / ${status.xpToNext.toLocaleString('vi-VN')} XP`}
-            </span>
-          </div>
-
-          <div className="h-2 sm:h-2.5 w-full rounded-full bg-slate-800 border border-white/10 overflow-hidden">
-            <div
-              className="h-full bg-emerald-400 transition-[width] duration-200"
-              style={{ width: `${xpPercent}%` }}
-            />
-          </div>
-        </div>
-
-        {/* Thanh dưới: Thanh máu (10 trái tim, hỗ trợ nửa tim 0,5) */}
-        <div className="flex items-center justify-between gap-1.5 sm:gap-2 pt-0.5">
+      <div className="bg-slate-950/90 border border-white/15 rounded-2xl px-2.5 py-1.5 sm:px-3.5 sm:py-2 shadow-xl">
+        {/* Thanh máu (10 trái tim, hỗ trợ nửa tim 0,5) */}
+        <div className="flex items-center justify-between gap-1.5 sm:gap-2">
           <div
             className="flex items-center gap-0.5 sm:gap-1.5"
             aria-label={`Máu ${hpDisplay} trên ${status.maxHp}`}
