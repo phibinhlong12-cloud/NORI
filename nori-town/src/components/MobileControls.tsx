@@ -17,6 +17,7 @@ interface MobileHudState {
   hasShield: boolean;
   backpackOpen: boolean;
   shopOpen: boolean;
+  outfitShopOpen: boolean;
   characterWindowOpen: boolean;
   holdingKatana: boolean;
   holdingPotionSlot: number | null;
@@ -37,6 +38,7 @@ const INITIAL_MOBILE_HUD: MobileHudState = {
   hasShield: false,
   backpackOpen: false,
   shopOpen: false,
+  outfitShopOpen: false,
   characterWindowOpen: false,
   holdingKatana: false,
   holdingPotionSlot: null,
@@ -127,6 +129,7 @@ export const MobileControls = memo(function MobileControls({
           prev.hasShield === stats.hasShield &&
           prev.backpackOpen === stats.backpackOpen &&
           prev.shopOpen === stats.shopOpen &&
+          prev.outfitShopOpen === stats.outfitShopOpen &&
           prev.characterWindowOpen === stats.characterWindowOpen &&
           prev.holdingKatana === stats.holdingKatana &&
           prev.holdingPotionSlot === stats.holdingPotionSlot &&
@@ -148,6 +151,7 @@ export const MobileControls = memo(function MobileControls({
           hasShield: stats.hasShield,
           backpackOpen: stats.backpackOpen,
           shopOpen: stats.shopOpen,
+          outfitShopOpen: stats.outfitShopOpen,
           characterWindowOpen: stats.characterWindowOpen,
           holdingKatana: stats.holdingKatana,
           holdingPotionSlot: stats.holdingPotionSlot,
@@ -165,14 +169,22 @@ export const MobileControls = memo(function MobileControls({
   }, [engine]);
 
   useEffect(() => {
-    if (!visible || hud.shopOpen || hud.characterWindowOpen) {
+    if (!visible || hud.shopOpen || hud.outfitShopOpen || hud.characterWindowOpen) {
       if (sprinting) {
         setSprinting(false);
         onVirtualKey('ShiftLeft', false);
       }
       resetJoystick();
     }
-  }, [visible, hud.shopOpen, hud.characterWindowOpen, sprinting, onVirtualKey, resetJoystick]);
+  }, [
+    visible,
+    hud.shopOpen,
+    hud.outfitShopOpen,
+    hud.characterWindowOpen,
+    sprinting,
+    onVirtualKey,
+    resetJoystick,
+  ]);
 
   useEffect(() => {
     return () => {
@@ -181,7 +193,7 @@ export const MobileControls = memo(function MobileControls({
     };
   }, [onVirtualKey, onJoystickMove]);
 
-  if (!visible || hud.shopOpen || hud.characterWindowOpen) return null;
+  if (!visible || hud.shopOpen || hud.outfitShopOpen || hud.characterWindowOpen) return null;
 
   const bindKeyProps = (code: string) => ({
     onPointerDown: (e: React.PointerEvent) => {

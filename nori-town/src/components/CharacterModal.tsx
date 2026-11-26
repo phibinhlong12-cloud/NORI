@@ -1,7 +1,13 @@
 import { memo, useEffect, useState } from 'react';
-import { Crown, Footprints, Shield, ShieldHalf, Shirt, Sword, User, X } from 'lucide-react';
+import { ArrowLeftRight, Shield, Shirt, Sword, User, X } from 'lucide-react';
 import { HudStats, VoxelEngine } from '../game/engine';
 import { CharacterGender } from '../game/firstPersonArms';
+import {
+  getOutfitName,
+  isOutfitCompatibleWithGender,
+  OutfitId,
+  OUTFITS,
+} from '../game/outfits';
 import { Character3DViewport } from './Character3DViewport';
 
 interface CharacterModalProps {
@@ -15,6 +21,8 @@ interface CharacterWindowState {
   hasKatana: boolean;
   hasIceKatana: boolean;
   hasShield: boolean;
+  ownedOutfits: OutfitId[];
+  equippedOutfit: OutfitId;
 }
 
 const INITIAL_STATE: CharacterWindowState = {
@@ -24,6 +32,8 @@ const INITIAL_STATE: CharacterWindowState = {
   hasKatana: false,
   hasIceKatana: false,
   hasShield: false,
+  ownedOutfits: ['default'],
+  equippedOutfit: 'default',
 };
 
 export const CharacterModal = memo(function CharacterModal({ engine }: CharacterModalProps) {
@@ -43,7 +53,9 @@ export const CharacterModal = memo(function CharacterModal({ engine }: Character
           prev.level === stats.level &&
           prev.hasKatana === stats.hasKatana &&
           prev.hasIceKatana === stats.hasIceKatana &&
-          prev.hasShield === stats.hasShield
+          prev.hasShield === stats.hasShield &&
+          prev.ownedOutfits === stats.ownedOutfits &&
+          prev.equippedOutfit === stats.equippedOutfit
         ) {
           return prev;
         }
@@ -54,6 +66,8 @@ export const CharacterModal = memo(function CharacterModal({ engine }: Character
           hasKatana: stats.hasKatana,
           hasIceKatana: stats.hasIceKatana,
           hasShield: stats.hasShield,
+          ownedOutfits: stats.ownedOutfits,
+          equippedOutfit: stats.equippedOutfit,
         };
       });
     });
@@ -62,12 +76,19 @@ export const CharacterModal = memo(function CharacterModal({ engine }: Character
   if (!state.open) return null;
 
   const isMale = state.gender === 'male';
-  const armorSlots = [
-    { id: 'hat', label: 'Nón', Icon: Crown },
-    { id: 'armor', label: 'Giáp', Icon: Shirt },
-    { id: 'pants', label: 'Quần', Icon: ShieldHalf },
-    { id: 'shoes', label: 'Giày', Icon: Footprints },
-  ] as const;
+  const activeOutfit: OutfitId = isOutfitCompatibleWithGender(
+    state.equippedOutfit,
+    state.gender,
+  )
+    ? state.equippedOutfit
+    : 'default';
+  const compatibleOutfits = state.ownedOutfits.filter((id) =>
+    isOutfitCompatibleWithGender(id, state.gender),
+  );
+  const hasMultipleOutfits = compatibleOutfits.length > 1;
+  const hasCustomOutfitEquipped = activeOutfit !== 'default';
+  const outfitInfo = OUTFITS[activeOutfit];
+  const outfitDisplayName = getOutfitName(activeOutfit);
 
   return (
     <div
@@ -182,6 +203,7 @@ export const CharacterModal = memo(function CharacterModal({ engine }: Character
           <div className="h-72 sm:h-88 w-full rounded-2xl bg-gradient-to-b from-slate-800/80 to-slate-950/95 border border-white/15 overflow-hidden">
             <Character3DViewport
               gender={state.gender}
+              outfit={activeOutfit}
               hasKatana={state.hasKatana}
               hasIceKatana={state.hasIceKatana}
               hasShield={state.hasShield}
@@ -190,22 +212,55 @@ export const CharacterModal = memo(function CharacterModal({ engine }: Character
             />
           </div>
 
-          {/* Cột phải: 4 ô Nón, Giáp, Quần, Giày tạm thời để trống */}
-          <div className="grid grid-cols-2 md:grid-cols-1 gap-2.5">
-            {armorSlots.map(({ id, label, Icon }) => (
-              <div
-                key={id}
-                className="rounded-2xl border border-white/10 bg-slate-800/65 px-3 py-2.5 flex items-center gap-3"
-              >
-                <div className="w-9 h-9 rounded-xl bg-slate-950/80 border border-white/10 flex items-center justify-center shrink-0">
-                  <Icon className="w-4 h-4 text-slate-500" />
-                </div>
-                <div className="min-w-0">
-                  <div className="text-xs font-bold text-slate-200">{label}</div>
-                  <div className="text-[11px] text-slate-500">Trống</div>
+          {/* Cột phải: Ô Bộ đồ và ô Thay đổi đồ (hiện khi có > 1 bộ đồ) */}
+          <div
+            className={`grid gap-3 ${
+              hasMultipleOutfits ? 'grid-cols-2 md:grid-cols-1' : 'grid-cols-1'
+            }`}
+          >
+            <div
+              className={`rounded-2xl border p-3.5 flex flex-col items-center justify-center gap-2 text-center min-h-[112px] ${
+                hasCustomOutfitEquipped
+                  ? outfitInfo.cardAccentClass
+                  : 'bg-slate-800/65 border-white/10'
+              }`}
+            >
+              <div className="w-11 h-11 rounded-xl bg-slate-950/85 border border-white/15 flex items-center justify-center">
+                <Shirt
+                  className={`w-6 h-6 ${
+                    hasCustomOutfitEquipped ? outfitInfo.badgeTextColor : 'text-slate-500'
+                  }`}
+                />
+              </div>
+              <div>
+                <div className="text-xs font-bold text-slate-200">Bộ đồ</div>
+                <div
+                  className={`text-[11px] mt-0.5 font-semibold ${
+                    hasCustomOutfitEquipped ? outfitInfo.badgeTextColor : 'text-slate-500'
+                  }`}
+                >
+                  {hasCustomOutfitEquipped ? outfitDisplayName : 'Trống'}
                 </div>
               </div>
-            ))}
+            </div>
+
+            {hasMultipleOutfits && (
+              <button
+                type="button"
+                onClick={() => engine?.cycleOutfit()}
+                className="rounded-2xl border border-cyan-400/40 bg-cyan-950/35 hover:bg-cyan-900/45 active:scale-95 transition p-3.5 flex flex-col items-center justify-center gap-2 text-center min-h-[112px] cursor-pointer"
+              >
+                <div className="w-11 h-11 rounded-xl bg-slate-950/85 border border-cyan-400/30 flex items-center justify-center">
+                  <ArrowLeftRight className="w-6 h-6 text-cyan-300" />
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-slate-100">Thay đổi đồ</div>
+                  <div className="text-[11px] mt-0.5 font-semibold text-cyan-300">
+                    {outfitDisplayName}
+                  </div>
+                </div>
+              </button>
+            )}
           </div>
         </div>
       </div>

@@ -5,6 +5,7 @@ import {
   FirstPersonArmHandles,
   FirstPersonArmRig,
 } from './firstPersonArms';
+import { OutfitId } from './outfits';
 
 export interface PotionAssetHandles extends FirstPersonArmHandles {}
 
@@ -96,6 +97,7 @@ export class PotionViewModel {
   private readonly scene: THREE.Scene;
   private group: THREE.Group;
   private gender: CharacterGender = 'male';
+  private outfit: OutfitId = 'default';
   private armRig: FirstPersonArmRig | null = null;
   private readonly assets: PotionAssetHandles = {
     geometries: [],
@@ -121,7 +123,13 @@ export class PotionViewModel {
 
   private buildViewGroup(): THREE.Group {
     const root = createPotionMeshGroup(this.assets);
-    const arm = createFirstPersonArmGroup(this.gender, 'right', this.assets, 'potion');
+    const arm = createFirstPersonArmGroup(
+      this.gender,
+      'right',
+      this.assets,
+      'potion',
+      this.outfit,
+    );
     this.armRig = (arm.userData.armRig as FirstPersonArmRig | undefined) ?? null;
     root.add(arm);
     root.scale.set(0.95, 0.95, 0.95);
@@ -132,6 +140,16 @@ export class PotionViewModel {
   setGender(gender: CharacterGender): void {
     if (this.gender === gender) return;
     this.gender = gender;
+    this.rebuildGroup();
+  }
+
+  setOutfit(outfit: OutfitId): void {
+    if (this.outfit === outfit) return;
+    this.outfit = outfit;
+    this.rebuildGroup();
+  }
+
+  private rebuildGroup(): void {
     const wasVisible = this.group.visible;
     this.disposeMeshOnly();
     this.group = this.buildViewGroup();

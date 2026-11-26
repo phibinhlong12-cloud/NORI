@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { CharacterGender } from './firstPersonArms';
 import { createKatanaMeshGroup } from './katana';
+import { isOutfitCompatibleWithGender, OutfitId } from './outfits';
 import { createParabolicEllipsoidGeometry, createParabolicLatheGeometry } from './parabolic';
 import { createShieldMeshGroup } from './shield';
 import { applyAxisSkinWeights, bindSkinnedMeshToSkeleton } from './skeletonUtils';
@@ -18,6 +19,7 @@ export interface CharacterBuildOptions {
   hasIceKatana?: boolean;
   hasShield?: boolean;
   previewWeapon?: boolean;
+  outfit?: OutfitId;
   maxAnisotropy?: number;
 }
 
@@ -220,6 +222,232 @@ function createObiSilkTexture(maxAnisotropy: number): THREE.CanvasTexture {
         ctx.closePath();
         ctx.stroke();
       }
+    }
+  }
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.anisotropy = maxAnisotropy;
+  return tex;
+}
+
+/**
+ * Tạo texture caro đen-trắng cho phần vai áo Huyết Phong Samurai.
+ */
+function createCheckerboardTexture(maxAnisotropy: number): THREE.CanvasTexture {
+  const size = 128;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+
+  if (ctx) {
+    const cell = 16;
+    for (let y = 0; y < size; y += cell) {
+      for (let x = 0; x < size; x += cell) {
+        const isDark = ((x / cell + y / cell) & 1) === 0;
+        ctx.fillStyle = isDark ? '#181a22' : '#f1f5f9';
+        ctx.fillRect(x, y, cell, cell);
+      }
+    }
+  }
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.anisotropy = maxAnisotropy;
+  return tex;
+}
+
+/**
+ * Tạo texture gấm lụa hoa mẫu đơn & anh đào rực rỡ cho 3 bộ Kimono Nữ.
+ */
+function createFloralKimonoTexture(
+  variant: 'female_black' | 'female_red' | 'female_white',
+  maxAnisotropy: number,
+): THREE.CanvasTexture {
+  const size = 256;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+
+  if (ctx) {
+    const grad = ctx.createLinearGradient(0, 0, 0, size);
+    if (variant === 'female_black') {
+      grad.addColorStop(0, '#181922');
+      grad.addColorStop(0.65, '#12131b');
+      grad.addColorStop(1, '#090a0f');
+    } else if (variant === 'female_red') {
+      grad.addColorStop(0, '#dc2626');
+      grad.addColorStop(0.65, '#b91c24');
+      grad.addColorStop(1, '#88131d');
+    } else {
+      grad.addColorStop(0, '#ffffff');
+      grad.addColorStop(0.65, '#f8fafc');
+      grad.addColorStop(1, '#e2e8f0');
+    }
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, size, size);
+
+    // Ánh lụa satin mịn
+    ctx.strokeStyle =
+      variant === 'female_white'
+        ? 'rgba(148, 163, 184, 0.08)'
+        : 'rgba(255, 255, 255, 0.06)';
+    ctx.lineWidth = 1;
+    for (let i = 0; i < size; i += 4) {
+      ctx.beginPath();
+      ctx.moveTo(0, i);
+      ctx.lineTo(size, i);
+      ctx.stroke();
+    }
+
+    // Cành mai mảnh
+    ctx.strokeStyle =
+      variant === 'female_black'
+        ? 'rgba(250, 204, 21, 0.45)'
+        : variant === 'female_red'
+          ? 'rgba(24, 24, 27, 0.35)'
+          : 'rgba(30, 41, 59, 0.42)';
+    ctx.lineWidth = 2;
+    const branches: Array<[number, number, number, number]> = [
+      [12, 34, 110, 74],
+      [140, 18, 236, 92],
+      [24, 178, 134, 138],
+      [120, 218, 242, 170],
+    ];
+    for (const [x1, y1, x2, y2] of branches) {
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.quadraticCurveTo((x1 + x2) * 0.5, (y1 + y2) * 0.5 - 14, x2, y2);
+      ctx.stroke();
+    }
+
+    const drawFlower = (
+      cx: number,
+      cy: number,
+      rad: number,
+      petalColor: string,
+      centerColor: string,
+      petals = 6,
+    ) => {
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.fillStyle = petalColor;
+      for (let i = 0; i < petals; i++) {
+        ctx.rotate((Math.PI * 2) / petals);
+        ctx.beginPath();
+        ctx.ellipse(0, rad * 0.54, rad * 0.36, rad * 0.54, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.fillStyle = centerColor;
+      ctx.beginPath();
+      ctx.arc(0, 0, rad * 0.24, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    };
+
+    const mainCol =
+      variant === 'female_black'
+        ? '#e11d48'
+        : variant === 'female_red'
+          ? '#fff1f2'
+          : '#dc2626';
+    const subCol =
+      variant === 'female_black'
+        ? '#f8fafc'
+        : variant === 'female_red'
+          ? '#fde047'
+          : '#f59e0b';
+    const thirdCol =
+      variant === 'female_black'
+        ? '#facc15'
+        : variant === 'female_red'
+          ? '#fda4af'
+          : '#fb7185';
+
+    const peonies: Array<[number, number, number, string]> = [
+      [44, 48, 21, mainCol],
+      [168, 42, 18, subCol],
+      [218, 108, 22, mainCol],
+      [92, 128, 19, subCol],
+      [34, 196, 17, thirdCol],
+      [172, 188, 23, mainCol],
+      [126, 238, 15, subCol],
+      [234, 236, 16, thirdCol],
+    ];
+    for (const [px, py, pr, pCol] of peonies) {
+      drawFlower(px, py, pr, pCol, '#facc15', 6);
+    }
+
+    // Hoa nhỏ điểm xuyết
+    const miniFlowers: Array<[number, number, string]> = [
+      [106, 30, subCol],
+      [24, 118, subCol],
+      [148, 112, thirdCol],
+      [68, 222, mainCol],
+      [212, 152, subCol],
+      [246, 48, thirdCol],
+    ];
+    for (const [mx, my, mCol] of miniFlowers) {
+      drawFlower(mx, my, 9, mCol, '#fde047', 5);
+    }
+  }
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.anisotropy = maxAnisotropy;
+  return tex;
+}
+
+/**
+ * Tạo texture đai Obi thắt eo sọc nổi bật cho 3 bộ Kimono Nữ.
+ */
+function createFemaleObiTexture(
+  variant: 'female_black' | 'female_red' | 'female_white',
+  maxAnisotropy: number,
+): THREE.CanvasTexture {
+  const size = 128;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+
+  if (ctx) {
+    if (variant === 'female_black') {
+      ctx.fillStyle = '#15161e';
+      ctx.fillRect(0, 0, size, size);
+      ctx.fillStyle = '#eab308';
+      ctx.fillRect(0, 4, size, 4);
+      ctx.fillRect(0, size - 8, size, 4);
+      ctx.fillStyle = '#f8fafc';
+      ctx.fillRect(0, 40, size, 48);
+      ctx.fillStyle = '#dc2626';
+      ctx.fillRect(0, 52, size, 24);
+    } else if (variant === 'female_red') {
+      ctx.fillStyle = '#dc2626';
+      ctx.fillRect(0, 0, size, size);
+      ctx.fillStyle = '#eab308';
+      ctx.fillRect(0, 4, size, 4);
+      ctx.fillRect(0, size - 8, size, 4);
+      ctx.fillStyle = '#f8fafc';
+      ctx.fillRect(0, 40, size, 48);
+      ctx.fillStyle = '#181920';
+      ctx.fillRect(0, 52, size, 24);
+    } else {
+      ctx.fillStyle = '#f8fafc';
+      ctx.fillRect(0, 0, size, size);
+      ctx.fillStyle = '#e2e8f0';
+      ctx.fillRect(0, 4, size, 4);
+      ctx.fillRect(0, size - 8, size, 4);
+      ctx.fillStyle = '#dc2626';
+      ctx.fillRect(0, 46, size, 36);
     }
   }
 
@@ -634,28 +862,84 @@ export function createCharacterMeshGroup(
 ): THREE.Group {
   const root = new THREE.Group();
   const isMale = gender === 'male';
+  const requestedOutfit = options.outfit ?? 'default';
+  const activeOutfit: OutfitId = isOutfitCompatibleWithGender(requestedOutfit, gender)
+    ? requestedOutfit
+    : 'default';
+  const maleOutfit: OutfitId = isMale ? activeOutfit : 'default';
+  const isBlackOutfit = maleOutfit === 'black_shinigami';
+  const isRedOutfit = maleOutfit === 'red_samurai';
+  const isFemaleFloralOutfit =
+    !isMale &&
+    (activeOutfit === 'female_black' ||
+      activeOutfit === 'female_red' ||
+      activeOutfit === 'female_white');
   const maxAniso = options.maxAnisotropy ?? 4;
   const showKatana = Boolean(options.hasKatana || options.previewWeapon);
   const showIceKatana = Boolean(options.hasIceKatana && options.hasKatana);
   const showShield = Boolean(options.hasShield);
 
-  const kimonoTex = createKimonoFabricTexture(
-    isMale ? '#eee8dc' : '#fafbfd',
-    isMale ? '#d9d0be' : '#f1eef6',
-    isMale ? 'waves' : 'sakura',
-    maxAniso,
-  );
+  const kimonoBaseHex = !isMale
+    ? '#fafbfd'
+    : isBlackOutfit
+      ? '#16171e'
+      : isRedOutfit
+        ? '#941b21'
+        : '#eee8dc';
+  const kimonoAccentHex = !isMale
+    ? '#f1eef6'
+    : isBlackOutfit
+      ? '#0d0e13'
+      : isRedOutfit
+        ? '#701318'
+        : '#d9d0be';
+  const sleeveBaseHex = !isMale
+    ? '#f472b6'
+    : isBlackOutfit
+      ? '#16171e'
+      : isRedOutfit
+        ? '#941b21'
+        : '#f97316';
+  const sleeveAccentHex = !isMale
+    ? '#ec4899'
+    : isBlackOutfit
+      ? '#0d0e13'
+      : isRedOutfit
+        ? '#701318'
+        : '#ea580c';
+
+  const kimonoTex = isFemaleFloralOutfit
+    ? createFloralKimonoTexture(
+        activeOutfit as 'female_black' | 'female_red' | 'female_white',
+        maxAniso,
+      )
+    : createKimonoFabricTexture(
+        kimonoBaseHex,
+        kimonoAccentHex,
+        isMale ? 'waves' : 'sakura',
+        maxAniso,
+      );
   const haoriTex = createKimonoFabricTexture('#f97316', '#ea580c', 'waves', maxAniso);
-  const sleeveTex = createKimonoFabricTexture(
-    isMale ? '#f97316' : '#f472b6',
-    isMale ? '#ea580c' : '#ec4899',
-    isMale ? 'waves' : 'sakura',
-    maxAniso,
-  );
-  const obiTex = createObiSilkTexture(maxAniso);
+  const sleeveTex = isFemaleFloralOutfit
+    ? kimonoTex
+    : createKimonoFabricTexture(
+        sleeveBaseHex,
+        sleeveAccentHex,
+        isMale ? 'waves' : 'sakura',
+        maxAniso,
+      );
+  const obiTex = isFemaleFloralOutfit
+    ? createFemaleObiTexture(
+        activeOutfit as 'female_black' | 'female_red' | 'female_white',
+        maxAniso,
+      )
+    : createObiSilkTexture(maxAniso);
   const hairTex = createHairHighlightTexture(isMale, maxAniso);
   const skinTex = createSkinShadingTexture(isMale, maxAniso);
-  handles.textures.push(kimonoTex, haoriTex, sleeveTex, obiTex, hairTex, skinTex);
+  handles.textures.push(kimonoTex, haoriTex, obiTex, hairTex, skinTex);
+  if (sleeveTex !== kimonoTex) {
+    handles.textures.push(sleeveTex);
+  }
 
   const skinMat = new THREE.MeshStandardMaterial({
     map: skinTex,
@@ -671,11 +955,25 @@ export function createCharacterMeshGroup(
   const kimonoMainMat = new THREE.MeshPhysicalMaterial({
     map: kimonoTex,
     color: '#ffffff',
-    roughness: 0.72,
+    roughness: isFemaleFloralOutfit ? 0.48 : 0.72,
     metalness: 0.03,
-    sheen: 0.42,
-    sheenRoughness: 0.65,
-    sheenColor: new THREE.Color(isMale ? '#fff8eb' : '#ffe4ec'),
+    sheen: isFemaleFloralOutfit ? 0.62 : 0.42,
+    sheenRoughness: isFemaleFloralOutfit ? 0.45 : 0.65,
+    sheenColor: new THREE.Color(
+      !isMale
+        ? activeOutfit === 'female_black'
+          ? '#475569'
+          : activeOutfit === 'female_red'
+            ? '#fecdd3'
+            : activeOutfit === 'female_white'
+              ? '#ffffff'
+              : '#ffe4ec'
+        : isBlackOutfit
+          ? '#475569'
+          : isRedOutfit
+            ? '#fca5a5'
+            : '#fff8eb',
+    ),
   });
   const haoriOuterMat = new THREE.MeshPhysicalMaterial({
     map: haoriTex,
@@ -690,35 +988,117 @@ export function createCharacterMeshGroup(
   const sleeveMat = new THREE.MeshPhysicalMaterial({
     map: sleeveTex,
     color: '#ffffff',
-    roughness: 0.66,
+    roughness: isFemaleFloralOutfit ? 0.46 : 0.66,
     metalness: 0.04,
-    sheen: 0.48,
-    sheenRoughness: 0.56,
-    sheenColor: new THREE.Color(isMale ? '#fed7aa' : '#fce7f3'),
+    sheen: isFemaleFloralOutfit ? 0.6 : 0.48,
+    sheenRoughness: 0.52,
+    sheenColor: new THREE.Color(
+      !isMale
+        ? activeOutfit === 'female_black'
+          ? '#64748b'
+          : activeOutfit === 'female_red'
+            ? '#fecaca'
+            : activeOutfit === 'female_white'
+              ? '#ffffff'
+              : '#fce7f3'
+        : isBlackOutfit
+          ? '#64748b'
+          : isRedOutfit
+            ? '#fca5a5'
+            : '#fed7aa',
+    ),
     side: THREE.DoubleSide,
   });
   const innerWhiteCollarMat = new THREE.MeshStandardMaterial({
-    color: '#ffffff',
-    roughness: 0.58,
-    metalness: 0.02,
+    color: isFemaleFloralOutfit ? '#facc15' : '#f8fafc',
+    roughness: isFemaleFloralOutfit ? 0.28 : 0.54,
+    metalness: isFemaleFloralOutfit ? 0.72 : 0.02,
   });
   const redCollarMat = new THREE.MeshPhysicalMaterial({
-    color: isMale ? '#b91c1c' : '#dc2626',
-    roughness: 0.48,
-    metalness: 0.06,
+    color: isMale
+      ? isBlackOutfit
+        ? '#14151b'
+        : isRedOutfit
+          ? '#121318'
+          : '#b91c1c'
+      : activeOutfit === 'female_black'
+        ? '#15161e'
+        : activeOutfit === 'female_red'
+          ? '#dc2626'
+          : activeOutfit === 'female_white'
+            ? '#f8fafc'
+            : '#dc2626',
+    roughness: 0.44,
+    metalness: 0.05,
     sheen: 0.55,
     sheenRoughness: 0.5,
-    sheenColor: new THREE.Color('#fca5a5'),
+    sheenColor: new THREE.Color(
+      (isMale && (isBlackOutfit || isRedOutfit)) || activeOutfit === 'female_black'
+        ? '#475569'
+        : activeOutfit === 'female_white'
+          ? '#ffffff'
+          : '#fca5a5',
+    ),
   });
-  const obiMat = new THREE.MeshPhysicalMaterial({
-    map: obiTex,
-    color: '#ffffff',
-    roughness: 0.55,
-    metalness: 0.14,
-    sheen: 0.45,
-    sheenRoughness: 0.45,
-    sheenColor: new THREE.Color('#64748b'),
+  const sleeveCuffMat = new THREE.MeshPhysicalMaterial({
+    color: isMale
+      ? isBlackOutfit
+        ? '#f8fafc'
+        : isRedOutfit
+          ? '#dc2626'
+          : '#b91c1c'
+      : activeOutfit === 'female_black'
+        ? '#101118'
+        : activeOutfit === 'female_red'
+          ? '#ef4444'
+          : activeOutfit === 'female_white'
+            ? '#ffffff'
+            : '#dc2626',
+    roughness: 0.42,
+    metalness: 0.06,
+    sheen: 0.52,
+    sheenRoughness: 0.48,
+    sheenColor: new THREE.Color(
+      isBlackOutfit || activeOutfit === 'female_white' ? '#ffffff' : '#fca5a5',
+    ),
   });
+  const hakamaMat =
+    isMale && (isBlackOutfit || isRedOutfit)
+      ? new THREE.MeshPhysicalMaterial({
+          color: '#111218',
+          roughness: 0.68,
+          metalness: 0.05,
+          sheen: 0.25,
+          sheenColor: new THREE.Color('#334155'),
+        })
+      : new THREE.MeshPhysicalMaterial({
+          map: obiTex,
+          color: '#ffffff',
+          roughness: isFemaleFloralOutfit ? 0.42 : 0.55,
+          metalness: 0.1,
+          sheen: 0.45,
+          sheenRoughness: 0.45,
+          sheenColor: new THREE.Color(
+            activeOutfit === 'female_white' ? '#ffffff' : '#64748b',
+          ),
+        });
+  const obiMat = isBlackOutfit
+    ? new THREE.MeshPhysicalMaterial({
+        color: '#f8fafc',
+        roughness: 0.48,
+        metalness: 0.04,
+        sheen: 0.42,
+        sheenColor: new THREE.Color('#ffffff'),
+      })
+    : isRedOutfit
+      ? new THREE.MeshPhysicalMaterial({
+          color: '#14151b',
+          roughness: 0.52,
+          metalness: 0.08,
+          sheen: 0.35,
+          sheenColor: new THREE.Color('#475569'),
+        })
+      : hakamaMat;
   const hairMat = new THREE.MeshPhysicalMaterial({
     map: hairTex,
     color: '#ffffff',
@@ -745,8 +1125,8 @@ export function createCharacterMeshGroup(
     metalness: 0.08,
   });
   const sockMat = new THREE.MeshStandardMaterial({
-    color: isMale ? '#f8fafc' : '#18181f',
-    roughness: 0.68,
+    color: isMale || isFemaleFloralOutfit ? '#f8fafc' : '#18181f',
+    roughness: 0.64,
   });
   const gloveMat = new THREE.MeshStandardMaterial({
     color: '#1f1b24',
@@ -761,7 +1141,8 @@ export function createCharacterMeshGroup(
     sleeveMat,
     innerWhiteCollarMat,
     redCollarMat,
-    obiMat,
+    sleeveCuffMat,
+    hakamaMat,
     hairMat,
     hairShadowMat,
     goldMat,
@@ -769,6 +1150,9 @@ export function createCharacterMeshGroup(
     sockMat,
     gloveMat,
   );
+  if (obiMat !== hakamaMat) {
+    handles.materials.push(obiMat);
+  }
 
   // Bóng tiếp xúc mềm dưới chân
   const shadowTex = createSoftShadowTexture();
@@ -820,7 +1204,7 @@ export function createCharacterMeshGroup(
     handles.geometries.push(hakamaLegGeo);
 
     for (const sx of [-0.086, 0.086]) {
-      const leg = new THREE.Mesh(hakamaLegGeo, obiMat);
+      const leg = new THREE.Mesh(hakamaLegGeo, hakamaMat);
       leg.position.set(sx, 0.06, 0);
       leg.castShadow = true;
       root.add(leg);
@@ -831,7 +1215,7 @@ export function createCharacterMeshGroup(
       shoe.castShadow = true;
       root.add(shoe);
 
-      const strap = new THREE.Mesh(strapGeo, redCollarMat);
+      const strap = new THREE.Mesh(strapGeo, sleeveCuffMat);
       strap.scale.setScalar(0.86);
       strap.position.set(sx, 0.053, 0.048);
       strap.rotation.x = 0.6;
@@ -848,7 +1232,22 @@ export function createCharacterMeshGroup(
   } else {
     const thighGeo = new THREE.CapsuleGeometry(0.059, 0.32, 6, 12);
     const calfGeo = new THREE.CapsuleGeometry(0.044, 0.34, 6, 12);
+    const lowerThighSockGeo = isFemaleFloralOutfit
+      ? new THREE.CapsuleGeometry(0.056, 0.16, 6, 12)
+      : null;
+    if (lowerThighSockGeo) handles.geometries.push(lowerThighSockGeo);
     handles.geometries.push(thighGeo, calfGeo);
+
+    const sockTrimMat = isFemaleFloralOutfit ? innerWhiteCollarMat : redCollarMat;
+    const petticoatMat = isFemaleFloralOutfit
+      ? new THREE.MeshStandardMaterial({
+          color: '#f8fafc',
+          roughness: 0.56,
+        })
+      : redCollarMat;
+    if (petticoatMat !== redCollarMat) {
+      handles.materials.push(petticoatMat);
+    }
 
     for (const sx of [-0.09, 0.09]) {
       const thigh = new THREE.Mesh(thighGeo, plainSkinMat);
@@ -861,12 +1260,23 @@ export function createCharacterMeshGroup(
       calf.castShadow = true;
       root.add(calf);
 
+      if (lowerThighSockGeo) {
+        const upperSock = new THREE.Mesh(lowerThighSockGeo, sockMat);
+        upperSock.position.set(sx, 0.48, 0);
+        root.add(upperSock);
+      }
+
       // Viền miệng tất cao cổ tinh tế
-      const sockTopGeo = new THREE.TorusGeometry(0.046, 0.0045, 6, 16);
+      const sockTopGeo = new THREE.TorusGeometry(
+        isFemaleFloralOutfit ? 0.057 : 0.046,
+        0.0045,
+        6,
+        16,
+      );
       sockTopGeo.rotateX(Math.PI / 2);
       handles.geometries.push(sockTopGeo);
-      const sockTop = new THREE.Mesh(sockTopGeo, redCollarMat);
-      sockTop.position.set(sx, 0.44, 0);
+      const sockTop = new THREE.Mesh(sockTopGeo, sockTrimMat);
+      sockTop.position.set(sx, isFemaleFloralOutfit ? 0.56 : 0.44, 0);
       root.add(sockTop);
 
       const shoe = new THREE.Mesh(shoeGeo, sandalMat);
@@ -875,7 +1285,7 @@ export function createCharacterMeshGroup(
       shoe.castShadow = true;
       root.add(shoe);
 
-      const strap = new THREE.Mesh(strapGeo, redCollarMat);
+      const strap = new THREE.Mesh(strapGeo, isFemaleFloralOutfit ? goldMat : redCollarMat);
       strap.scale.setScalar(0.84);
       strap.position.set(sx, 0.052, 0.046);
       strap.rotation.x = 0.6;
@@ -925,11 +1335,14 @@ export function createCharacterMeshGroup(
     outerSkirt.castShadow = true;
     root.add(outerSkirt);
 
-    const innerSkirt = new THREE.Mesh(innerSkirtGeo, redCollarMat);
+    const innerSkirt = new THREE.Mesh(innerSkirtGeo, petticoatMat);
     innerSkirt.position.set(0, 0.54, 0);
     root.add(innerSkirt);
 
-    const hemTrim = new THREE.Mesh(hemTrimGeo, redCollarMat);
+    const hemTrim = new THREE.Mesh(
+      hemTrimGeo,
+      isFemaleFloralOutfit ? goldMat : redCollarMat,
+    );
     hemTrim.position.set(0, 0.562, 0);
     root.add(hemTrim);
   }
@@ -1054,57 +1467,164 @@ export function createCharacterMeshGroup(
   upperRig.add(obiMesh);
 
   if (isMale) {
-    // Áo khoác Haori phủ vai, lưng & tà dưới rủ qua hông + dây haori-himo đỏ khóa vàng
-    const haoriPts: THREE.Vector2[] = [];
-    for (let i = 0; i <= 12; i++) {
-      const t = i / 12;
-      const r = 0.23 * (0.94 + 0.08 * Math.sin(t * Math.PI) + (1 - t) * 0.08);
-      haoriPts.push(new THREE.Vector2(r, t * 0.64));
+    if (maleOutfit === 'default') {
+      // Áo khoác Haori cam phủ vai, lưng & tà dưới rủ qua hông + dây haori-himo đỏ khóa vàng
+      const haoriPts: THREE.Vector2[] = [];
+      for (let i = 0; i <= 12; i++) {
+        const t = i / 12;
+        const r = 0.23 * (0.94 + 0.08 * Math.sin(t * Math.PI) + (1 - t) * 0.08);
+        haoriPts.push(new THREE.Vector2(r, t * 0.64));
+      }
+      const haoriShoulderGeo = new THREE.LatheGeometry(
+        haoriPts,
+        20,
+        Math.PI * 0.22,
+        Math.PI * 1.56,
+      );
+      haoriShoulderGeo.scale(1.08, 1, 0.75);
+      haoriShoulderGeo.computeVertexNormals();
+      handles.geometries.push(haoriShoulderGeo);
+      const haoriBack = new THREE.Mesh(haoriShoulderGeo, haoriOuterMat);
+      haoriBack.position.set(0, torsoY - 0.11, -0.012);
+      haoriBack.castShadow = true;
+      upperRig.add(haoriBack);
+
+      const cordGeo = new THREE.TorusGeometry(0.056, 0.007, 8, 16, Math.PI);
+      cordGeo.rotateZ(Math.PI);
+      const claspGeo = new THREE.SphereGeometry(0.013, 8, 8);
+      const tasselGeo = createParabolicLatheGeometry(
+        0.135,
+        0.013,
+        (t) => 0.35 + 0.65 * (1 - t),
+        8,
+        6,
+        false,
+      );
+      handles.geometries.push(cordGeo, claspGeo, tasselGeo);
+
+      const chestCord = new THREE.Mesh(cordGeo, redCollarMat);
+      chestCord.position.set(0, torsoY + 0.33, 0.155);
+      upperRig.add(chestCord);
+
+      for (const cx of [-0.048, 0.048]) {
+        const clasp = new THREE.Mesh(claspGeo, goldMat);
+        clasp.position.set(cx, torsoY + 0.33, 0.155);
+        upperRig.add(clasp);
+      }
+
+      const tasselL = new THREE.Mesh(tasselGeo, redCollarMat);
+      tasselL.position.set(-0.028, torsoY + 0.18, 0.162);
+      const tasselR = new THREE.Mesh(tasselGeo, redCollarMat);
+      tasselR.position.set(0.028, torsoY + 0.17, 0.162);
+      upperRig.add(tasselL, tasselR);
+    } else {
+      // Nút thắt & dải đai Obi phía trước bụng (trắng cho Hắc Y Kiếm Sĩ, đen cho Huyết Phong Samurai)
+      const frontKnotGeo = createParabolicEllipsoidGeometry(0.052, 0.048, 0.036, 10, 8);
+      const frontWingGeo = createParabolicEllipsoidGeometry(0.092, 0.054, 0.032, 10, 8);
+      const frontTailGeo = createTaperedHairStrandGeometry(
+        [
+          new THREE.Vector3(0, 0, 0),
+          new THREE.Vector3(0.016, -0.11, 0.016),
+          new THREE.Vector3(0.032, -0.24, 0.012),
+        ],
+        0.025,
+        10,
+        8,
+        0.48,
+      );
+      handles.geometries.push(frontKnotGeo, frontWingGeo, frontTailGeo);
+
+      const frontObiGroup = new THREE.Group();
+      frontObiGroup.position.set(0.01, torsoY + 0.045, 0.138);
+      const knot = new THREE.Mesh(frontKnotGeo, obiMat);
+      const fWingL = new THREE.Mesh(frontWingGeo, obiMat);
+      fWingL.position.set(-0.048, 0.008, -0.004);
+      fWingL.rotation.z = 0.3;
+      const fWingR = new THREE.Mesh(frontWingGeo, obiMat);
+      fWingR.position.set(0.048, 0.008, -0.004);
+      fWingR.rotation.z = -0.3;
+      const fTailL = new THREE.Mesh(frontTailGeo, obiMat);
+      fTailL.position.set(-0.015, -0.015, 0.005);
+      fTailL.scale.x = -1;
+      const fTailR = new THREE.Mesh(frontTailGeo, obiMat);
+      fTailR.position.set(0.015, -0.018, 0.005);
+      frontObiGroup.add(knot, fWingL, fWingR, fTailL, fTailR);
+      upperRig.add(frontObiGroup);
+
+      if (isRedOutfit) {
+        // Áo lót trắng hình chữ V giữa ngực (giống mẫu Huyết Phong Samurai)
+        const vShirtShape = new THREE.Shape();
+        vShirtShape.moveTo(-0.056, 0.17);
+        vShirtShape.lineTo(0.056, 0.17);
+        vShirtShape.lineTo(0, -0.05);
+        vShirtShape.closePath();
+        const vShirtGeo = new THREE.ExtrudeGeometry(vShirtShape, {
+          depth: 0.02,
+          bevelEnabled: false,
+        });
+        handles.geometries.push(vShirtGeo);
+        const vShirtMesh = new THREE.Mesh(vShirtGeo, innerWhiteCollarMat);
+        vShirtMesh.position.set(0, torsoY + torsoH - 0.185, 0.132);
+        upperRig.add(vShirtMesh);
+
+        // Khăn choàng cổ đỏ rực rủ 2 vạt dài xuống ngực
+        const scarfMat = new THREE.MeshPhysicalMaterial({
+          color: '#dc2626',
+          roughness: 0.56,
+          metalness: 0.04,
+          sheen: 0.55,
+          sheenRoughness: 0.45,
+          sheenColor: new THREE.Color('#fca5a5'),
+        });
+        handles.materials.push(scarfMat);
+
+        const scarfRingGeo = new THREE.TorusGeometry(0.1, 0.032, 10, 22);
+        scarfRingGeo.rotateX(Math.PI * 0.48);
+        const scarfTailGeo = createTaperedHairStrandGeometry(
+          [
+            new THREE.Vector3(0, 0, 0),
+            new THREE.Vector3(0.018, -0.18, 0.042),
+            new THREE.Vector3(0.012, -0.4, 0.036),
+            new THREE.Vector3(0.004, -0.58, 0.022),
+          ],
+          0.036,
+          14,
+          10,
+          0.44,
+        );
+        handles.geometries.push(scarfRingGeo, scarfTailGeo);
+
+        const scarfNeck = new THREE.Mesh(scarfRingGeo, scarfMat);
+        scarfNeck.position.set(0, torsoY + torsoH - 0.005, 0.015);
+        scarfNeck.castShadow = true;
+        upperRig.add(scarfNeck);
+
+        const scarfTailL = new THREE.Mesh(scarfTailGeo, scarfMat);
+        scarfTailL.position.set(-0.095, torsoY + torsoH - 0.02, 0.105);
+        scarfTailL.scale.x = -1;
+        scarfTailL.castShadow = true;
+        const scarfTailR = new THREE.Mesh(scarfTailGeo, scarfMat);
+        scarfTailR.position.set(0.095, torsoY + torsoH - 0.02, 0.105);
+        scarfTailR.castShadow = true;
+        upperRig.add(scarfTailL, scarfTailR);
+      }
     }
-    const haoriShoulderGeo = new THREE.LatheGeometry(
-      haoriPts,
-      20,
-      Math.PI * 0.22,
-      Math.PI * 1.56,
-    );
-    haoriShoulderGeo.scale(1.08, 1, 0.75);
-    haoriShoulderGeo.computeVertexNormals();
-    handles.geometries.push(haoriShoulderGeo);
-    const haoriBack = new THREE.Mesh(haoriShoulderGeo, haoriOuterMat);
-    haoriBack.position.set(0, torsoY - 0.11, -0.012);
-    haoriBack.castShadow = true;
-    upperRig.add(haoriBack);
-
-    const cordGeo = new THREE.TorusGeometry(0.056, 0.007, 8, 16, Math.PI);
-    cordGeo.rotateZ(Math.PI);
-    const claspGeo = new THREE.SphereGeometry(0.013, 8, 8);
-    const tasselGeo = createParabolicLatheGeometry(
-      0.135,
-      0.013,
-      (t) => 0.35 + 0.65 * (1 - t),
-      8,
-      6,
-      false,
-    );
-    handles.geometries.push(cordGeo, claspGeo, tasselGeo);
-
-    const chestCord = new THREE.Mesh(cordGeo, redCollarMat);
-    chestCord.position.set(0, torsoY + 0.33, 0.155);
-    upperRig.add(chestCord);
-
-    for (const cx of [-0.048, 0.048]) {
-      const clasp = new THREE.Mesh(claspGeo, goldMat);
-      clasp.position.set(cx, torsoY + 0.33, 0.155);
-      upperRig.add(clasp);
-    }
-
-    const tasselL = new THREE.Mesh(tasselGeo, redCollarMat);
-    tasselL.position.set(-0.028, torsoY + 0.18, 0.162);
-    const tasselR = new THREE.Mesh(tasselGeo, redCollarMat);
-    tasselR.position.set(0.028, torsoY + 0.17, 0.162);
-    upperRig.add(tasselL, tasselR);
   } else {
-    // Nơ Obi đỏ lụa thắt sau lưng & dây obijime kèm ngọc vàng trước eo Nữ
+    // Nơ Obi lụa thắt sau lưng & dây obijime kèm ngọc vàng trước eo Nữ
+    const femaleBowMat = isFemaleFloralOutfit
+      ? activeOutfit === 'female_white'
+        ? new THREE.MeshPhysicalMaterial({
+            color: '#dc2626',
+            roughness: 0.45,
+            sheen: 0.5,
+            sheenColor: new THREE.Color('#fca5a5'),
+          })
+        : redCollarMat
+      : redCollarMat;
+    if (femaleBowMat !== redCollarMat) {
+      handles.materials.push(femaleBowMat);
+    }
+
     const bowWingGeo = createParabolicEllipsoidGeometry(0.16, 0.098, 0.046, 14, 10);
     const bowCenterGeo = createParabolicEllipsoidGeometry(0.064, 0.064, 0.048, 12, 8);
     const bowTailGeo = createTaperedHairStrandGeometry(
@@ -1123,7 +1643,10 @@ export function createCharacterMeshGroup(
     obijimeGeo.scale(1.08, 0.74, 1);
     handles.geometries.push(bowWingGeo, bowCenterGeo, bowTailGeo, obijimeGeo);
 
-    const obijime = new THREE.Mesh(obijimeGeo, redCollarMat);
+    const obijime = new THREE.Mesh(
+      obijimeGeo,
+      isFemaleFloralOutfit ? goldMat : redCollarMat,
+    );
     obijime.position.set(0, torsoY + 0.05, 0);
     upperRig.add(obijime);
 
@@ -1135,17 +1658,17 @@ export function createCharacterMeshGroup(
 
     const bowGroup = new THREE.Group();
     bowGroup.position.set(0, torsoY + 0.055, -0.112);
-    const wingL = new THREE.Mesh(bowWingGeo, redCollarMat);
+    const wingL = new THREE.Mesh(bowWingGeo, femaleBowMat);
     wingL.position.set(-0.082, 0.02, 0);
     wingL.rotation.z = 0.34;
-    const wingR = new THREE.Mesh(bowWingGeo, redCollarMat);
+    const wingR = new THREE.Mesh(bowWingGeo, femaleBowMat);
     wingR.position.set(0.082, 0.02, 0);
     wingR.rotation.z = -0.34;
-    const bowCenter = new THREE.Mesh(bowCenterGeo, redCollarMat);
-    const tailL = new THREE.Mesh(bowTailGeo, redCollarMat);
+    const bowCenter = new THREE.Mesh(bowCenterGeo, femaleBowMat);
+    const tailL = new THREE.Mesh(bowTailGeo, femaleBowMat);
     tailL.position.set(-0.02, -0.02, -0.01);
     tailL.scale.x = -1;
-    const tailR = new THREE.Mesh(bowTailGeo, redCollarMat);
+    const tailR = new THREE.Mesh(bowTailGeo, femaleBowMat);
     tailR.position.set(0.02, -0.02, -0.01);
     bowGroup.add(wingL, wingR, bowCenter, tailL, tailR);
     upperRig.add(bowGroup);
@@ -1456,8 +1979,22 @@ export function createCharacterMeshGroup(
   const totalArmY = upperLen + foreLen;
   const upAxis = new THREE.Vector3(0, 1, 0);
 
-  const shoulderCapGeo = new THREE.SphereGeometry(isMale ? 0.06 : 0.046, 14, 10);
+  const shoulderCapGeo = new THREE.SphereGeometry(isMale ? 0.062 : 0.046, 14, 10);
   handles.geometries.push(shoulderCapGeo);
+
+  let shoulderPadMat: THREE.Material = sleeveMat;
+  if (isMale && isRedOutfit) {
+    const checkerTex = createCheckerboardTexture(maxAniso);
+    handles.textures.push(checkerTex);
+    shoulderPadMat = new THREE.MeshPhysicalMaterial({
+      map: checkerTex,
+      color: '#ffffff',
+      roughness: 0.64,
+      metalness: 0.04,
+      sheen: 0.3,
+    });
+    handles.materials.push(shoulderPadMat);
+  }
 
   const buildSkinnedArm = (side: 'right' | 'left') => {
     const isRight = side === 'right';
@@ -1496,7 +2033,10 @@ export function createCharacterMeshGroup(
     const skeleton = new THREE.Skeleton([shoulderBone, elbowBone, wristBone]);
     handles.skeletons?.push(skeleton);
 
-    const cap = new THREE.Mesh(shoulderCapGeo, sleeveMat);
+    const cap = new THREE.Mesh(shoulderCapGeo, shoulderPadMat);
+    if (isMale && isRedOutfit) {
+      cap.scale.set(1.18, 1.24, 1.16);
+    }
     shoulderBone.add(cap);
 
     const bakeMat = new THREE.Matrix4();
@@ -1541,7 +2081,12 @@ export function createCharacterMeshGroup(
     const drapeMesh = bindSkinnedMeshToSkeleton(drapeGeo, sleeveMat, skeleton, armGroup, false);
     drapeMesh.castShadow = true;
 
-    const trimGeo = new THREE.TorusGeometry(armR * 1.12, 0.0065, 8, 16);
+    const trimGeo = new THREE.TorusGeometry(
+      armR * 1.14,
+      isMale && maleOutfit !== 'default' ? 0.009 : 0.0065,
+      8,
+      16,
+    );
     trimGeo.rotateX(Math.PI / 2);
     bakePos.copy(elbowRel);
     bakeQuat.setFromUnitVectors(upAxis, upperDir);
@@ -1552,7 +2097,7 @@ export function createCharacterMeshGroup(
       { boneIndex: 1, pos: -upperLen, blendWidth: 0.12 },
     ]);
     handles.geometries.push(trimGeo);
-    bindSkinnedMeshToSkeleton(trimGeo, redCollarMat, skeleton, armGroup, false);
+    bindSkinnedMeshToSkeleton(trimGeo, sleeveCuffMat, skeleton, armGroup, false);
 
     const foreDir = wristRel.clone().normalize();
     const foreDist = wristRel.length();

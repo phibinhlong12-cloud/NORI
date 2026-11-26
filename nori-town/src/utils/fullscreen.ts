@@ -26,11 +26,11 @@ export function isFullscreenActive(): boolean {
 
 export function isStandaloneDisplayMode(): boolean {
   if (typeof window === 'undefined') return false;
+  if (isFullscreenActive()) return false;
   const nav = window.navigator as Navigator & { standalone?: boolean };
   return (
     Boolean(nav.standalone) ||
-    window.matchMedia?.('(display-mode: standalone)').matches ||
-    window.matchMedia?.('(display-mode: fullscreen)').matches
+    Boolean(window.matchMedia?.('(display-mode: standalone)').matches)
   );
 }
 
@@ -50,11 +50,11 @@ export async function toggleFullscreen(): Promise<{
       if (doc.exitFullscreen) {
         await doc.exitFullscreen();
       } else if (doc.webkitExitFullscreen) {
-        await doc.webkitExitFullscreen();
+        await Promise.resolve(doc.webkitExitFullscreen());
       } else if (doc.mozCancelFullScreen) {
-        await doc.mozCancelFullScreen();
+        await Promise.resolve(doc.mozCancelFullScreen());
       } else if (doc.msExitFullscreen) {
-        await doc.msExitFullscreen();
+        await Promise.resolve(doc.msExitFullscreen());
       }
       return { supported: true, active: isFullscreenActive() };
     } catch {
@@ -64,19 +64,23 @@ export async function toggleFullscreen(): Promise<{
 
   try {
     if (root.requestFullscreen) {
-      await root.requestFullscreen({ navigationUI: 'hide' });
-      return { supported: true, active: true };
+      try {
+        await root.requestFullscreen({ navigationUI: 'hide' });
+      } catch {
+        await root.requestFullscreen();
+      }
+      return { supported: true, active: isFullscreenActive() || true };
     }
     if (root.webkitRequestFullscreen) {
-      await root.webkitRequestFullscreen();
+      await Promise.resolve(root.webkitRequestFullscreen());
       return { supported: true, active: isFullscreenActive() || true };
     }
     if (root.mozRequestFullScreen) {
-      await root.mozRequestFullScreen();
+      await Promise.resolve(root.mozRequestFullScreen());
       return { supported: true, active: isFullscreenActive() || true };
     }
     if (root.msRequestFullscreen) {
-      await root.msRequestFullscreen();
+      await Promise.resolve(root.msRequestFullscreen());
       return { supported: true, active: isFullscreenActive() || true };
     }
     return { supported: false, active: false };

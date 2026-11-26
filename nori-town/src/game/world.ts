@@ -17,6 +17,7 @@ import {
   PoisonMushroomManager,
 } from './mushroom';
 import { OutsideGenerator } from './outside';
+import { OutfitShop } from './outfitShop';
 import {
   SlimeAttackResult,
   SlimeEntity,
@@ -70,6 +71,7 @@ export class WorldManager {
   private citadelMesh: CitadelStructure;
   private cashier: CashierStation;
   private weaponShop: WeaponShop;
+  private outfitShop: OutfitShop;
   private slimes: SlimeManager;
   private mushrooms: PoisonMushroomManager;
   private dragon: DragonBossManager;
@@ -96,6 +98,7 @@ export class WorldManager {
     this.citadelMesh = new CitadelStructure(this.scene, this.maxAnisotropy);
     this.cashier = new CashierStation(this.scene);
     this.weaponShop = new WeaponShop(this.scene);
+    this.outfitShop = new OutfitShop(this.scene, this.maxAnisotropy);
     this.slimes = new SlimeManager(this.scene, this.outside, this.seed);
     this.mushrooms = new PoisonMushroomManager(this.scene, this.outside, this.seed, this.maxAnisotropy);
     this.dragon = new DragonBossManager(this.scene, this.outside, this.maxAnisotropy);
@@ -110,6 +113,7 @@ export class WorldManager {
     this.citadelMesh = new CitadelStructure(this.scene, this.maxAnisotropy);
     this.cashier = new CashierStation(this.scene);
     this.weaponShop = new WeaponShop(this.scene);
+    this.outfitShop = new OutfitShop(this.scene, this.maxAnisotropy);
     this.slimes = new SlimeManager(this.scene, this.outside, this.seed);
     this.mushrooms = new PoisonMushroomManager(this.scene, this.outside, this.seed, this.maxAnisotropy);
     this.dragon = new DragonBossManager(this.scene, this.outside, this.maxAnisotropy);
@@ -174,6 +178,14 @@ export class WorldManager {
     maxDistance = 7.0,
   ): { point: THREE.Vector3 } | null {
     return this.weaponShop.raycastShop(origin, direction, maxDistance);
+  }
+
+  raycastOutfitShop(
+    origin: THREE.Vector3,
+    direction: THREE.Vector3,
+    maxDistance = 7.5,
+  ): { point: THREE.Vector3 } | null {
+    return this.outfitShop.raycastShop(origin, direction, maxDistance);
   }
 
   isShopItemOwned(itemId: ShopItemId): boolean {
@@ -336,6 +348,7 @@ export class WorldManager {
     this.trees.update(dt, onTreeLanded);
     this.grass.update(dt, playerX, playerZ);
     this.citadelMesh.update(dt);
+    this.outfitShop.update(dt);
     this.slimes.update(dt, playerX, playerY, playerZ, playerYaw, shieldRaised, slimeCallbacks);
     this.mushrooms.update(
       dt,
@@ -384,6 +397,10 @@ export class WorldManager {
     const shopTop = this.weaponShop.getObstacleTopY(px, py, pz, halfWidth, playerHeight);
     if (shopTop !== null && (highest === null || shopTop > highest)) {
       highest = shopTop;
+    }
+    const outfitShopTop = this.outfitShop.getObstacleTopY(px, py, pz, halfWidth, playerHeight);
+    if (outfitShopTop !== null && (highest === null || outfitShopTop > highest)) {
+      highest = outfitShopTop;
     }
     return highest;
   }
@@ -1017,6 +1034,7 @@ export class WorldManager {
     this.citadelMesh.dispose();
     this.cashier.dispose();
     this.weaponShop.dispose();
+    this.outfitShop.dispose();
     this.slimes.dispose();
     this.mushrooms.dispose();
     this.dragon.dispose();

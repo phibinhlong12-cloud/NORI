@@ -67,7 +67,8 @@ export const HudOverlay = memo(function HudOverlay({
         }
       }
 
-      const modalOpen = stats.shopOpen || stats.characterWindowOpen;
+      const modalOpen =
+        stats.shopOpen || stats.outfitShopOpen || stats.characterWindowOpen;
 
       if (crosshairRef.current) {
         crosshairRef.current.style.display = modalOpen ? 'none' : 'block';
@@ -168,32 +169,33 @@ export const HudOverlay = memo(function HudOverlay({
         {leftSlot}
       </div>
 
-      <div className="fixed top-2.5 right-2.5 sm:top-4 sm:right-4 z-20 flex flex-col items-end gap-2">
-        <div className="flex items-center gap-1.5 sm:gap-2">
-          <button
-            type="button"
-            onClick={onToggleFullscreen}
-            aria-label={isFullscreen ? 'Thu nhỏ màn hình' : 'Phóng toàn màn hình'}
-            className="bg-slate-950/80 border border-white/15 hover:bg-slate-800/90 active:scale-95 text-white px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-xl text-xs sm:text-sm font-medium shadow-lg transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
-          >
-            {isFullscreen ? (
-              <Minimize2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-cyan-300" />
-            ) : (
-              <Maximize2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-cyan-300" />
-            )}
-            <span className="sm:hidden">{isFullscreen ? 'Thu' : 'Full'}</span>
-          </button>
+      {isPlaying && (
+        <div className="fixed top-2.5 right-2.5 sm:top-4 sm:right-4 z-20 flex flex-col items-end gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            <button
+              type="button"
+              onClick={onToggleFullscreen}
+              aria-label={isFullscreen ? 'Thu nhỏ màn hình' : 'Phóng toàn màn hình'}
+              className="bg-slate-950/80 border border-white/15 hover:bg-slate-800/90 active:scale-95 text-white px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-xl text-xs sm:text-sm font-medium shadow-lg transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+            >
+              {isFullscreen ? (
+                <Minimize2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-cyan-300" />
+              ) : (
+                <Maximize2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-cyan-300" />
+              )}
+              <span className="sm:hidden">{isFullscreen ? 'Thu' : 'Full'}</span>
+            </button>
 
-          <button
-            type="button"
-            onClick={onPause}
-            className="bg-slate-950/80 border border-white/15 hover:bg-slate-800/90 active:scale-95 text-white px-2.5 py-1.5 sm:px-4 sm:py-2 rounded-xl text-xs sm:text-sm font-medium shadow-lg transition flex items-center gap-1.5 sm:gap-2 cursor-pointer whitespace-nowrap"
-          >
-            <Settings className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-300" />
-            <span className="sm:hidden">Menu</span>
-            <span className="hidden sm:inline">Menu (ESC)</span>
-          </button>
-        </div>
+            <button
+              type="button"
+              onClick={onPause}
+              className="bg-slate-950/80 border border-white/15 hover:bg-slate-800/90 active:scale-95 text-white px-2.5 py-1.5 sm:px-4 sm:py-2 rounded-xl text-xs sm:text-sm font-medium shadow-lg transition flex items-center gap-1.5 sm:gap-2 cursor-pointer whitespace-nowrap"
+            >
+              <Settings className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-300" />
+              <span className="sm:hidden">Menu</span>
+              <span className="hidden sm:inline">Menu (ESC)</span>
+            </button>
+          </div>
 
         {SHOW_CONTROLS_HINT && (
           <div className="hidden md:block bg-slate-950/80 border border-white/15 text-slate-200 px-3.5 py-2.5 rounded-xl text-xs space-y-1 pointer-events-none shadow-lg">
@@ -216,7 +218,8 @@ export const HudOverlay = memo(function HudOverlay({
             </div>
           </div>
         )}
-      </div>
+        </div>
+      )}
     </>
   );
 });

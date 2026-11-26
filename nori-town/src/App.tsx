@@ -7,6 +7,7 @@ import { GenderSelectModal } from './components/GenderSelectModal';
 import { HudOverlay } from './components/HudOverlay';
 import { MobileControls } from './components/MobileControls';
 import { MoneyTracker } from './components/MoneyTracker';
+import { OutfitShopModal } from './components/OutfitShopModal';
 import { PauseMenu } from './components/PauseMenu';
 import { PlayerStatusBars, XpBar } from './components/PlayerStatusBars';
 import { VoxelEngine } from './game/engine';
@@ -129,8 +130,13 @@ export default function App() {
   }, []);
 
   const handleToggleFullscreen = useCallback(async () => {
+    if (isFullscreenActive()) {
+      const result = await toggleFullscreen();
+      setIsFullscreen(result.active);
+      return;
+    }
     if (isStandaloneDisplayMode()) {
-      showToast('Bạn đang ở chế độ toàn màn hình rồi!');
+      showToast('Bạn đang ở chế độ ứng dụng toàn màn hình!');
       return;
     }
     const result = await toggleFullscreen();
@@ -190,6 +196,7 @@ export default function App() {
       />
 
       <EssentialShopModal engine={engineInstance} />
+      <OutfitShopModal engine={engineInstance} />
       <CharacterModal engine={engineInstance} />
 
       <GenderSelectModal

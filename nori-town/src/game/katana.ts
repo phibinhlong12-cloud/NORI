@@ -5,6 +5,7 @@ import {
   FirstPersonArmHandles,
   FirstPersonArmRig,
 } from './firstPersonArms';
+import { isOutfitCompatibleWithGender, OutfitId, OUTFITS } from './outfits';
 
 export interface KatanaAssetHandles extends FirstPersonArmHandles {}
 
@@ -243,6 +244,7 @@ export class KatanaViewModel {
   private assets: KatanaAssetHandles = { geometries: [], materials: [], skeletons: [] };
   private isIce = false;
   private gender: CharacterGender = 'male';
+  private outfit: OutfitId = 'default';
 
   private readonly idleOffset = new THREE.Vector3(0.04, -0.32, -0.52);
   private readonly slashOffset = new THREE.Vector3();
@@ -269,11 +271,23 @@ export class KatanaViewModel {
 
   private buildViewGroup(): THREE.Group {
     const viewRoot = new THREE.Group();
-    const arm = createFirstPersonArmGroup(this.gender, 'right', this.assets, 'katana');
+    const arm = createFirstPersonArmGroup(
+      this.gender,
+      'right',
+      this.assets,
+      'katana',
+      this.outfit,
+    );
     const rig = (arm.userData.armRig as FirstPersonArmRig | undefined) ?? null;
     this.armRig = rig;
 
-    const leftArm = createFirstPersonArmGroup(this.gender, 'left', this.assets, 'katana');
+    const leftArm = createFirstPersonArmGroup(
+      this.gender,
+      'left',
+      this.assets,
+      'katana',
+      this.outfit,
+    );
     const leftRig = (leftArm.userData.armRig as FirstPersonArmRig | undefined) ?? null;
     this.leftArmGroup = leftArm;
     this.leftArmRig = leftRig;
@@ -295,9 +309,15 @@ export class KatanaViewModel {
       viewRoot.add(katana, arm);
     }
 
+    const activeOutfit: OutfitId = isOutfitCompatibleWithGender(this.outfit, this.gender)
+      ? this.outfit
+      : 'default';
+    const arcColor = this.isIce
+      ? '#7dd3fc'
+      : OUTFITS[activeOutfit]?.slashArcColor ?? '#f8fafc';
     const arcGeo = createSlashCrescentGeometry();
     const arcMat = new THREE.MeshBasicMaterial({
-      color: this.isIce ? '#7dd3fc' : '#f8fafc',
+      color: arcColor,
       transparent: true,
       opacity: 0,
       side: THREE.DoubleSide,
@@ -321,6 +341,12 @@ export class KatanaViewModel {
   setGender(gender: CharacterGender): void {
     if (this.gender === gender) return;
     this.gender = gender;
+    this.rebuildGroup();
+  }
+
+  setOutfit(outfit: OutfitId): void {
+    if (this.outfit === outfit) return;
+    this.outfit = outfit;
     this.rebuildGroup();
   }
 

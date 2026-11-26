@@ -18,6 +18,13 @@ import {
 import { CharacterGender } from './firstPersonArms';
 import { KatanaViewModel } from './katana';
 import { MushroomEntity } from './mushroom';
+import {
+  getOutfitName,
+  isOutfitCompatibleWithGender,
+  OutfitId,
+  OUTFITS,
+  PurchasableOutfitId,
+} from './outfits';
 import { FirstPersonPlayer } from './player';
 import { PotionViewModel } from './potion';
 import { RaycastHit, voxelRaycast } from './raycast';
@@ -53,8 +60,11 @@ export interface HudStats {
   hasShield: boolean;
   backpackOpen: boolean;
   shopOpen: boolean;
+  outfitShopOpen: boolean;
   characterWindowOpen: boolean;
   gender: CharacterGender;
+  ownedOutfits: OutfitId[];
+  equippedOutfit: OutfitId;
   holdingKatana: boolean;
   holdingPotionSlot: number | null;
   holdingPotionCount: number;
@@ -63,6 +73,7 @@ export interface HudStats {
   inSellZone: boolean;
   carriedLogValue: number;
   isShopTarget: boolean;
+  isOutfitShopTarget: boolean;
   isConveyorTarget: boolean;
   chopProgress: number;
   backpackItems: Array<BackpackItem | null>;
@@ -380,6 +391,7 @@ export class VoxelEngine {
   private safeHealTimer = 0;
   private backpackOpen = false;
   private shopOpen = false;
+  private outfitShopOpen = false;
   private characterWindowOpen = false;
   private playerGender: CharacterGender = 'male';
   private holdingKatana = false;
@@ -388,9 +400,12 @@ export class VoxelEngine {
   private shieldRaised = false;
   private currentTarget: RaycastHit | null = null;
   private currentTreeTarget: TreeTarget | null = null;
+  private ownedOutfits: OutfitId[] = ['default'];
+  private equippedOutfit: OutfitId = 'default';
   private currentLogTarget: DetachedLogTarget | null = null;
   private currentConveyorTarget: { point: THREE.Vector3 } | null = null;
   private currentShopTarget: { point: THREE.Vector3 } | null = null;
+  private currentOutfitShopTarget: { point: THREE.Vector3 } | null = null;
   private currentSlimeTarget: { slime: SlimeEntity; point: THREE.Vector3 } | null = null;
   private currentMushroomTarget: { mushroom: MushroomEntity; point: THREE.Vector3 } | null = null;
   private currentDragonTarget: { point: THREE.Vector3; hp: number; maxHp: number } | null = null;
@@ -413,8 +428,11 @@ export class VoxelEngine {
     hasShield: false,
     backpackOpen: false,
     shopOpen: false,
+    outfitShopOpen: false,
     characterWindowOpen: false,
     gender: 'male',
+    ownedOutfits: ['default'],
+    equippedOutfit: 'default',
     holdingKatana: false,
     holdingPotionSlot: null,
     holdingPotionCount: 0,
@@ -423,6 +441,7 @@ export class VoxelEngine {
     inSellZone: false,
     carriedLogValue: 0,
     isShopTarget: false,
+    isOutfitShopTarget: false,
     isConveyorTarget: false,
     chopProgress: 0,
     backpackItems: Array.from({ length: 9 }, () => null),
@@ -639,15 +658,20 @@ export class VoxelEngine {
 
   setGender(gender: CharacterGender): void {
     this.playerGender = gender;
+    if (!isOutfitCompatibleWithGender(this.equippedOutfit, gender)) {
+      this.equippedOutfit = 'default';
+    }
     this.katanaView.setGender(gender);
     this.shieldView.setGender(gender);
     this.potionView.setGender(gender);
+    this.syncOutfitToViewModels();
     this.emitStats();
   }
 
   pauseGame(): void {
     this.isPlaying = false;
     this.shopOpen = false;
+    this.outfitShopOpen = false;
     this.characterWindowOpen = false;
     this.player.keys = {};
     this.player.setJoystickVector(0, 0);
@@ -669,6 +693,7 @@ export class VoxelEngine {
   openShop(): void {
     if (this.shopOpen) return;
     this.shopOpen = true;
+    this.outfitShopOpen = false;
     this.characterWindowOpen = false;
     this.backpackOpen = false;
     this.player.keys = {};
@@ -702,10 +727,48 @@ export class VoxelEngine {
     this.emitStats();
   }
 
+  openOutfitShop(): void {
+    if (this.outfitShopOpen) return;
+    this.outfitShopOpen = true;
+    this.shopOpen = false;
+    this.characterWindowOpen = false;
+    this.backpackOpen = false;
+    this.player.keys = {};
+    this.player.setJoystickVector(0, 0);
+    this.isMouseDragging = false;
+    this.isLeftMouseDown = false;
+    this.isTouchBreakHeld = false;
+    this.touchTreeHoldActive = false;
+    this.lookTouchId = null;
+    this.chopCompletedWaitingRelease = false;
+    this.resetChopHold();
+
+    const canvas = this.renderer.domElement;
+    if (document.pointerLockElement === canvas && document.exitPointerLock) {
+      document.exitPointerLock();
+    }
+    this.emitStats();
+  }
+
+  closeOutfitShop(): void {
+    if (!this.outfitShopOpen) return;
+    this.outfitShopOpen = false;
+    const canvas = this.renderer.domElement;
+    if (!this.isTouchDevice && this.isPlaying && canvas.requestPointerLock) {
+      try {
+        canvas.requestPointerLock();
+      } catch {
+        // Fallback nếu môi trường nhúng hạn chế Pointer Lock
+      }
+    }
+    this.emitStats();
+  }
+
   openCharacterWindow(): void {
     if (this.characterWindowOpen || !this.isPlaying) return;
     this.characterWindowOpen = true;
     this.shopOpen = false;
+    this.outfitShopOpen = false;
     this.backpackOpen = false;
     this.player.keys = {};
     this.player.setJoystickVector(0, 0);
@@ -1034,6 +1097,11 @@ export class VoxelEngine {
       }
     }
 
+    if (this.currentOutfitShopTarget && !this.world.isCarryingLog()) {
+      this.openOutfitShop();
+      return;
+    }
+
     if (this.currentShopTarget && !this.world.isCarryingLog()) {
       this.openShop();
       return;
@@ -1190,7 +1258,9 @@ export class VoxelEngine {
   }
 
   sellCarriedLog(): boolean {
-    if (!this.isPlaying || this.shopOpen || this.characterWindowOpen) return false;
+    if (!this.isPlaying || this.shopOpen || this.outfitShopOpen || this.characterWindowOpen) {
+      return false;
+    }
     if (!this.world.isCarryingLog()) {
       this.callbacks.onToast('Hãy cầm khúc gỗ trên tay để bán lên băng chuyền!');
       return false;
@@ -1324,6 +1394,79 @@ export class VoxelEngine {
     this.callbacks.onToast('Đã nhận Katana Băng! Đã thay thế Katana ban đầu.');
   }
 
+  private syncOutfitToViewModels(): void {
+    const activeOutfit: OutfitId = isOutfitCompatibleWithGender(
+      this.equippedOutfit,
+      this.playerGender,
+    )
+      ? this.equippedOutfit
+      : 'default';
+    this.katanaView.setOutfit(activeOutfit);
+    this.shieldView.setOutfit(activeOutfit);
+    this.potionView.setOutfit(activeOutfit);
+  }
+
+  buyOutfit(outfitId: PurchasableOutfitId): void {
+    const info = OUTFITS[outfitId];
+    if (!info) return;
+    if (!isOutfitCompatibleWithGender(outfitId, this.playerGender)) {
+      const genderLabel = info.gender === 'female' ? 'Nữ' : 'Nam';
+      this.callbacks.onToast(`Bộ trang phục này chỉ dành cho nhân vật ${genderLabel}!`);
+      return;
+    }
+    if (this.ownedOutfits.includes(outfitId)) {
+      this.equipOutfit(outfitId);
+      return;
+    }
+    if (this.money < info.price) {
+      this.callbacks.onToast(
+        `Chưa đủ ${info.price.toLocaleString('vi-VN')} VNĐ để mua ${info.name}!`,
+      );
+      return;
+    }
+
+    this.money -= info.price;
+    this.ownedOutfits = [...this.ownedOutfits, outfitId];
+    this.equippedOutfit = outfitId;
+    this.syncOutfitToViewModels();
+    this.audio.playCashSound();
+    this.emitStats();
+    this.callbacks.onToast(
+      `Đã mua & mặc ${info.name} (-${info.price.toLocaleString('vi-VN')} VNĐ)!`,
+    );
+  }
+
+  equipOutfit(outfitId: OutfitId): void {
+    const info = OUTFITS[outfitId];
+    if (!info) return;
+    if (!isOutfitCompatibleWithGender(outfitId, this.playerGender)) {
+      const genderLabel = info.gender === 'female' ? 'Nữ' : 'Nam';
+      this.callbacks.onToast(`Bộ trang phục này chỉ dành cho nhân vật ${genderLabel}!`);
+      return;
+    }
+    if (!this.ownedOutfits.includes(outfitId)) return;
+    if (this.equippedOutfit === outfitId) return;
+    this.equippedOutfit = outfitId;
+    this.syncOutfitToViewModels();
+    this.audio.playStowSound();
+    this.emitStats();
+    this.callbacks.onToast(`Đã mặc trang phục: ${getOutfitName(outfitId)}`);
+  }
+
+  cycleOutfit(): void {
+    const availableOutfits = this.ownedOutfits.filter((id) =>
+      isOutfitCompatibleWithGender(id, this.playerGender),
+    );
+    if (availableOutfits.length <= 1) return;
+    const idx = availableOutfits.indexOf(this.equippedOutfit);
+    const nextIdx = idx >= 0 ? (idx + 1) % availableOutfits.length : 0;
+    this.equippedOutfit = availableOutfits[nextIdx];
+    this.syncOutfitToViewModels();
+    this.audio.playStowSound();
+    this.emitStats();
+    this.callbacks.onToast(`Đã đổi trang phục: ${getOutfitName(this.equippedOutfit)}`);
+  }
+
   private emitStats(): void {
     this.latestStats.x = this.player.position.x;
     this.latestStats.y = this.player.position.y;
@@ -1342,8 +1485,11 @@ export class VoxelEngine {
     this.latestStats.hasShield = this.world.isShopItemOwned('shield');
     this.latestStats.backpackOpen = this.backpackOpen;
     this.latestStats.shopOpen = this.shopOpen;
+    this.latestStats.outfitShopOpen = this.outfitShopOpen;
     this.latestStats.characterWindowOpen = this.characterWindowOpen;
     this.latestStats.gender = this.playerGender;
+    this.latestStats.ownedOutfits = this.ownedOutfits;
+    this.latestStats.equippedOutfit = this.equippedOutfit;
     this.latestStats.holdingKatana = this.holdingKatana;
     if (
       this.holdingPotionSlot !== null &&
@@ -1367,6 +1513,7 @@ export class VoxelEngine {
     this.latestStats.carriedLogValue =
       heldLogLen !== null ? CashierStation.computeWoodValue(heldLogLen) : 0;
     this.latestStats.isShopTarget = Boolean(this.currentShopTarget);
+    this.latestStats.isOutfitShopTarget = Boolean(this.currentOutfitShopTarget);
     this.latestStats.isConveyorTarget =
       carryingLog && Boolean(this.currentConveyorTarget);
     const chopProgress =
@@ -1395,6 +1542,14 @@ export class VoxelEngine {
         this.level < DRAGON_MIN_ATTACK_LEVEL
           ? `Rồng Băng Lv.${DRAGON_LEVEL} (${hp}/${maxHp} · Cần Lv.${DRAGON_MIN_ATTACK_LEVEL} để gây sát thương)`
           : `Rồng Băng Lv.${DRAGON_LEVEL} (${hp}/${maxHp} · +5.000 XP)`;
+      this.latestStats.targetCoords = [
+        Math.round(point.x),
+        Math.round(point.y * 10) / 10,
+        Math.round(point.z),
+      ];
+    } else if (this.currentOutfitShopTarget && !this.world.isCarryingLog()) {
+      const { point } = this.currentOutfitShopTarget;
+      this.latestStats.targetName = 'Cửa hàng trang phục · Chuột phải để mở';
       this.latestStats.targetCoords = [
         Math.round(point.x),
         Math.round(point.y * 10) / 10,
@@ -1479,20 +1634,26 @@ export class VoxelEngine {
       this.hasStarted = true;
       this.isPlaying = true;
       this.callbacks.onPlayingChange(true, true);
-    } else if (!this.isTouchDevice && this.isPlaying && !this.shopOpen && !this.characterWindowOpen) {
+    } else if (
+      !this.isTouchDevice &&
+      this.isPlaying &&
+      !this.shopOpen &&
+      !this.outfitShopOpen &&
+      !this.characterWindowOpen
+    ) {
       this.pauseGame();
     }
   };
 
   private readonly onMouseMove = (e: MouseEvent): void => {
-    if (!this.isPlaying || this.shopOpen || this.characterWindowOpen) return;
+    if (!this.isPlaying || this.shopOpen || this.outfitShopOpen || this.characterWindowOpen) return;
     if (document.pointerLockElement === this.renderer.domElement || this.isMouseDragging) {
       this.player.rotate(e.movementX, e.movementY);
     }
   };
 
   private readonly onMouseDown = (e: MouseEvent): void => {
-    if (!this.isPlaying || this.shopOpen || this.characterWindowOpen) return;
+    if (!this.isPlaying || this.shopOpen || this.outfitShopOpen || this.characterWindowOpen) return;
     if (performance.now() - this.lastTouchTimestamp < 500) return;
     const canvas = this.renderer.domElement;
     if (document.pointerLockElement !== canvas && !this.isTouchDevice) {
@@ -1539,6 +1700,14 @@ export class VoxelEngine {
       if (e.code === 'Escape' && !e.repeat) {
         e.preventDefault();
         this.closeShop();
+      }
+      return;
+    }
+
+    if (this.outfitShopOpen) {
+      if (e.code === 'Escape' && !e.repeat) {
+        e.preventDefault();
+        this.closeOutfitShop();
       }
       return;
     }
@@ -1591,7 +1760,7 @@ export class VoxelEngine {
   };
 
   private readonly onWheel = (e: WheelEvent): void => {
-    if (!this.isPlaying || this.shopOpen || this.characterWindowOpen) return;
+    if (!this.isPlaying || this.shopOpen || this.outfitShopOpen || this.characterWindowOpen) return;
     if (e.deltaY > 0) {
       this.selectSlot(this.selectedSlotIndex + 1);
     } else if (e.deltaY < 0) {
@@ -1658,6 +1827,10 @@ export class VoxelEngine {
       ray,
       this.world.raycastDroppedIceKatana(ray.origin, ray.direction, 7.0),
     );
+    const outfitShopHit = this.raycastUnblockedTouchTarget(
+      ray,
+      this.world.raycastOutfitShop(ray.origin, ray.direction, 7.5),
+    );
     const shopHit = this.raycastUnblockedTouchTarget(
       ray,
       this.world.raycastShop(ray.origin, ray.direction, 7.5),
@@ -1668,10 +1841,11 @@ export class VoxelEngine {
     );
 
     const dropDist = dropHit ? dropHit.point.distanceTo(ray.origin) : Infinity;
+    const outfitShopDist = outfitShopHit ? outfitShopHit.point.distanceTo(ray.origin) : Infinity;
     const shopDist = shopHit ? shopHit.point.distanceTo(ray.origin) : Infinity;
     const logDist = logHit ? logHit.point.distanceTo(ray.origin) : Infinity;
 
-    if (dropHit && dropDist <= shopDist && dropDist <= logDist) {
+    if (dropHit && dropDist <= outfitShopDist && dropDist <= shopDist && dropDist <= logDist) {
       if (
         this.world.tryCollectIceKatana({
           onCollectIceKatana: () => this.handleCollectIceKatana(),
@@ -1704,6 +1878,17 @@ export class VoxelEngine {
       const dragonDist = dragonPreview ? dragonPreview.point.distanceTo(ray.origin) : Infinity;
       const treeDist = treeHit ? treeHit.point.distanceTo(ray.origin) : Infinity;
       const monsterDist = Math.min(slimeDist, mushroomDist, dragonDist);
+
+      if (
+        outfitShopHit &&
+        outfitShopDist <= shopDist &&
+        outfitShopDist < monsterDist &&
+        outfitShopDist <= logDist &&
+        outfitShopDist <= treeDist
+      ) {
+        this.openOutfitShop();
+        return;
+      }
 
       if (shopHit && shopDist < monsterDist && shopDist <= logDist && shopDist <= treeDist) {
         this.openShop();
@@ -1829,6 +2014,11 @@ export class VoxelEngine {
       return;
     }
 
+    if (outfitShopHit && outfitShopDist <= shopDist && outfitShopDist <= logDist) {
+      this.openOutfitShop();
+      return;
+    }
+
     if (shopHit && shopDist <= logDist) {
       this.openShop();
       return;
@@ -1862,7 +2052,7 @@ export class VoxelEngine {
 
   private readonly onTouchStart = (e: TouchEvent): void => {
     this.lastTouchTimestamp = performance.now();
-    if (!this.isPlaying || this.shopOpen || this.characterWindowOpen) return;
+    if (!this.isPlaying || this.shopOpen || this.outfitShopOpen || this.characterWindowOpen) return;
     if (this.lookTouchId === null && e.changedTouches.length > 0) {
       const touch = e.changedTouches[0];
       this.lookTouchId = touch.identifier;
@@ -1884,6 +2074,12 @@ export class VoxelEngine {
                 this.world.raycastDroppedIceKatana(ray.origin, ray.direction, 7.0),
               )
             : null;
+          const outfitShopHit = ray
+            ? this.raycastUnblockedTouchTarget(
+                ray,
+                this.world.raycastOutfitShop(ray.origin, ray.direction, 7.5),
+              )
+            : null;
           const shopHit = ray
             ? this.raycastUnblockedTouchTarget(
                 ray,
@@ -1898,6 +2094,7 @@ export class VoxelEngine {
             : null;
           const blockerDist = Math.min(
             dropHit && ray ? dropHit.point.distanceTo(ray.origin) : Infinity,
+            outfitShopHit && ray ? outfitShopHit.point.distanceTo(ray.origin) : Infinity,
             shopHit && ray ? shopHit.point.distanceTo(ray.origin) : Infinity,
             logHit && ray ? logHit.point.distanceTo(ray.origin) : Infinity,
           );
@@ -1917,7 +2114,15 @@ export class VoxelEngine {
 
   private readonly onTouchMove = (e: TouchEvent): void => {
     this.lastTouchTimestamp = performance.now();
-    if (!this.isPlaying || this.shopOpen || this.characterWindowOpen || this.lookTouchId === null) return;
+    if (
+      !this.isPlaying ||
+      this.shopOpen ||
+      this.outfitShopOpen ||
+      this.characterWindowOpen ||
+      this.lookTouchId === null
+    ) {
+      return;
+    }
     for (let i = 0; i < e.touches.length; i++) {
       const touch = e.touches[i];
       if (touch.identifier === this.lookTouchId) {
@@ -1958,7 +2163,13 @@ export class VoxelEngine {
 
         if (wasTreeHold) {
           this.handleBreakRelease();
-        } else if (wasTap && this.isPlaying && !this.shopOpen && !this.characterWindowOpen) {
+        } else if (
+          wasTap &&
+          this.isPlaying &&
+          !this.shopOpen &&
+          !this.outfitShopOpen &&
+          !this.characterWindowOpen
+        ) {
           this.performScreenTapInteract(endX, endY);
         }
         break;
@@ -2077,7 +2288,7 @@ export class VoxelEngine {
       this.fpsTimer = 0;
     }
 
-    if (this.isPlaying && !this.shopOpen && !this.characterWindowOpen) {
+    if (this.isPlaying && !this.shopOpen && !this.outfitShopOpen && !this.characterWindowOpen) {
       const jumpState = this.player.update(dt);
       if (jumpState.jumped) {
         this.audio.playJumpSound();
@@ -2271,12 +2482,17 @@ export class VoxelEngine {
 
     this.camera.getWorldDirection(this.rayDir);
     const dropHit = this.world.raycastDroppedIceKatana(this.camera.position, this.rayDir, 6.5);
+    const outfitShopHit = this.world.raycastOutfitShop(this.camera.position, this.rayDir, 7.5);
+    const outfitShopDist = outfitShopHit
+      ? outfitShopHit.point.distanceTo(this.camera.position)
+      : Infinity;
     const shopHit = this.world.raycastShop(this.camera.position, this.rayDir, 7.0);
     const shopDist = shopHit ? shopHit.point.distanceTo(this.camera.position) : Infinity;
 
     if (dropHit) {
       this.currentIceKatanaDropTarget = dropHit;
       this.currentDragonTarget = null;
+      this.currentOutfitShopTarget = null;
       this.currentShopTarget = null;
       this.currentSlimeTarget = null;
       this.currentMushroomTarget = null;
@@ -2301,6 +2517,23 @@ export class VoxelEngine {
       const logDist = logHit ? logHit.point.distanceTo(this.camera.position) : Infinity;
 
       if (
+        outfitShopHit &&
+        outfitShopDist <= shopDist &&
+        outfitShopDist <= dragonDist &&
+        outfitShopDist <= slimeDist &&
+        outfitShopDist <= mushroomDist &&
+        outfitShopDist <= treeDist &&
+        outfitShopDist <= logDist
+      ) {
+        const wallHit = voxelRaycast(this.world, this.camera.position, this.rayDir, outfitShopDist);
+        this.currentOutfitShopTarget = wallHit ? null : outfitShopHit;
+        this.currentShopTarget = null;
+        this.currentDragonTarget = null;
+        this.currentSlimeTarget = null;
+        this.currentMushroomTarget = null;
+        this.currentTreeTarget = null;
+        this.currentLogTarget = null;
+      } else if (
         shopHit &&
         shopDist <= dragonDist &&
         shopDist <= slimeDist &&
@@ -2310,6 +2543,7 @@ export class VoxelEngine {
       ) {
         const wallHit = voxelRaycast(this.world, this.camera.position, this.rayDir, shopDist);
         this.currentShopTarget = wallHit ? null : shopHit;
+        this.currentOutfitShopTarget = null;
         this.currentDragonTarget = null;
         this.currentSlimeTarget = null;
         this.currentMushroomTarget = null;
@@ -2329,6 +2563,7 @@ export class VoxelEngine {
         this.currentTreeTarget = null;
         this.currentLogTarget = null;
         this.currentShopTarget = null;
+        this.currentOutfitShopTarget = null;
       } else if (
         slimeHit &&
         slimeDist <= mushroomDist &&
@@ -2342,6 +2577,7 @@ export class VoxelEngine {
         this.currentTreeTarget = null;
         this.currentLogTarget = null;
         this.currentShopTarget = null;
+        this.currentOutfitShopTarget = null;
       } else if (mushroomHit && mushroomDist <= treeDist && mushroomDist <= logDist) {
         const wallHit = voxelRaycast(this.world, this.camera.position, this.rayDir, mushroomDist);
         this.currentMushroomTarget = wallHit ? null : mushroomHit;
@@ -2350,6 +2586,7 @@ export class VoxelEngine {
         this.currentTreeTarget = null;
         this.currentLogTarget = null;
         this.currentShopTarget = null;
+        this.currentOutfitShopTarget = null;
       } else if (treeHit && treeDist <= logDist) {
         const wallHit = voxelRaycast(this.world, this.camera.position, this.rayDir, treeDist);
         this.currentTreeTarget = wallHit ? null : treeHit;
@@ -2358,6 +2595,7 @@ export class VoxelEngine {
         this.currentMushroomTarget = null;
         this.currentLogTarget = null;
         this.currentShopTarget = null;
+        this.currentOutfitShopTarget = null;
       } else if (logHit) {
         const wallHit = voxelRaycast(this.world, this.camera.position, this.rayDir, logDist);
         this.currentLogTarget = wallHit ? null : logHit;
@@ -2366,6 +2604,7 @@ export class VoxelEngine {
         this.currentMushroomTarget = null;
         this.currentTreeTarget = null;
         this.currentShopTarget = null;
+        this.currentOutfitShopTarget = null;
       } else {
         this.currentDragonTarget = null;
         this.currentSlimeTarget = null;
@@ -2373,6 +2612,7 @@ export class VoxelEngine {
         this.currentTreeTarget = null;
         this.currentLogTarget = null;
         this.currentShopTarget = null;
+        this.currentOutfitShopTarget = null;
       }
     } else {
       this.currentIceKatanaDropTarget = null;
@@ -2388,9 +2628,11 @@ export class VoxelEngine {
         const wallHit = voxelRaycast(this.world, this.camera.position, this.rayDir, convDist);
         this.currentConveyorTarget = wallHit ? null : convHit;
         this.currentShopTarget = null;
+        this.currentOutfitShopTarget = null;
       } else {
         this.currentConveyorTarget = null;
         this.currentShopTarget = null;
+        this.currentOutfitShopTarget = null;
       }
     }
 

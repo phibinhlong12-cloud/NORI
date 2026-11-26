@@ -5,6 +5,7 @@ import {
   FirstPersonArmHandles,
   FirstPersonArmRig,
 } from './firstPersonArms';
+import { OutfitId } from './outfits';
 
 export interface ShieldAssetHandles extends FirstPersonArmHandles {
   textures: THREE.Texture[];
@@ -169,6 +170,7 @@ export class ShieldViewModel {
   private readonly scene: THREE.Scene;
   private group: THREE.Group;
   private gender: CharacterGender = 'male';
+  private outfit: OutfitId = 'default';
   private armRig: FirstPersonArmRig | null = null;
   private readonly assets: ShieldAssetHandles = {
     geometries: [],
@@ -200,7 +202,13 @@ export class ShieldViewModel {
 
   private buildViewGroup(): THREE.Group {
     const root = createShieldMeshGroup(this.assets);
-    const arm = createFirstPersonArmGroup(this.gender, 'left', this.assets, 'shield');
+    const arm = createFirstPersonArmGroup(
+      this.gender,
+      'left',
+      this.assets,
+      'shield',
+      this.outfit,
+    );
     this.armRig = (arm.userData.armRig as FirstPersonArmRig | undefined) ?? null;
     root.add(arm);
     root.scale.set(0.76, 0.76, 0.76);
@@ -211,6 +219,16 @@ export class ShieldViewModel {
   setGender(gender: CharacterGender): void {
     if (this.gender === gender) return;
     this.gender = gender;
+    this.rebuildGroup();
+  }
+
+  setOutfit(outfit: OutfitId): void {
+    if (this.outfit === outfit) return;
+    this.outfit = outfit;
+    this.rebuildGroup();
+  }
+
+  private rebuildGroup(): void {
     const wasVisible = this.group.visible;
     this.disposeMeshOnly();
     this.group = this.buildViewGroup();

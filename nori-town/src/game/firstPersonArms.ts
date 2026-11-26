@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { isOutfitCompatibleWithGender, OutfitId, OUTFITS } from './outfits';
 import { createParabolicEllipsoidGeometry, createParabolicLatheGeometry } from './parabolic';
 import { applyAxisSkinWeights, bindSkinnedMeshToSkeleton } from './skeletonUtils';
 
@@ -51,6 +52,72 @@ function getSleeveWeaveTexture(): THREE.CanvasTexture {
   return tex;
 }
 
+const cachedFemaleFloralSleeveTextures = new Map<OutfitId, THREE.CanvasTexture>();
+function getFemaleFloralSleeveTexture(outfit: OutfitId): THREE.CanvasTexture {
+  const existing = cachedFemaleFloralSleeveTextures.get(outfit);
+  if (existing) return existing;
+
+  const size = 128;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  if (ctx) {
+    const bg =
+      outfit === 'female_black'
+        ? '#161720'
+        : outfit === 'female_red'
+          ? '#b91c24'
+          : '#f8fafc';
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, size, size);
+
+    const primaryFlower =
+      outfit === 'female_black'
+        ? '#e11d48'
+        : outfit === 'female_red'
+          ? '#f8fafc'
+          : '#dc2626';
+    const secondaryFlower =
+      outfit === 'female_black'
+        ? '#f8fafc'
+        : outfit === 'female_red'
+          ? '#fde047'
+          : '#eab308';
+
+    const blossoms: Array<[number, number, number, string]> = [
+      [28, 30, 11, primaryFlower],
+      [88, 26, 9, secondaryFlower],
+      [62, 68, 12, primaryFlower],
+      [22, 98, 9, secondaryFlower],
+      [102, 94, 11, primaryFlower],
+    ];
+    for (const [bx, by, r, col] of blossoms) {
+      ctx.save();
+      ctx.translate(bx, by);
+      ctx.fillStyle = col;
+      for (let p = 0; p < 5; p++) {
+        ctx.rotate((Math.PI * 2) / 5);
+        ctx.beginPath();
+        ctx.ellipse(0, r * 0.56, r * 0.34, r * 0.52, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.fillStyle = '#facc15';
+      ctx.beginPath();
+      ctx.arc(0, 0, 2.2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  cachedFemaleFloralSleeveTextures.set(outfit, tex);
+  return tex;
+}
+
 /**
  * Tạo cánh tay + cổ tay + bàn tay góc nhìn thứ nhất gắn hệ xương thật (THREE.Bone + THREE.SkinnedMesh):
  * - Chuỗi xương Vai → Khuỷu tay → Cẳng tay (xoay cổ tay) → Cổ tay/Bàn tay.
@@ -61,9 +128,20 @@ export function createFirstPersonArmGroup(
   side: 'right' | 'left',
   handles: FirstPersonArmHandles,
   mode: ArmHoldMode,
+  outfit: OutfitId = 'default',
 ): THREE.Group {
   const armGroup = new THREE.Group();
   const isMale = gender === 'male';
+  const activeOutfitId: OutfitId = isOutfitCompatibleWithGender(outfit, gender)
+    ? outfit
+    : 'default';
+  const isCustomOutfit = activeOutfitId !== 'default';
+  const outfitInfo = OUTFITS[activeOutfitId] ?? OUTFITS.default;
+  const isFemaleFloral =
+    !isMale &&
+    (activeOutfitId === 'female_black' ||
+      activeOutfitId === 'female_red' ||
+      activeOutfitId === 'female_white');
 
   const skinMat = new THREE.MeshStandardMaterial({
     color: isMale ? '#f3dfd0' : '#fcebe3',
@@ -71,20 +149,30 @@ export function createFirstPersonArmGroup(
     metalness: 0.02,
   });
   const sleeveOuterMat = new THREE.MeshPhysicalMaterial({
-    map: getSleeveWeaveTexture(),
-    color: isMale ? '#f97316' : '#f472b6',
-    roughness: 0.68,
+    map: isFemaleFloral
+      ? getFemaleFloralSleeveTexture(activeOutfitId)
+      : getSleeveWeaveTexture(),
+    color: isFemaleFloral
+      ? '#ffffff'
+      : isMale
+        ? outfitInfo.sleeveColor
+        : '#f472b6',
+    roughness: isFemaleFloral ? 0.45 : 0.68,
     metalness: 0.04,
-    sheen: 0.45,
-    sheenRoughness: 0.58,
-    sheenColor: new THREE.Color(isMale ? '#fed7aa' : '#fce7f3'),
+    sheen: 0.48,
+    sheenRoughness: 0.52,
+    sheenColor: new THREE.Color(
+      isCustomOutfit || isMale ? outfitInfo.sleeveSheen : '#fce7f3',
+    ),
   });
   const sleeveInnerMat = new THREE.MeshPhysicalMaterial({
-    color: isMale ? '#b91c1c' : '#dc2626',
-    roughness: 0.52,
-    metalness: 0.06,
+    color: isCustomOutfit || isMale ? outfitInfo.cuffColor : '#dc2626',
+    roughness: 0.42,
+    metalness: 0.08,
     sheen: 0.5,
-    sheenColor: new THREE.Color('#fca5a5'),
+    sheenColor: new THREE.Color(
+      isCustomOutfit || isMale ? outfitInfo.cuffSheen : '#fca5a5',
+    ),
   });
   const gloveMat = new THREE.MeshStandardMaterial({
     color: '#1f1b24',
@@ -174,8 +262,8 @@ export function createFirstPersonArmGroup(
   bindSkinnedMeshToSkeleton(sleeveGeo, sleeveOuterMat, skeleton, armGroup, false);
 
   const cuffTrimGeo = new THREE.TorusGeometry(
-    wristRadius + (isMale ? 0.016 : 0.024),
-    isMale ? 0.006 : 0.0055,
+    wristRadius + (isMale ? 0.017 : 0.024),
+    isCustomOutfit ? 0.009 : isMale ? 0.006 : 0.0055,
     8,
     18,
   );
@@ -187,6 +275,30 @@ export function createFirstPersonArmGroup(
   ]);
   handles.geometries.push(cuffTrimGeo);
   bindSkinnedMeshToSkeleton(cuffTrimGeo, sleeveInnerMat, skeleton, armGroup, false);
+
+  if (isCustomOutfit) {
+    const accentTrimMat = new THREE.MeshStandardMaterial({
+      color: outfitInfo.accentTrimColor,
+      roughness: 0.42,
+      metalness: outfitInfo.accentTrimColor === '#eab308' || outfitInfo.accentTrimColor === '#facc15' ? 0.65 : 0.1,
+    });
+    handles.materials.push(accentTrimMat);
+
+    const accentTrimGeo = new THREE.TorusGeometry(
+      wristRadius + (isMale ? 0.018 : 0.0255),
+      0.005,
+      8,
+      18,
+    );
+    accentTrimGeo.rotateX(Math.PI / 2);
+    accentTrimGeo.translate(0, -forearmLen + sleeveLen - 0.036, 0);
+    applyAxisSkinWeights(accentTrimGeo, 'y', [
+      { boneIndex: 1, pos: -forearmLen + 0.02, blendWidth: 0.1 },
+      { boneIndex: 2, pos: -forearmLen + sleeveLen - 0.02, blendWidth: 0.1 },
+    ]);
+    handles.geometries.push(accentTrimGeo);
+    bindSkinnedMeshToSkeleton(accentTrimGeo, accentTrimMat, skeleton, armGroup, false);
+  }
 
   // 3. Bàn tay & các ngón tay gắn trực tiếp vào xương cổ tay (wristBone)
   const handPivot = new THREE.Group();

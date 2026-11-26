@@ -9,9 +9,11 @@ import {
   disposeCharacterAssets,
 } from '../game/characterModel';
 import { CharacterGender } from '../game/firstPersonArms';
+import { OutfitId } from '../game/outfits';
 
 interface Character3DViewportProps {
   gender: CharacterGender;
+  outfit?: OutfitId;
   hasKatana?: boolean;
   hasIceKatana?: boolean;
   hasShield?: boolean;
@@ -38,6 +40,7 @@ function detectSoftwareWebGL(): boolean {
 
 export const Character3DViewport = memo(function Character3DViewport({
   gender,
+  outfit = 'default',
   hasKatana = false,
   hasIceKatana = false,
   hasShield = false,
@@ -58,12 +61,13 @@ export const Character3DViewport = memo(function Character3DViewport({
   const lastXRef = useRef(0);
 
   const optionsRef = useRef<CharacterBuildOptions>({
+    outfit,
     hasKatana,
     hasIceKatana,
     hasShield,
     previewWeapon,
   });
-  optionsRef.current = { hasKatana, hasIceKatana, hasShield, previewWeapon };
+  optionsRef.current = { outfit, hasKatana, hasIceKatana, hasShield, previewWeapon };
 
   useEffect(() => {
     const container = mountRef.current;
@@ -354,7 +358,7 @@ export const Character3DViewport = memo(function Character3DViewport({
         container.removeChild(renderer.domElement);
       }
     };
-  }, [gender, hasKatana, hasIceKatana, hasShield, previewWeapon, interactiveRotate, initialYaw]);
+  }, [gender, outfit, hasKatana, hasIceKatana, hasShield, previewWeapon, interactiveRotate, initialYaw]);
 
   const endDrag = (e: React.PointerEvent<HTMLDivElement>) => {
     if (activePointerIdRef.current !== e.pointerId) return;
