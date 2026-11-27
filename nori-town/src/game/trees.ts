@@ -610,11 +610,32 @@ export class TreeManager {
     return { swapped: true, newVariant };
   }
 
-  deleteBackpackSlot(slotIndex: number): BackpackItem | null {
+  deleteBackpackSlot(
+    slotIndex: number,
+    quantity?: number,
+  ): { item: BackpackItem; removedCount: number; remainingCount: number } | null {
     if (slotIndex < 0 || slotIndex >= BACKPACK_CAPACITY) return null;
     const prevSnapshot = this.backpackSnapshot[slotIndex];
     const slot = this.backpackSlots[slotIndex];
     if (!slot || !prevSnapshot) return null;
+
+    if (
+      slot.kind === 'potion' ||
+      slot.kind === 'slime_orb' ||
+      slot.kind === 'mushroom_item'
+    ) {
+      const requested =
+        quantity === undefined ? slot.count : Math.max(1, Math.floor(quantity));
+      const removedCount = Math.min(slot.count, requested);
+      const remainingCount = slot.count - removedCount;
+      if (remainingCount <= 0) {
+        this.backpackSlots[slotIndex] = null;
+      } else {
+        slot.count = remainingCount;
+      }
+      this.rebuildBackpackSnapshot();
+      return { item: prevSnapshot, removedCount, remainingCount };
+    }
 
     if (slot.kind === 'wood') {
       this.detachedLogs.delete(slot.log);
@@ -623,7 +644,7 @@ export class TreeManager {
     }
     this.backpackSlots[slotIndex] = null;
     this.rebuildBackpackSnapshot();
-    return prevSnapshot;
+    return { item: prevSnapshot, removedCount: 1, remainingCount: 0 };
   }
 
   getCraftingMaterialCounts(): {

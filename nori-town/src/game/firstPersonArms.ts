@@ -19,6 +19,7 @@ export interface FirstPersonArmRig {
   forearmBone: THREE.Bone;
   wristBone: THREE.Bone;
   handPivot: THREE.Group;
+  fingerGroup: THREE.Group;
   skeleton: THREE.Skeleton;
   basePosition: THREE.Vector3;
   baseRotation: THREE.Euler;
@@ -181,21 +182,24 @@ export function createFirstPersonArmGroup(
   });
   handles.materials.push(skinMat, sleeveOuterMat, sleeveInnerMat, gloveMat);
 
-  // Tỷ lệ cứng cáp (Nam) vs mềm mỏng (Nữ)
+  // Tỷ lệ cứng cáp (Nam) vs mềm mỏng (Nữ) + bắp tay trên nối dài tới vai để không bị hở khi vung rộng
   const forearmLen = isMale ? 0.36 : 0.34;
+  const upperArmLen = isMale ? 0.34 : 0.32;
   const wristRadius = isMale ? 0.036 : 0.023;
   const elbowRadius = isMale ? 0.052 : 0.034;
-  const sleeveLen = isMale ? 0.22 : 0.24;
-  const sleeveFlare = isMale ? 1.15 : 1.38;
+  const shoulderRadius = isMale ? 0.064 : 0.044;
+  const sleeveFrontOffset = isMale ? 0.2 : 0.22;
+  const totalSleeveLen = upperArmLen + sleeveFrontOffset + 0.1;
+  const sleeveFlare = isMale ? 1.16 : 1.38;
 
-  // Chuỗi 4 xương thực: Vai -> Khuỷu -> Giữa cẳng tay (xoắn cổ tay) -> Cổ tay
+  // Chuỗi 4 xương thực: Vai (gắn thân) -> Khuỷu -> Giữa cẳng tay (xoắn cổ tay) -> Cổ tay
   const shoulderBone = new THREE.Bone();
   shoulderBone.name = 'arm_shoulder';
-  shoulderBone.position.set(0, -forearmLen - 0.14, -0.02);
+  shoulderBone.position.set(0, -forearmLen - upperArmLen, -0.04);
 
   const elbowBone = new THREE.Bone();
   elbowBone.name = 'arm_elbow';
-  elbowBone.position.set(0, 0.14, 0.02); // Ở tư thế nghỉ: (0, -forearmLen, 0)
+  elbowBone.position.set(0, upperArmLen, 0.04); // Ở tư thế nghỉ: (0, -forearmLen, 0)
 
   const forearmBone = new THREE.Bone();
   forearmBone.name = 'arm_forearm_twist';
@@ -215,48 +219,82 @@ export function createFirstPersonArmGroup(
   const skeleton = new THREE.Skeleton(bones);
   handles.skeletons?.push(skeleton);
 
-  // 1. Cẳng tay parabol chia dày vòng dọc (24 segments) + skinWeight mượt qua khuỷu & cổ tay
+  // 1a. Bắp tay trên nối liền từ vai tới qua khuỷu tay để khi vung rộng không bao giờ lộ đầu cụt
+  const upperArmSpan = upperArmLen + 0.12;
+  const upperArmGeo = createParabolicLatheGeometry(
+    upperArmSpan,
+    1,
+    (t) => {
+      if (t <= 0.002 || t >= 0.998) return 0;
+      const smooth = t * t * (3 - 2 * t);
+      return shoulderRadius + (elbowRadius * 0.96 - shoulderRadius) * smooth;
+    },
+    20,
+    24,
+    false,
+  );
+  upperArmGeo.translate(0, -forearmLen - upperArmLen - 0.08, -0.02);
+  applyAxisSkinWeights(upperArmGeo, 'y', [
+    { boneIndex: 0, pos: -forearmLen - upperArmLen, blendWidth: 0.2 },
+    { boneIndex: 1, pos: -forearmLen + 0.01, blendWidth: 0.16 },
+  ]);
+  handles.geometries.push(upperArmGeo);
+  bindSkinnedMeshToSkeleton(upperArmGeo, skinMat, skeleton, armGroup, false);
+
+  // 1b. Cẳng tay parabol chia dày vòng dọc (30 segments) + skinWeight rộng mượt qua khuỷu & cổ tay
+  const forearmSpan = forearmLen + 0.05;
   const forearmGeo = createParabolicLatheGeometry(
-    forearmLen,
+    forearmSpan,
     1,
     (t) => {
       if (t <= 0.002 || t >= 0.998) return 0;
       const base = elbowRadius + (wristRadius - elbowRadius) * (t * t * (3 - 2 * t));
-      const muscleBulge = isMale ? Math.sin(t * Math.PI) * 0.007 : Math.sin(t * Math.PI) * 0.002;
+      const muscleBulge = isMale ? Math.sin(t * Math.PI) * 0.007 : Math.sin(t * Math.PI) * 0.0025;
       return base + muscleBulge;
     },
-    18,
-    24,
+    22,
+    30,
     false,
   );
-  forearmGeo.translate(0, -forearmLen, 0);
+  forearmGeo.translate(0, -forearmLen - 0.05, 0);
   applyAxisSkinWeights(forearmGeo, 'y', [
-    { boneIndex: 0, pos: -forearmLen - 0.05, blendWidth: 0.08 },
-    { boneIndex: 1, pos: -forearmLen, blendWidth: 0.12 },
-    { boneIndex: 2, pos: -forearmLen * 0.5, blendWidth: 0.15 },
-    { boneIndex: 3, pos: 0, blendWidth: 0.09 },
+    { boneIndex: 0, pos: -forearmLen - 0.14, blendWidth: 0.14 },
+    { boneIndex: 1, pos: -forearmLen, blendWidth: 0.16 },
+    { boneIndex: 2, pos: -forearmLen * 0.5, blendWidth: 0.18 },
+    { boneIndex: 3, pos: 0, blendWidth: 0.12 },
   ]);
   handles.geometries.push(forearmGeo);
   bindSkinnedMeshToSkeleton(forearmGeo, skinMat, skeleton, armGroup, false);
 
-  // 2. Tay áo kimono phủ phần cẳng tay sau được skin mềm để uốn theo khuỷu tay
+  // 2. Tay áo kimono phủ liền từ vai qua khuỷu tới cẳng tay, skin mềm mượt không gãy góc
+  const sleeveStartY = -forearmLen - upperArmLen - 0.1;
+  const sleeveEndY = -forearmLen + sleeveFrontOffset;
+  const elbowRatio = (-forearmLen - sleeveStartY) / totalSleeveLen;
   const sleeveGeo = createParabolicLatheGeometry(
-    sleeveLen,
+    totalSleeveLen,
     1,
     (t) => {
       if (t <= 0.002 || t >= 0.998) return 0;
-      const mouthR = (wristRadius + (isMale ? 0.016 : 0.024)) * (1 + (1 - t) * (sleeveFlare - 1));
-      return mouthR;
+      const mouthBase = wristRadius + (isMale ? 0.017 : 0.025);
+      if (t >= elbowRatio) {
+        const frontT = (t - elbowRatio) / Math.max(0.01, 1 - elbowRatio);
+        return mouthBase * (1 + (1 - frontT) * (sleeveFlare - 1));
+      }
+      const backT = t / Math.max(0.01, elbowRatio);
+      const backSmooth = backT * backT * (3 - 2 * backT);
+      const shoulderSleeveR = shoulderRadius + (isMale ? 0.022 : 0.026);
+      const elbowSleeveR = mouthBase * sleeveFlare;
+      return shoulderSleeveR + (elbowSleeveR - shoulderSleeveR) * backSmooth;
     },
-    18,
-    20,
+    22,
+    28,
     false,
   );
-  sleeveGeo.translate(0, -forearmLen - 0.02, 0);
+  sleeveGeo.translate(0, sleeveStartY, 0);
   applyAxisSkinWeights(sleeveGeo, 'y', [
-    { boneIndex: 0, pos: -forearmLen - 0.03, blendWidth: 0.07 },
-    { boneIndex: 1, pos: -forearmLen + 0.02, blendWidth: 0.11 },
-    { boneIndex: 2, pos: -forearmLen + sleeveLen - 0.02, blendWidth: 0.12 },
+    { boneIndex: 0, pos: -forearmLen - upperArmLen + 0.02, blendWidth: 0.2 },
+    { boneIndex: 1, pos: -forearmLen + 0.01, blendWidth: 0.18 },
+    { boneIndex: 2, pos: sleeveEndY - 0.02, blendWidth: 0.14 },
   ]);
   handles.geometries.push(sleeveGeo);
   bindSkinnedMeshToSkeleton(sleeveGeo, sleeveOuterMat, skeleton, armGroup, false);
@@ -264,14 +302,14 @@ export function createFirstPersonArmGroup(
   const cuffTrimGeo = new THREE.TorusGeometry(
     wristRadius + (isMale ? 0.017 : 0.024),
     isCustomOutfit ? 0.009 : isMale ? 0.006 : 0.0055,
-    8,
-    18,
+    10,
+    22,
   );
   cuffTrimGeo.rotateX(Math.PI / 2);
-  cuffTrimGeo.translate(0, -forearmLen + sleeveLen - 0.022, 0);
+  cuffTrimGeo.translate(0, sleeveEndY - 0.004, 0);
   applyAxisSkinWeights(cuffTrimGeo, 'y', [
-    { boneIndex: 1, pos: -forearmLen + 0.02, blendWidth: 0.1 },
-    { boneIndex: 2, pos: -forearmLen + sleeveLen - 0.02, blendWidth: 0.1 },
+    { boneIndex: 1, pos: -forearmLen + 0.01, blendWidth: 0.14 },
+    { boneIndex: 2, pos: sleeveEndY - 0.02, blendWidth: 0.14 },
   ]);
   handles.geometries.push(cuffTrimGeo);
   bindSkinnedMeshToSkeleton(cuffTrimGeo, sleeveInnerMat, skeleton, armGroup, false);
@@ -287,14 +325,14 @@ export function createFirstPersonArmGroup(
     const accentTrimGeo = new THREE.TorusGeometry(
       wristRadius + (isMale ? 0.018 : 0.0255),
       0.005,
-      8,
-      18,
+      10,
+      22,
     );
     accentTrimGeo.rotateX(Math.PI / 2);
-    accentTrimGeo.translate(0, -forearmLen + sleeveLen - 0.036, 0);
+    accentTrimGeo.translate(0, sleeveEndY - 0.018, 0);
     applyAxisSkinWeights(accentTrimGeo, 'y', [
-      { boneIndex: 1, pos: -forearmLen + 0.02, blendWidth: 0.1 },
-      { boneIndex: 2, pos: -forearmLen + sleeveLen - 0.02, blendWidth: 0.1 },
+      { boneIndex: 1, pos: -forearmLen + 0.01, blendWidth: 0.14 },
+      { boneIndex: 2, pos: sleeveEndY - 0.02, blendWidth: 0.14 },
     ]);
     handles.geometries.push(accentTrimGeo);
     bindSkinnedMeshToSkeleton(accentTrimGeo, accentTrimMat, skeleton, armGroup, false);
@@ -316,6 +354,9 @@ export function createFirstPersonArmGroup(
   handPivot.add(palmMesh);
 
   // 4 ngón tay cong ôm vào tay cầm + ngón cái giữ phía trên
+  const fingerGroup = new THREE.Group();
+  handPivot.add(fingerGroup);
+
   const fingerLen = mode === 'katana' ? (isMale ? 0.076 : 0.064) : isMale ? 0.068 : 0.056;
   const fingerR = isMale ? 0.0115 : 0.0078;
   const fingerGeo = new THREE.CapsuleGeometry(fingerR, fingerLen * 0.56, 4, 8);
@@ -329,26 +370,26 @@ export function createFirstPersonArmGroup(
       const offsetY = 0.006 + i * (isMale ? 0.02 : 0.016);
       fMesh.position.set(-sideSign * (palmW * 0.24), offsetY, -palmD * 0.56);
       fMesh.rotation.set(0.32, 0, -sideSign * 1.32);
-      handPivot.add(fMesh);
+      fingerGroup.add(fMesh);
     }
 
     const thumbMesh = new THREE.Mesh(thumbGeo, skinMat);
     thumbMesh.position.set(sideSign * (palmW * 0.34), 0.064, -palmD * 0.42);
     thumbMesh.rotation.set(-0.32, 0, sideSign * 0.42);
-    handPivot.add(thumbMesh);
+    fingerGroup.add(thumbMesh);
   } else {
     for (let i = 0; i < 4; i++) {
       const fMesh = new THREE.Mesh(fingerGeo, skinMat);
       const offsetY = 0.006 + i * (isMale ? 0.02 : 0.0155);
       fMesh.position.set(sideSign * (palmW * 0.42), offsetY, -palmD * 0.55);
       fMesh.rotation.set(0.45, 0, sideSign * 1.15);
-      handPivot.add(fMesh);
+      fingerGroup.add(fMesh);
     }
 
     const thumbMesh = new THREE.Mesh(thumbGeo, skinMat);
     thumbMesh.position.set(-sideSign * (palmW * 0.36), 0.066, -palmD * 0.45);
     thumbMesh.rotation.set(-0.55, 0, -sideSign * 0.72);
-    handPivot.add(thumbMesh);
+    fingerGroup.add(thumbMesh);
   }
 
   // Căn chỉnh hướng cánh tay theo từng loại vật phẩm cầm trên tay (SAU khi đã bind Skeleton ở tư thế nghỉ)
@@ -378,6 +419,7 @@ export function createFirstPersonArmGroup(
     forearmBone,
     wristBone,
     handPivot,
+    fingerGroup,
     skeleton,
     basePosition: armGroup.position.clone(),
     baseRotation: armGroup.rotation.clone(),

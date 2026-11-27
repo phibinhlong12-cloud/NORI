@@ -1443,21 +1443,23 @@ export class VoxelEngine {
     }
   }
 
-  deleteBackpackSlot(slotIndex: number): void {
+  deleteBackpackSlot(slotIndex: number, quantity?: number): void {
     if (!this.world.isShopItemOwned('backpack') || !this.backpackOpen) return;
     if (slotIndex < 0 || slotIndex >= BACKPACK_CAPACITY) return;
 
-    if (this.holdingPotionSlot === slotIndex) {
+    const result = this.world.deleteBackpackSlot(slotIndex, quantity);
+    if (!result) return;
+
+    if (this.holdingPotionSlot === slotIndex && result.remainingCount <= 0) {
       this.holdingPotionSlot = null;
     }
-    const deleted = this.world.deleteBackpackSlot(slotIndex);
-    if (!deleted) return;
 
+    const { item: deleted, removedCount } = result;
     let label = 'vật phẩm';
     if (deleted.kind === 'wood') label = `Thanh gỗ (${deleted.length.toFixed(1)}m)`;
-    else if (deleted.kind === 'potion') label = `Lọ thuốc máu (x${deleted.count})`;
-    else if (deleted.kind === 'slime_orb') label = `Quả cầu Slime (x${deleted.count})`;
-    else if (deleted.kind === 'mushroom_item') label = `Nấm đỏ (x${deleted.count})`;
+    else if (deleted.kind === 'potion') label = `Lọ thuốc máu (x${removedCount})`;
+    else if (deleted.kind === 'slime_orb') label = `Quả cầu Slime (x${removedCount})`;
+    else if (deleted.kind === 'mushroom_item') label = `Nấm đỏ (x${removedCount})`;
     else if (deleted.kind === 'katana') label = getKatanaDisplayName(deleted.variant);
 
     this.audio.playStowSound();

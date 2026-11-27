@@ -273,8 +273,11 @@ export class WorldManager {
     return this.trees.swapKatanaAtSlot(slotIndex, currentEquipped);
   }
 
-  deleteBackpackSlot(slotIndex: number): BackpackItem | null {
-    return this.trees.deleteBackpackSlot(slotIndex);
+  deleteBackpackSlot(
+    slotIndex: number,
+    quantity?: number,
+  ): { item: BackpackItem; removedCount: number; remainingCount: number } | null {
+    return this.trees.deleteBackpackSlot(slotIndex, quantity);
   }
 
   getCraftingMaterialCounts(): {

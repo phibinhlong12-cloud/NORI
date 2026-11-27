@@ -17,9 +17,6 @@ export const OUTFIT_SHOP_TOP_Y = 4.42;
 interface MannequinPreset {
   outfit: OutfitId;
   xOffset: number;
-  label: string;
-  border: string;
-  text: string;
   yaw: number;
 }
 
@@ -27,17 +24,11 @@ const MALE_MANNEQUINS: MannequinPreset[] = [
   {
     outfit: 'black_shinigami',
     xOffset: -1.85,
-    label: 'HẮC Y KIẾM SĨ · 5.000 VNĐ',
-    border: '#94a3b8',
-    text: '#f8fafc',
     yaw: -0.22,
   },
   {
     outfit: 'red_samurai',
     xOffset: 1.85,
-    label: 'HUYẾT PHONG · 10.000 VNĐ',
-    border: '#f43f5e',
-    text: '#fecdd3',
     yaw: -0.3,
   },
 ];
@@ -46,25 +37,16 @@ const FEMALE_MANNEQUINS: MannequinPreset[] = [
   {
     outfit: 'female_black',
     xOffset: -2.25,
-    label: 'HẮC HOA KIMONO · 5.000 VNĐ',
-    border: '#94a3b8',
-    text: '#f8fafc',
     yaw: -0.18,
   },
   {
     outfit: 'female_red',
     xOffset: 0,
-    label: 'HỒNG HOA KIMONO · 10.000 VNĐ',
-    border: '#f43f5e',
-    text: '#fecdd3',
     yaw: -0.22,
   },
   {
     outfit: 'female_white',
     xOffset: 2.25,
-    label: 'BẠCH HOA KIMONO · 15.000 VNĐ',
-    border: '#f8fafc',
-    text: '#ffffff',
     yaw: -0.26,
   },
 ];
@@ -292,8 +274,7 @@ export class OutfitShop {
     const plinthGeo = new THREE.CylinderGeometry(plinthRadius, plinthRadius + 0.08, 0.18, 24);
     const plinthRimGeo = new THREE.TorusGeometry(plinthRadius + 0.01, 0.02, 8, 28);
     plinthRimGeo.rotateX(Math.PI / 2);
-    const plaqueGeo = new THREE.PlaneGeometry(isFemale ? 1.95 : 2.15, 0.34);
-    this.displayGeometries.push(plinthGeo, plinthRimGeo, plaqueGeo);
+    this.displayGeometries.push(plinthGeo, plinthRimGeo);
 
     const displayHits: THREE.Object3D[] = [];
     const registerDisplayHits = (obj: THREE.Object3D) => {
@@ -330,29 +311,6 @@ export class OutfitShop {
       registerDisplayHits(mannequin);
       this.displayGroup.add(mannequin);
       this.mannequins.push(mannequin);
-
-      const tex = this.createSignTexture(
-        cfg.label,
-        '#090d16',
-        cfg.border,
-        cfg.text,
-        512,
-        96,
-        isFemale ? 29 : 34,
-        this.displayTextures,
-      );
-      const mat = new THREE.MeshStandardMaterial({
-        map: tex,
-        roughness: 0.4,
-        metalness: 0.1,
-      });
-      this.displayMaterials.push(mat);
-
-      const plaque = new THREE.Mesh(plaqueGeo, mat);
-      plaque.position.set(px, OUTFIT_SHOP_TOP_Y + 0.24, OUTFIT_SHOP_MAX_Z - 0.22);
-      plaque.rotation.x = -0.22;
-      registerDisplayHits(plaque);
-      this.displayGroup.add(plaque);
     }
 
     this.hitMeshes = [...this.staticHitMeshes, ...displayHits];

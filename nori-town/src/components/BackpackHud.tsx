@@ -1,5 +1,12 @@
-import { memo, useEffect, useState } from 'react';
-import { Backpack, Trash2, TreePine, X } from 'lucide-react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
+import {
+  Backpack,
+  ChevronLeft,
+  ChevronRight,
+  Trash2,
+  TreePine,
+  X,
+} from 'lucide-react';
 import { HudStats, VoxelEngine } from '../game/engine';
 import { getKatanaDisplayName } from '../game/katana';
 import {
@@ -99,12 +106,40 @@ function getItemSummary(item: BackpackItem): {
   }
 }
 
+function getItemStackCount(item: BackpackItem): number {
+  if (
+    item.kind === 'potion' ||
+    item.kind === 'slime_orb' ||
+    item.kind === 'mushroom_item'
+  ) {
+    return item.count;
+  }
+  return 1;
+}
+
 export const BackpackHud = memo(function BackpackHud({
   engine,
   touchMode = false,
 }: BackpackHudProps) {
   const [state, setState] = useState<BackpackViewState>(INITIAL_STATE);
   const [selectedSlot, setSelectedSlot] = useState<number | null>(null);
+  const [deleteSlot, setDeleteSlot] = useState<number | null>(null);
+  const [deleteQuantity, setDeleteQuantity] = useState(1);
+
+  const holdTimeoutRef = useRef<number | null>(null);
+  const holdIntervalRef = useRef<number | null>(null);
+  const deleteMaxRef = useRef(1);
+
+  const stopHoldAdjust = useCallback(() => {
+    if (holdTimeoutRef.current !== null) {
+      window.clearTimeout(holdTimeoutRef.current);
+      holdTimeoutRef.current = null;
+    }
+    if (holdIntervalRef.current !== null) {
+      window.clearInterval(holdIntervalRef.current);
+      holdIntervalRef.current = null;
+    }
+  }, []);
 
   useEffect(() => {
     if (!engine) {
@@ -147,12 +182,72 @@ export const BackpackHud = memo(function BackpackHud({
   useEffect(() => {
     if (!state.backpackOpen) {
       setSelectedSlot(null);
+      setDeleteSlot(null);
+      stopHoldAdjust();
       return;
     }
     if (selectedSlot !== null && !state.items[selectedSlot]) {
       setSelectedSlot(null);
     }
-  }, [state.backpackOpen, state.items, selectedSlot]);
+  }, [state.backpackOpen, state.items, selectedSlot, stopHoldAdjust]);
+
+  const deleteTargetItem = deleteSlot !== null ? state.items[deleteSlot] : null;
+  const deleteMaxCount = deleteTargetItem ? getItemStackCount(deleteTargetItem) : 0;
+  deleteMaxRef.current = deleteMaxCount;
+
+  useEffect(() => {
+    if (deleteSlot === null) {
+      stopHoldAdjust();
+      return;
+    }
+    if (!deleteTargetItem || deleteMaxCount <= 1) {
+      setDeleteSlot(null);
+      stopHoldAdjust();
+      return;
+    }
+    setDeleteQuantity((prev) => Math.min(deleteMaxCount, Math.max(1, prev)));
+  }, [deleteSlot, deleteTargetItem, deleteMaxCount, stopHoldAdjust]);
+
+  useEffect(() => {
+    if (deleteSlot === null) return;
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.code === 'Escape') {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        setDeleteSlot(null);
+      }
+    };
+    const handleWindowRelease = () => stopHoldAdjust();
+    window.addEventListener('keydown', handleEscape, true);
+    window.addEventListener('pointerup', handleWindowRelease);
+    window.addEventListener('blur', handleWindowRelease);
+    return () => {
+      window.removeEventListener('keydown', handleEscape, true);
+      window.removeEventListener('pointerup', handleWindowRelease);
+      window.removeEventListener('blur', handleWindowRelease);
+      stopHoldAdjust();
+    };
+  }, [deleteSlot, stopHoldAdjust]);
+
+  const stepDeleteQuantity = useCallback((delta: -1 | 1) => {
+    setDeleteQuantity((prev) => {
+      const max = Math.max(1, deleteMaxRef.current);
+      return Math.min(max, Math.max(1, prev + delta));
+    });
+  }, []);
+
+  const startHoldAdjust = useCallback(
+    (delta: -1 | 1) => {
+      stopHoldAdjust();
+      stepDeleteQuantity(delta);
+      holdTimeoutRef.current = window.setTimeout(() => {
+        holdIntervalRef.current = window.setInterval(() => {
+          stepDeleteQuantity(delta);
+        }, 55);
+      }, 280);
+    },
+    [stepDeleteQuantity, stopHoldAdjust],
+  );
 
   if (!state.hasBackpack && !state.hasKatana && !state.hasShield) {
     return null;
@@ -164,6 +259,7 @@ export const BackpackHud = memo(function BackpackHud({
   const activeKatana = state.equippedKatana;
   const selectedItem = selectedSlot !== null ? state.items[selectedSlot] : null;
   const selectedInfo = selectedItem ? getItemSummary(selectedItem) : null;
+  const deleteTargetInfo = deleteTargetItem ? getItemSummary(deleteTargetItem) : null;
 
   const katanaCardClasses =
     activeKatana === 'leaf'
@@ -527,8 +623,14 @@ export const BackpackHud = memo(function BackpackHud({
                   <button
                     type="button"
                     onClick={() => {
-                      engine?.deleteBackpackSlot(selectedSlot);
-                      setSelectedSlot(null);
+                      const stackCount = getItemStackCount(selectedItem);
+                      if (stackCount > 1) {
+                        setDeleteQuantity(1);
+                        setDeleteSlot(selectedSlot);
+                      } else {
+                        engine?.deleteBackpackSlot(selectedSlot, 1);
+                        setSelectedSlot(null);
+                      }
                     }}
                     className="px-3 py-1.5 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white flex items-center gap-1.5 transition active:scale-95 cursor-pointer"
                   >
@@ -541,6 +643,123 @@ export const BackpackHud = memo(function BackpackHud({
           </div>
         </div>
       )}
+
+      {state.hasBackpack &&
+        state.backpackOpen &&
+        deleteSlot !== null &&
+        deleteTargetItem &&
+        deleteTargetInfo &&
+        deleteMaxCount > 1 && (
+          <div
+            className="fixed inset-0 z-50 bg-slate-950/75 flex items-center justify-center p-3 pointer-events-auto select-none"
+            onContextMenu={(e) => e.preventDefault()}
+          >
+            <div className="w-full max-w-sm rounded-2xl bg-slate-900 border border-rose-400/45 p-4 sm:p-5 text-white shadow-2xl space-y-4">
+              {/* Tiêu đề & nút X góc phải */}
+              <div className="flex items-start justify-between gap-3 border-b border-white/10 pb-3">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-10 h-10 rounded-xl bg-slate-950/85 border border-white/15 flex items-center justify-center shrink-0">
+                    {deleteTargetItem.kind === 'potion' ? (
+                      <PotionItemSvg className="w-6 h-6" />
+                    ) : deleteTargetItem.kind === 'slime_orb' ? (
+                      <SlimeOrbSvg className="w-6 h-6" />
+                    ) : (
+                      <RedMushroomSvg className="w-6 h-6" />
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="text-sm sm:text-base font-bold text-rose-200 truncate">
+                      Chọn số lượng xóa
+                    </h3>
+                    <p className="text-[11px] text-slate-300 truncate">
+                      {deleteTargetInfo.title} · Ô {deleteSlot + 1}
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setDeleteSlot(null)}
+                  aria-label="Đóng chọn số lượng xóa"
+                  className="w-8 h-8 rounded-xl bg-slate-800 hover:bg-rose-500/25 border border-white/15 hover:border-rose-400/50 text-slate-200 hover:text-rose-200 flex items-center justify-center transition active:scale-95 cursor-pointer shrink-0"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Thanh mũi tên trái / phải tăng giảm số lượng */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-center gap-3">
+                  <button
+                    type="button"
+                    disabled={deleteQuantity <= 1}
+                    onPointerDown={(e) => {
+                      if (deleteQuantity <= 1) return;
+                      e.preventDefault();
+                      startHoldAdjust(-1);
+                    }}
+                    onPointerUp={stopHoldAdjust}
+                    onPointerLeave={stopHoldAdjust}
+                    onPointerCancel={stopHoldAdjust}
+                    aria-label="Giảm số lượng xóa"
+                    className="w-12 h-12 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-35 disabled:cursor-not-allowed border border-white/15 flex items-center justify-center text-white transition active:scale-95 cursor-pointer select-none touch-none"
+                  >
+                    <ChevronLeft className="w-6 h-6" />
+                  </button>
+
+                  <div className="min-w-[116px] h-12 rounded-xl bg-slate-950/90 border border-amber-400/35 px-4 flex flex-col items-center justify-center">
+                    <span className="font-mono-tech text-xl font-black text-amber-300 leading-none tabular-nums">
+                      {deleteQuantity}
+                    </span>
+                    <span className="font-mono-tech text-[10px] text-slate-400 leading-none mt-1">
+                      / {deleteMaxCount}
+                    </span>
+                  </div>
+
+                  <button
+                    type="button"
+                    disabled={deleteQuantity >= deleteMaxCount}
+                    onPointerDown={(e) => {
+                      if (deleteQuantity >= deleteMaxCount) return;
+                      e.preventDefault();
+                      startHoldAdjust(1);
+                    }}
+                    onPointerUp={stopHoldAdjust}
+                    onPointerLeave={stopHoldAdjust}
+                    onPointerCancel={stopHoldAdjust}
+                    aria-label="Tăng số lượng xóa"
+                    className="w-12 h-12 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-35 disabled:cursor-not-allowed border border-white/15 flex items-center justify-center text-white transition active:scale-95 cursor-pointer select-none touch-none"
+                  >
+                    <ChevronRight className="w-6 h-6" />
+                  </button>
+                </div>
+
+                <p className="text-[11px] text-center text-slate-400">
+                  Giữ mũi tên trái/phải để giảm/tăng nhanh · ESC hoặc X để thoát
+                </p>
+              </div>
+
+              {/* Nút xóa bên dưới */}
+              <button
+                type="button"
+                onClick={() => {
+                  const target = deleteSlot;
+                  const amt = deleteQuantity;
+                  const clearingAll = amt >= deleteMaxCount;
+                  setDeleteSlot(null);
+                  engine?.deleteBackpackSlot(target, amt);
+                  if (clearingAll) {
+                    setSelectedSlot(null);
+                  }
+                }}
+                className="w-full py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-sm font-bold flex items-center justify-center gap-2 transition active:scale-95 cursor-pointer shadow-lg"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Xóa ({deleteQuantity})</span>
+              </button>
+            </div>
+          </div>
+        )}
     </>
   );
 });
