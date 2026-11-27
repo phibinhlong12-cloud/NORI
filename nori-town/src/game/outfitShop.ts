@@ -5,6 +5,8 @@ import {
   createCharacterMeshGroup,
   disposeCharacterAssets,
 } from './characterModel';
+import { CharacterGender } from './firstPersonArms';
+import { OutfitId } from './outfits';
 
 export const OUTFIT_SHOP_MIN_X = 8.0;
 export const OUTFIT_SHOP_MAX_X = 15.8;
@@ -12,19 +14,78 @@ export const OUTFIT_SHOP_MIN_Z = -15.2;
 export const OUTFIT_SHOP_MAX_Z = -12.4;
 export const OUTFIT_SHOP_TOP_Y = 4.42;
 
+interface MannequinPreset {
+  outfit: OutfitId;
+  xOffset: number;
+  label: string;
+  border: string;
+  text: string;
+  yaw: number;
+}
+
+const MALE_MANNEQUINS: MannequinPreset[] = [
+  {
+    outfit: 'black_shinigami',
+    xOffset: -1.85,
+    label: 'HẮC Y KIẾM SĨ · 5.000 VNĐ',
+    border: '#94a3b8',
+    text: '#f8fafc',
+    yaw: -0.22,
+  },
+  {
+    outfit: 'red_samurai',
+    xOffset: 1.85,
+    label: 'HUYẾT PHONG · 10.000 VNĐ',
+    border: '#f43f5e',
+    text: '#fecdd3',
+    yaw: -0.3,
+  },
+];
+
+const FEMALE_MANNEQUINS: MannequinPreset[] = [
+  {
+    outfit: 'female_black',
+    xOffset: -2.25,
+    label: 'HẮC HOA KIMONO · 5.000 VNĐ',
+    border: '#94a3b8',
+    text: '#f8fafc',
+    yaw: -0.18,
+  },
+  {
+    outfit: 'female_red',
+    xOffset: 0,
+    label: 'HỒNG HOA KIMONO · 10.000 VNĐ',
+    border: '#f43f5e',
+    text: '#fecdd3',
+    yaw: -0.22,
+  },
+  {
+    outfit: 'female_white',
+    xOffset: 2.25,
+    label: 'BẠCH HOA KIMONO · 15.000 VNĐ',
+    border: '#f8fafc',
+    text: '#ffffff',
+    yaw: -0.26,
+  },
+];
+
 /**
  * Gian hàng "Cửa hàng trang phục" đặt ở khoảng cỏ phía trước Cửa hàng thiết yếu.
- * Thiết kế gian trưng bày thoáng 4 mặt (không tường chắn phía sau) với 2 ma-nơ-canh 3D mặc 2 bộ đồ Nam:
- * - Hắc Y Kiếm Sĩ (5.000 VNĐ)
- * - Huyết Phong Samurai (10.000 VNĐ)
+ * Tự động trưng bày 2 bộ trang phục Nam hoặc 3 bộ trang phục Nữ tương ứng nhân vật người chơi chọn.
  */
 export class OutfitShop {
   private readonly scene: THREE.Scene;
+  private readonly maxAnisotropy: number;
   private readonly rootGroup = new THREE.Group();
-  private readonly hitMeshes: THREE.Object3D[] = [];
+  private readonly displayGroup = new THREE.Group();
+  private readonly staticHitMeshes: THREE.Object3D[] = [];
+  private hitMeshes: THREE.Object3D[] = [];
   private readonly geometries: THREE.BufferGeometry[] = [];
   private readonly materials: THREE.Material[] = [];
   private readonly textures: THREE.Texture[] = [];
+  private readonly displayGeometries: THREE.BufferGeometry[] = [];
+  private readonly displayMaterials: THREE.Material[] = [];
+  private readonly displayTextures: THREE.Texture[] = [];
   private readonly charAssets: CharacterAssetHandles = {
     geometries: [],
     materials: [],
@@ -32,13 +93,17 @@ export class OutfitShop {
     skeletons: [],
   };
   private readonly raycaster = new THREE.Raycaster();
+  private readonly goldMat: THREE.MeshStandardMaterial;
+  private readonly plinthMat: THREE.MeshStandardMaterial;
 
-  private readonly blackMannequin: THREE.Group;
-  private readonly redMannequin: THREE.Group;
+  private mannequins: THREE.Group[] = [];
+  private displayGender: CharacterGender = 'male';
   private elapsed = 0;
 
-  constructor(scene: THREE.Scene, maxAnisotropy = 4) {
+  constructor(scene: THREE.Scene, maxAnisotropy = 4, initialGender: CharacterGender = 'male') {
     this.scene = scene;
+    this.maxAnisotropy = maxAnisotropy;
+    this.displayGender = initialGender;
 
     const stoneBaseMat = new THREE.MeshStandardMaterial({
       color: '#334155',
@@ -93,13 +158,16 @@ export class OutfitShop {
       plinthMat,
     );
 
-    const registerHitMesh = (obj: THREE.Object3D) => {
+    this.goldMat = goldMat;
+    this.plinthMat = plinthMat;
+
+    const registerStaticHitMesh = (obj: THREE.Object3D) => {
       obj.traverse((child) => {
         if (child instanceof THREE.Mesh) {
           child.userData.isOutfitShop = true;
           child.castShadow = true;
           child.receiveShadow = true;
-          this.hitMeshes.push(child);
+          this.staticHitMeshes.push(child);
         }
       });
     };
@@ -119,7 +187,7 @@ export class OutfitShop {
       mesh.position.set(x, y, z);
       mesh.matrixAutoUpdate = false;
       mesh.updateMatrix();
-      registerHitMesh(mesh);
+      registerStaticHitMesh(mesh);
       this.rootGroup.add(mesh);
       return mesh;
     };
@@ -179,68 +247,90 @@ export class OutfitShop {
     this.geometries.push(mainSignGeo);
     const mainSignMesh = new THREE.Mesh(mainSignGeo, mainSignMat);
     mainSignMesh.position.set(centerX, 8.22, OUTFIT_SHOP_MAX_Z + 0.03);
-    registerHitMesh(mainSignMesh);
+    registerStaticHitMesh(mainSignMesh);
     this.rootGroup.add(mainSignMesh);
 
-    // 4. Hai bệ trưng bày & Ma-nơ-canh 3D trưng bày trang phục
-    const leftX = centerX - 1.85;
-    const rightX = centerX + 1.85;
+    this.rootGroup.add(this.displayGroup);
+    this.rebuildDisplayMannequins();
 
-    const plinthGeo = new THREE.CylinderGeometry(0.72, 0.8, 0.18, 24);
-    const plinthRimGeo = new THREE.TorusGeometry(0.73, 0.02, 8, 28);
-    plinthRimGeo.rotateX(Math.PI / 2);
-    this.geometries.push(plinthGeo, plinthRimGeo);
+    this.scene.add(this.rootGroup);
+  }
 
-    for (const px of [leftX, rightX]) {
-      const plinth = new THREE.Mesh(plinthGeo, plinthMat);
-      plinth.position.set(px, OUTFIT_SHOP_TOP_Y + 0.09, centerZ - 0.05);
-      registerHitMesh(plinth);
-      this.rootGroup.add(plinth);
+  setDisplayGender(gender: CharacterGender): void {
+    if (this.displayGender === gender) return;
+    this.displayGender = gender;
+    this.rebuildDisplayMannequins();
+  }
 
-      const rim = new THREE.Mesh(plinthRimGeo, goldMat);
-      rim.position.set(px, OUTFIT_SHOP_TOP_Y + 0.18, centerZ - 0.05);
-      registerHitMesh(rim);
-      this.rootGroup.add(rim);
+  private disposeDisplayGroup(): void {
+    this.displayGroup.clear();
+    this.mannequins = [];
+    disposeCharacterAssets(this.charAssets);
+    for (const geo of this.displayGeometries) {
+      geo.dispose();
     }
+    for (const mat of this.displayMaterials) {
+      mat.dispose();
+    }
+    for (const tex of this.displayTextures) {
+      tex.dispose();
+    }
+    this.displayGeometries.length = 0;
+    this.displayMaterials.length = 0;
+    this.displayTextures.length = 0;
+  }
 
-    this.blackMannequin = createCharacterMeshGroup('male', this.charAssets, {
-      outfit: 'black_shinigami',
-      maxAnisotropy,
-    });
-    this.blackMannequin.position.set(leftX, OUTFIT_SHOP_TOP_Y + 0.18, centerZ - 0.05);
-    this.blackMannequin.rotation.y = -0.22;
-    this.blackMannequin.scale.setScalar(1.04);
-    registerHitMesh(this.blackMannequin);
-    this.rootGroup.add(this.blackMannequin);
+  private rebuildDisplayMannequins(): void {
+    this.disposeDisplayGroup();
 
-    this.redMannequin = createCharacterMeshGroup('male', this.charAssets, {
-      outfit: 'red_samurai',
-      maxAnisotropy,
-    });
-    this.redMannequin.position.set(rightX, OUTFIT_SHOP_TOP_Y + 0.18, centerZ - 0.05);
-    this.redMannequin.rotation.y = -0.3;
-    this.redMannequin.scale.setScalar(1.04);
-    registerHitMesh(this.redMannequin);
-    this.rootGroup.add(this.redMannequin);
+    const centerX = (OUTFIT_SHOP_MIN_X + OUTFIT_SHOP_MAX_X) * 0.5;
+    const centerZ = (OUTFIT_SHOP_MIN_Z + OUTFIT_SHOP_MAX_Z) * 0.5;
+    const isFemale = this.displayGender === 'female';
+    const presets = isFemale ? FEMALE_MANNEQUINS : MALE_MANNEQUINS;
 
-    // Bảng giá dưới chân mỗi ma-nơ-canh
-    const priceConfigs: Array<{ x: number; label: string; border: string; text: string }> = [
-      {
-        x: leftX,
-        label: 'HẮC Y KIẾM SĨ · 5.000 VNĐ',
-        border: '#94a3b8',
-        text: '#f8fafc',
-      },
-      {
-        x: rightX,
-        label: 'HUYẾT PHONG · 10.000 VNĐ',
-        border: '#f43f5e',
-        text: '#fecdd3',
-      },
-    ];
-    const plaqueGeo = new THREE.PlaneGeometry(2.15, 0.34);
-    this.geometries.push(plaqueGeo);
-    for (const cfg of priceConfigs) {
+    const plinthRadius = isFemale ? 0.64 : 0.72;
+    const plinthGeo = new THREE.CylinderGeometry(plinthRadius, plinthRadius + 0.08, 0.18, 24);
+    const plinthRimGeo = new THREE.TorusGeometry(plinthRadius + 0.01, 0.02, 8, 28);
+    plinthRimGeo.rotateX(Math.PI / 2);
+    const plaqueGeo = new THREE.PlaneGeometry(isFemale ? 1.95 : 2.15, 0.34);
+    this.displayGeometries.push(plinthGeo, plinthRimGeo, plaqueGeo);
+
+    const displayHits: THREE.Object3D[] = [];
+    const registerDisplayHits = (obj: THREE.Object3D) => {
+      obj.traverse((child) => {
+        if (child instanceof THREE.Mesh) {
+          child.userData.isOutfitShop = true;
+          child.castShadow = true;
+          child.receiveShadow = true;
+          displayHits.push(child);
+        }
+      });
+    };
+
+    for (const cfg of presets) {
+      const px = centerX + cfg.xOffset;
+
+      const plinth = new THREE.Mesh(plinthGeo, this.plinthMat);
+      plinth.position.set(px, OUTFIT_SHOP_TOP_Y + 0.09, centerZ - 0.05);
+      registerDisplayHits(plinth);
+      this.displayGroup.add(plinth);
+
+      const rim = new THREE.Mesh(plinthRimGeo, this.goldMat);
+      rim.position.set(px, OUTFIT_SHOP_TOP_Y + 0.18, centerZ - 0.05);
+      registerDisplayHits(rim);
+      this.displayGroup.add(rim);
+
+      const mannequin = createCharacterMeshGroup(this.displayGender, this.charAssets, {
+        outfit: cfg.outfit,
+        maxAnisotropy: this.maxAnisotropy,
+      });
+      mannequin.position.set(px, OUTFIT_SHOP_TOP_Y + 0.18, centerZ - 0.05);
+      mannequin.rotation.y = cfg.yaw;
+      mannequin.scale.setScalar(isFemale ? 1.02 : 1.04);
+      registerDisplayHits(mannequin);
+      this.displayGroup.add(mannequin);
+      this.mannequins.push(mannequin);
+
       const tex = this.createSignTexture(
         cfg.label,
         '#090d16',
@@ -248,22 +338,24 @@ export class OutfitShop {
         cfg.text,
         512,
         96,
-        34,
+        isFemale ? 29 : 34,
+        this.displayTextures,
       );
       const mat = new THREE.MeshStandardMaterial({
         map: tex,
         roughness: 0.4,
         metalness: 0.1,
       });
-      this.materials.push(mat);
+      this.displayMaterials.push(mat);
+
       const plaque = new THREE.Mesh(plaqueGeo, mat);
-      plaque.position.set(cfg.x, OUTFIT_SHOP_TOP_Y + 0.24, OUTFIT_SHOP_MAX_Z - 0.22);
+      plaque.position.set(px, OUTFIT_SHOP_TOP_Y + 0.24, OUTFIT_SHOP_MAX_Z - 0.22);
       plaque.rotation.x = -0.22;
-      registerHitMesh(plaque);
-      this.rootGroup.add(plaque);
+      registerDisplayHits(plaque);
+      this.displayGroup.add(plaque);
     }
 
-    this.scene.add(this.rootGroup);
+    this.hitMeshes = [...this.staticHitMeshes, ...displayHits];
   }
 
   private createSignTexture(
@@ -274,6 +366,7 @@ export class OutfitShop {
     width: number,
     height: number,
     fontSize: number,
+    targetTextures: THREE.Texture[] = this.textures,
   ): THREE.CanvasTexture {
     const canvas = document.createElement('canvas');
     canvas.width = width;
@@ -296,14 +389,15 @@ export class OutfitShop {
     const tex = new THREE.CanvasTexture(canvas);
     tex.colorSpace = THREE.SRGBColorSpace;
     tex.anisotropy = 4;
-    this.textures.push(tex);
+    targetTextures.push(tex);
     return tex;
   }
 
   update(dt: number): void {
     this.elapsed += dt;
-    animateCharacterIdle(this.blackMannequin, this.elapsed);
-    animateCharacterIdle(this.redMannequin, this.elapsed + 1.4);
+    for (let i = 0; i < this.mannequins.length; i++) {
+      animateCharacterIdle(this.mannequins[i], this.elapsed + i * 1.15);
+    }
   }
 
   raycastShop(
@@ -342,7 +436,7 @@ export class OutfitShop {
 
   dispose(): void {
     this.scene.remove(this.rootGroup);
-    disposeCharacterAssets(this.charAssets);
+    this.disposeDisplayGroup();
     for (const geo of this.geometries) {
       geo.dispose();
     }

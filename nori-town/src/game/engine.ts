@@ -694,6 +694,7 @@ export class VoxelEngine {
     if (!isOutfitCompatibleWithGender(this.equippedOutfit, gender)) {
       this.equippedOutfit = 'default';
     }
+    this.world.setPlayerGender(gender);
     this.katanaView.setGender(gender);
     this.shieldView.setGender(gender);
     this.potionView.setGender(gender);

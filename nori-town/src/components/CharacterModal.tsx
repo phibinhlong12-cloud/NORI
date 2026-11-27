@@ -11,6 +11,7 @@ import {
 } from '../game/outfits';
 import { BackpackKatanaVariant } from '../game/trees';
 import { Character3DViewport } from './Character3DViewport';
+import { KatanaVariantSvg, OutfitItemSvg, ShieldItemSvg } from './CraftingIcons';
 
 interface CharacterModalProps {
   engine: VoxelEngine | null;
@@ -147,19 +148,15 @@ export const CharacterModal = memo(function CharacterModal({ engine }: Character
                   : 'bg-slate-800/65 border-white/10'
               }`}
             >
-              <div className="w-11 h-11 rounded-xl bg-slate-950/85 border border-white/15 flex items-center justify-center">
-                <Sword
-                  className={`w-6 h-6 ${
-                    state.hasKatana
-                      ? state.equippedKatana === 'leaf'
-                        ? 'text-emerald-300'
-                        : state.equippedKatana === 'ice'
-                          ? 'text-cyan-300'
-                          : 'text-sky-300'
-                      : 'text-slate-500'
-                  }`}
-                />
-              </div>
+              {state.hasKatana && state.equippedKatana ? (
+                <div className="w-full max-w-[136px] h-11 rounded-xl bg-slate-950/85 border border-white/15 flex items-center justify-center px-2">
+                  <KatanaVariantSvg variant={state.equippedKatana} className="w-full h-8" />
+                </div>
+              ) : (
+                <div className="w-11 h-11 rounded-xl bg-slate-950/85 border border-white/15 flex items-center justify-center">
+                  <Sword className="w-6 h-6 text-slate-500" />
+                </div>
+              )}
               <div>
                 <div className="text-xs font-bold text-slate-200">Thanh Kiếm</div>
                 <div
@@ -188,9 +185,11 @@ export const CharacterModal = memo(function CharacterModal({ engine }: Character
               }`}
             >
               <div className="w-11 h-11 rounded-xl bg-slate-950/85 border border-white/15 flex items-center justify-center">
-                <Shield
-                  className={`w-6 h-6 ${state.hasShield ? 'text-amber-300' : 'text-slate-500'}`}
-                />
+                {state.hasShield ? (
+                  <ShieldItemSvg className="w-8 h-8" />
+                ) : (
+                  <Shield className="w-6 h-6 text-slate-500" />
+                )}
               </div>
               <div>
                 <div className="text-xs font-bold text-slate-200">Tấm Khiên</div>
@@ -232,11 +231,15 @@ export const CharacterModal = memo(function CharacterModal({ engine }: Character
               }`}
             >
               <div className="w-11 h-11 rounded-xl bg-slate-950/85 border border-white/15 flex items-center justify-center">
-                <Shirt
-                  className={`w-6 h-6 ${
-                    hasCustomOutfitEquipped ? outfitInfo.badgeTextColor : 'text-slate-500'
-                  }`}
-                />
+                {hasCustomOutfitEquipped ? (
+                  <OutfitItemSvg
+                    outfit={activeOutfit}
+                    gender={state.gender}
+                    className="w-9 h-9"
+                  />
+                ) : (
+                  <Shirt className="w-6 h-6 text-slate-500" />
+                )}
               </div>
               <div>
                 <div className="text-xs font-bold text-slate-200">Bộ đồ</div>

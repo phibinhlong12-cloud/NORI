@@ -41,6 +41,7 @@ interface CharacterAnimRig {
   baseHeadRot: THREE.Euler;
   baseRightArmRot: THREE.Euler;
   baseLeftArmRot: THREE.Euler;
+  hasHeldKatana: boolean;
 }
 
 export function disposeCharacterAssets(handles: CharacterAssetHandles): void {
@@ -84,9 +85,15 @@ export function animateCharacterIdle(root: THREE.Group, elapsed: number): void {
   rig.rightArm.rotation.copy(rig.baseRightArmRot);
   rig.leftArm.rotation.copy(rig.baseLeftArmRot);
 
-  rig.rShoulderBone.rotation.set(breath * 0.022, 0, sway * 0.014);
-  rig.rElbowBone.rotation.set(-0.04 + elbowWave * 0.036, 0, 0);
-  rig.rWristBone.rotation.set(wristWave * 0.045, 0, sway * 0.02);
+  if (rig.hasHeldKatana) {
+    rig.rShoulderBone.rotation.set(-0.14 + breath * 0.02, 0, -0.04 + sway * 0.012);
+    rig.rElbowBone.rotation.set(-0.28 + elbowWave * 0.03, 0, 0.06);
+    rig.rWristBone.rotation.set(wristWave * 0.03, 0, sway * 0.015);
+  } else {
+    rig.rShoulderBone.rotation.set(breath * 0.022, 0, sway * 0.014);
+    rig.rElbowBone.rotation.set(-0.04 + elbowWave * 0.036, 0, 0);
+    rig.rWristBone.rotation.set(wristWave * 0.045, 0, sway * 0.02);
+  }
 
   rig.lShoulderBone.rotation.set(-breath * 0.018, 0, -sway * 0.014);
   rig.lElbowBone.rotation.set(-0.04 - elbowWave * 0.032, 0, 0);
@@ -665,24 +672,37 @@ function createDrapedKimonoSleeveGeometry(
 
 function createScabbardGroup(
   handles: CharacterAssetHandles,
-  accentColor: string,
-  isIce: boolean,
+  variant: KatanaVisualVariant,
 ): THREE.Group {
   const scabbard = new THREE.Group();
 
+  const isIce = variant === 'ice';
+  const isLeaf = variant === 'leaf';
+  const isCrimson = variant === 'crimson';
+
+  const bodyColor = isIce ? '#082f49' : isLeaf ? '#14532d' : '#111827';
+  const trimColor = isIce ? '#7dd3fc' : isLeaf ? '#d4af37' : '#eab308';
+  const cordColor = isIce
+    ? '#38bdf8'
+    : isLeaf
+      ? '#991b1b'
+      : isCrimson
+        ? '#dc2626'
+        : '#b45309';
+
   const bodyMat = new THREE.MeshPhysicalMaterial({
-    color: isIce ? '#082f49' : '#111827',
+    color: bodyColor,
     roughness: 0.2,
     metalness: 0.35,
     clearcoat: 0.95,
   });
   const trimMat = new THREE.MeshStandardMaterial({
-    color: isIce ? '#7dd3fc' : '#eab308',
+    color: trimColor,
     roughness: 0.2,
     metalness: 0.88,
   });
   const cordMat = new THREE.MeshStandardMaterial({
-    color: accentColor,
+    color: cordColor,
     roughness: 0.62,
     metalness: 0.08,
   });
@@ -1736,7 +1756,7 @@ export function createCharacterMeshGroup(
     headGroup.add(ear);
   }
 
-  // Mũ tóc gốc ôm sát đỉnh đầu & sau gáy
+  // Mũ tóc gốc ôm sát đỉnh đầu
   const hairBaseR = isMale ? 0.145 : 0.14;
   const hairCapGeo = new THREE.SphereGeometry(
     hairBaseR,
@@ -1747,24 +1767,12 @@ export function createCharacterMeshGroup(
     0,
     Math.PI * 0.66,
   );
-  const hairBackShellGeo = createParabolicEllipsoidGeometry(
-    hairBaseR * 1.96,
-    0.255,
-    0.19,
-    18,
-    12,
-  );
-  handles.geometries.push(hairCapGeo, hairBackShellGeo);
+  handles.geometries.push(hairCapGeo);
 
   const hairCap = new THREE.Mesh(hairCapGeo, hairMat);
   hairCap.position.set(0, 0.024, -0.008);
   hairCap.castShadow = true;
   headGroup.add(hairCap);
-
-  const hairBackShell = new THREE.Mesh(hairBackShellGeo, hairShadowMat);
-  hairBackShell.position.set(0, -0.005, -0.068);
-  hairBackShell.castShadow = true;
-  headGroup.add(hairBackShell);
 
   // Các lọn tóc mái nhiều lớp dẹt mềm mại phủ trán & 2 bên má
   const bangPresets: Array<{ pts: THREE.Vector3[]; r: number; flat?: number }> = [
@@ -1893,6 +1901,26 @@ export function createCharacterMeshGroup(
       headGroup.add(backLock);
     }
   } else {
+    // Các lọn tóc gáy ôm gọn sau đầu nối lên búi đuôi ngựa (không phồng khối tròn 2 bên tai)
+    for (let i = -2; i <= 2; i++) {
+      const xStart = i * 0.032;
+      const napeLockGeo = createTaperedHairStrandGeometry(
+        [
+          new THREE.Vector3(xStart * 0.9, 0.085, -0.085),
+          new THREE.Vector3(xStart, -0.015, -0.122 + Math.abs(i) * 0.008),
+          new THREE.Vector3(xStart * 0.65, -0.105, -0.104 + Math.abs(i) * 0.008),
+        ],
+        0.025,
+        10,
+        8,
+        0.52,
+      );
+      handles.geometries.push(napeLockGeo);
+      const napeLock = new THREE.Mesh(napeLockGeo, hairMat);
+      napeLock.castShadow = true;
+      headGroup.add(napeLock);
+    }
+
     // Đuôi ngựa cao 6 lọn uốn S mềm mại + hoa anh đào nhụy vàng & ruy băng đỏ cho Nữ
     ponytailKnot = new THREE.Group();
     ponytailKnot.position.set(0.02, 0.095, -0.135);
@@ -2155,30 +2183,41 @@ export function createCharacterMeshGroup(
   }
   upperRig.add(leftArm);
 
-  // Thanh kiếm Katana cất gọn trong vỏ đeo bên hông trái (chuôi & chắn tay hướng ra trước, vỏ kiếm chếch ra sau)
+  const hasOwnedKatana = Boolean(options.hasKatana);
+
+  // Đồng bộ thanh kiếm sở hữu/mua được: khi đang trang bị (hasKatana) nhân vật cầm thẳng kiếm trên tay phải kèm vỏ kiếm đồng màu bên hông trái
   if (showKatana) {
     const resolvedKatanaVariant: KatanaVisualVariant =
       options.katanaVariant ?? (showIceKatana ? 'ice' : isMale ? 'normal' : 'crimson');
-    const scabbardColor =
-      resolvedKatanaVariant === 'leaf'
-        ? '#166534'
-        : isMale
-          ? '#b91c1c'
-          : '#dc2626';
-    const scabbard = createScabbardGroup(
-      handles,
-      scabbardColor,
-      resolvedKatanaVariant === 'ice',
-    );
-    const sheathedKatana = createKatanaMeshGroup(
-      handles,
-      resolvedKatanaVariant === 'ice',
-      resolvedKatanaVariant,
-      true,
-    );
-    sheathedKatana.scale.setScalar(0.92);
-    sheathedKatana.position.set(0, -0.228, 0);
-    scabbard.add(sheathedKatana);
+    const scabbard = createScabbardGroup(handles, resolvedKatanaVariant);
+
+    if (hasOwnedKatana) {
+      const heldPivot = new THREE.Group();
+      heldPivot.position.set(0, -armR * 0.65, 0.022);
+      heldPivot.rotation.set(1.22, 0.14, -0.22);
+
+      const heldKatana = createKatanaMeshGroup(
+        handles,
+        resolvedKatanaVariant === 'ice',
+        resolvedKatanaVariant,
+        false,
+      );
+      heldKatana.scale.setScalar(0.85);
+      heldKatana.position.set(0, -0.11, 0);
+      heldKatana.rotation.y = 0.42;
+      heldPivot.add(heldKatana);
+      rightRig.wristBone.add(heldPivot);
+    } else {
+      const sheathedKatana = createKatanaMeshGroup(
+        handles,
+        resolvedKatanaVariant === 'ice',
+        resolvedKatanaVariant,
+        true,
+      );
+      sheathedKatana.scale.setScalar(0.92);
+      sheathedKatana.position.set(0, -0.228, 0);
+      scabbard.add(sheathedKatana);
+    }
 
     scabbard.position.set(-shoulderX * 0.94, torsoY + 0.02, 0.065);
     scabbard.rotation.set(-2.02, -0.12, 0.16);
@@ -2202,6 +2241,7 @@ export function createCharacterMeshGroup(
     baseHeadRot,
     baseRightArmRot,
     baseLeftArmRot,
+    hasHeldKatana: hasOwnedKatana,
   };
   root.userData.animRig = animRig;
 

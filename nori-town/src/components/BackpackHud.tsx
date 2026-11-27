@@ -1,5 +1,5 @@
 import { memo, useEffect, useState } from 'react';
-import { Backpack, FlaskConical, Shield, Sword, Trash2, TreePine, X } from 'lucide-react';
+import { Backpack, Trash2, TreePine, X } from 'lucide-react';
 import { HudStats, VoxelEngine } from '../game/engine';
 import { getKatanaDisplayName } from '../game/katana';
 import {
@@ -9,7 +9,14 @@ import {
   MAX_MATERIAL_STACK,
   MAX_POTION_STACK,
 } from '../game/trees';
-import { RedMushroomSvg, SlimeOrbSvg } from './CraftingIcons';
+import {
+  BackpackItemSvg,
+  KatanaVariantSvg,
+  PotionItemSvg,
+  RedMushroomSvg,
+  ShieldItemSvg,
+  SlimeOrbSvg,
+} from './CraftingIcons';
 
 interface BackpackHudProps {
   engine: VoxelEngine | null;
@@ -222,7 +229,7 @@ export const BackpackHud = memo(function BackpackHud({
                   : 'bg-amber-500/20 border-amber-400/35 text-amber-300'
               }`}
             >
-              <Backpack className="w-4 h-4" />
+              <BackpackItemSvg className="w-5 h-5" />
             </div>
             <div className="leading-tight">
               <div className="flex items-center gap-2">
@@ -249,7 +256,7 @@ export const BackpackHud = memo(function BackpackHud({
         {state.holdingPotionSlot !== null && state.holdingPotionCount > 0 && (
           <div className="px-2.5 py-1.5 sm:px-3.5 sm:py-2 rounded-xl shadow-lg border bg-rose-950/90 border-rose-400/70 text-white flex items-center gap-2 sm:gap-3 transition-colors">
             <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-lg border bg-rose-500/25 border-rose-400/60 text-rose-300 flex items-center justify-center shrink-0">
-              <FlaskConical className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              <PotionItemSvg className="w-4 h-4 sm:w-5 sm:h-5" />
             </div>
             <div className="leading-tight">
               <div className="text-[10px] sm:text-[11px] uppercase tracking-wider font-medium text-rose-200">
@@ -269,9 +276,12 @@ export const BackpackHud = memo(function BackpackHud({
             className={`px-3.5 py-2 rounded-xl shadow-lg border flex items-center gap-3 transition-colors ${katanaCardClasses}`}
           >
             <div
-              className={`w-8 h-8 rounded-lg border flex items-center justify-center shrink-0 ${katanaBadgeClasses}`}
+              className={`w-11 h-8 rounded-lg border flex items-center justify-center shrink-0 px-1 ${katanaBadgeClasses}`}
             >
-              <Sword className="w-4 h-4" />
+              <KatanaVariantSvg
+                variant={activeKatana ?? 'normal'}
+                className="w-full h-4"
+              />
             </div>
             <div className="leading-tight">
               <div
@@ -301,7 +311,7 @@ export const BackpackHud = memo(function BackpackHud({
                   : 'bg-slate-800 border-white/15 text-slate-400'
               }`}
             >
-              <Shield className="w-4 h-4" />
+              <ShieldItemSvg className="w-5 h-5" />
             </div>
             <div className="leading-tight">
               <div className="text-[11px] uppercase tracking-wider font-medium text-slate-400">
@@ -430,7 +440,7 @@ export const BackpackHud = memo(function BackpackHud({
                     {item ? (
                       item.kind === 'potion' ? (
                         <>
-                          <FlaskConical className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-rose-400 mt-3 shrink-0" />
+                          <PotionItemSvg className="w-5 h-5 mt-3 shrink-0" />
                           <span className="text-[10px] font-bold text-white leading-tight mt-0.5">
                             Thuốc máu
                           </span>
@@ -460,14 +470,9 @@ export const BackpackHud = memo(function BackpackHud({
                         </>
                       ) : item.kind === 'katana' ? (
                         <>
-                          <Sword
-                            className={`w-4 h-4 mt-3 shrink-0 ${
-                              item.variant === 'leaf'
-                                ? 'text-emerald-300'
-                                : item.variant === 'ice'
-                                  ? 'text-cyan-300'
-                                  : 'text-sky-300'
-                            }`}
+                          <KatanaVariantSvg
+                            variant={item.variant}
+                            className="w-14 h-4 mt-3 shrink-0"
                           />
                           <span className="text-[10px] font-bold text-white leading-tight mt-0.5 truncate max-w-full">
                             {getKatanaDisplayName(item.variant)}

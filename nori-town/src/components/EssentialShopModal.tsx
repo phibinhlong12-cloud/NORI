@@ -1,16 +1,7 @@
 import { memo, useEffect, useState } from 'react';
-import {
-  Backpack,
-  Check,
-  Coins,
-  FlaskConical,
-  Shield,
-  ShoppingBag,
-  Sword,
-  X,
-} from 'lucide-react';
+import { Check, Coins, ShoppingBag, X } from 'lucide-react';
 import { HudStats, VoxelEngine } from '../game/engine';
-import { BackpackKatanaVariant, MAX_POTION_STACK } from '../game/trees';
+import { MAX_POTION_STACK } from '../game/trees';
 import {
   SHOP_ITEM_DESCRIPTIONS,
   SHOP_ITEM_NAMES,
@@ -18,6 +9,12 @@ import {
   SHOP_ITEM_PRICES,
   ShopItemId,
 } from '../game/weaponShop';
+import {
+  BackpackItemSvg,
+  NormalKatanaSvg,
+  PotionItemSvg,
+  ShieldItemSvg,
+} from './CraftingIcons';
 
 interface EssentialShopModalProps {
   engine: VoxelEngine | null;
@@ -28,7 +25,6 @@ interface ShopModalState {
   money: number;
   hasBackpack: boolean;
   ownsBaseKatana: boolean;
-  equippedKatana: BackpackKatanaVariant | null;
   hasShield: boolean;
   potionCount: number;
 }
@@ -38,31 +34,20 @@ const INITIAL_SHOP_STATE: ShopModalState = {
   money: 0,
   hasBackpack: false,
   ownsBaseKatana: false,
-  equippedKatana: null,
   hasShield: false,
   potionCount: 0,
 };
 
-function renderItemIcon(itemId: ShopItemId, equippedKatana: BackpackKatanaVariant | null) {
+function renderItemIcon(itemId: ShopItemId) {
   switch (itemId) {
     case 'backpack':
-      return <Backpack className="w-6 h-6 text-amber-300" />;
+      return <BackpackItemSvg className="w-8 h-8" />;
     case 'katana':
-      return (
-        <Sword
-          className={`w-6 h-6 ${
-            equippedKatana === 'leaf'
-              ? 'text-emerald-300'
-              : equippedKatana === 'ice'
-                ? 'text-cyan-300'
-                : 'text-sky-300'
-          }`}
-        />
-      );
+      return <NormalKatanaSvg className="w-12 h-6" />;
     case 'shield':
-      return <Shield className="w-6 h-6 text-yellow-300" />;
+      return <ShieldItemSvg className="w-8 h-8" />;
     case 'potion':
-      return <FlaskConical className="w-6 h-6 text-rose-400" />;
+      return <PotionItemSvg className="w-8 h-8" />;
   }
 }
 
@@ -89,7 +74,6 @@ export const EssentialShopModal = memo(function EssentialShopModal({
           prev.money === stats.money &&
           prev.hasBackpack === stats.hasBackpack &&
           prev.ownsBaseKatana === stats.ownsBaseKatana &&
-          prev.equippedKatana === stats.equippedKatana &&
           prev.hasShield === stats.hasShield &&
           prev.potionCount === potionCount
         ) {
@@ -100,7 +84,6 @@ export const EssentialShopModal = memo(function EssentialShopModal({
           money: stats.money,
           hasBackpack: stats.hasBackpack,
           ownsBaseKatana: stats.ownsBaseKatana,
-          equippedKatana: stats.equippedKatana,
           hasShield: stats.hasShield,
           potionCount,
         };
@@ -179,8 +162,8 @@ export const EssentialShopModal = memo(function EssentialShopModal({
                 }`}
               >
                 <div className="flex items-start gap-3">
-                  <div className="w-11 h-11 rounded-xl bg-slate-950/80 border border-white/10 flex items-center justify-center shrink-0">
-                    {renderItemIcon(itemId, state.equippedKatana)}
+                  <div className="w-14 h-11 rounded-xl bg-slate-950/80 border border-white/10 flex items-center justify-center shrink-0 px-1">
+                    {renderItemIcon(itemId)}
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center justify-between gap-2">

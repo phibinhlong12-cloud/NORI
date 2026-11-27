@@ -19,6 +19,7 @@ import {
   PoisonMushroomManager,
 } from './mushroom';
 import { OutsideGenerator } from './outside';
+import { CharacterGender } from './firstPersonArms';
 import { OutfitShop } from './outfitShop';
 import {
   SlimeAttackResult,
@@ -94,6 +95,7 @@ export class WorldManager {
   private lastPlayerCz = Number.NaN;
   private lastRenderDistance = -1;
   private pendingCoords: Array<{ cx: number; cz: number; distSq: number }> = [];
+  private displayGender: CharacterGender = 'male';
 
   constructor(scene: THREE.Scene, solidMaterial: THREE.Material, maxAnisotropy = 4) {
     this.scene = scene;
@@ -108,12 +110,17 @@ export class WorldManager {
     this.citadelMesh = new CitadelStructure(this.scene, this.maxAnisotropy);
     this.cashier = new CashierStation(this.scene);
     this.weaponShop = new WeaponShop(this.scene);
-    this.outfitShop = new OutfitShop(this.scene, this.maxAnisotropy);
+    this.outfitShop = new OutfitShop(this.scene, this.maxAnisotropy, this.displayGender);
     this.craftingStation = new CraftingStation(this.scene, this.maxAnisotropy);
     this.slimes = new SlimeManager(this.scene, this.outside, this.seed);
     this.mushrooms = new PoisonMushroomManager(this.scene, this.outside, this.seed, this.maxAnisotropy);
     this.dragon = new DragonBossManager(this.scene, this.outside, this.maxAnisotropy);
     this.monsterDrops = new MonsterDropManager(this.scene, this.outside);
+  }
+
+  setPlayerGender(gender: CharacterGender): void {
+    this.displayGender = gender;
+    this.outfitShop.setDisplayGender(gender);
   }
 
   resetSeed(newSeed: number): void {
@@ -125,7 +132,7 @@ export class WorldManager {
     this.citadelMesh = new CitadelStructure(this.scene, this.maxAnisotropy);
     this.cashier = new CashierStation(this.scene);
     this.weaponShop = new WeaponShop(this.scene);
-    this.outfitShop = new OutfitShop(this.scene, this.maxAnisotropy);
+    this.outfitShop = new OutfitShop(this.scene, this.maxAnisotropy, this.displayGender);
     this.craftingStation = new CraftingStation(this.scene, this.maxAnisotropy);
     this.slimes = new SlimeManager(this.scene, this.outside, this.seed);
     this.mushrooms = new PoisonMushroomManager(this.scene, this.outside, this.seed, this.maxAnisotropy);
