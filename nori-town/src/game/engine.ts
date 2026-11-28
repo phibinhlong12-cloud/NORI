@@ -36,6 +36,7 @@ import {
 import { FirstPersonPlayer } from './player';
 import { PotionViewModel } from './potion';
 import { RaycastHit, voxelRaycast } from './raycast';
+import { RecallVfx } from './recallVfx';
 import { ShieldViewModel } from './shield';
 import { SlimeEntity } from './slime';
 import {
@@ -93,6 +94,11 @@ export interface HudStats {
   isCraftingTarget: boolean;
   isConveyorTarget: boolean;
   chopProgress: number;
+  inCastle: boolean;
+  recallActive: boolean;
+  recallMode: 'to_castle' | 'to_return' | null;
+  recallProgress: number;
+  hasRecallReturnPoint: boolean;
   craftingMaterialCounts: {
     mushroomCount: number;
     slimeOrbCount: number;
@@ -105,6 +111,15 @@ export interface HudStats {
 }
 
 const TREE_HAND_CHOP_DURATION = 3.0;
+const RECALL_CHANNEL_DURATION = 3.0;
+
+interface RecallReturnPoint {
+  x: number;
+  y: number;
+  z: number;
+  yaw: number;
+  pitch: number;
+}
 
 export interface VoxelEngineCallbacks {
   onPlayingChange: (isPlaying: boolean, hasStarted: boolean) => void;
@@ -322,6 +337,7 @@ export class VoxelEngine {
   private readonly katanaView: KatanaViewModel;
   private readonly shieldView: ShieldViewModel;
   private readonly potionView: PotionViewModel;
+  private readonly recallVfx: RecallVfx;
 
   private readonly solidMaterial: THREE.MeshStandardMaterial;
   private readonly envRenderTarget: THREE.WebGLRenderTarget;
@@ -422,6 +438,13 @@ export class VoxelEngine {
   private equippedKatana: BackpackKatanaVariant | null = null;
   private shieldRaised = false;
   private lastDropBlockedToastAt = 0;
+  private recallActive = false;
+  private recallMode: 'to_castle' | 'to_return' | null = null;
+  private recallElapsed = 0;
+  private recallReturnPoint: RecallReturnPoint | null = null;
+  private lastRecallCompletedAt = 0;
+  private lastRecallCastleToastAt = 0;
+  private lastHudRecallProgress = 0;
   private currentTarget: RaycastHit | null = null;
   private currentTreeTarget: TreeTarget | null = null;
   private ownedOutfits: OutfitId[] = ['default'];
@@ -472,6 +495,11 @@ export class VoxelEngine {
     isCraftingTarget: false,
     isConveyorTarget: false,
     chopProgress: 0,
+    inCastle: true,
+    recallActive: false,
+    recallMode: null,
+    recallProgress: 0,
+    hasRecallReturnPoint: false,
     craftingMaterialCounts: {
       mushroomCount: 0,
       slimeOrbCount: 0,
@@ -636,6 +664,7 @@ export class VoxelEngine {
     this.katanaView = new KatanaViewModel(this.scene);
     this.shieldView = new ShieldViewModel(this.scene);
     this.potionView = new PotionViewModel(this.scene);
+    this.recallVfx = new RecallVfx(this.scene);
 
     const boxGeo = new THREE.EdgesGeometry(new THREE.BoxGeometry(1.006, 1.006, 1.006));
     const boxMat = new THREE.LineBasicMaterial({ color: 0x0f172a, linewidth: 2 });
@@ -717,6 +746,7 @@ export class VoxelEngine {
     this.lookTouchId = null;
     this.chopCompletedWaitingRelease = false;
     this.resetChopHold();
+    this.cancelRecallSilent();
     this.callbacks.onPlayingChange(false, this.hasStarted);
 
     const canvas = this.renderer.domElement;
@@ -741,6 +771,7 @@ export class VoxelEngine {
     this.lookTouchId = null;
     this.chopCompletedWaitingRelease = false;
     this.resetChopHold();
+    this.cancelRecallSilent();
 
     const canvas = this.renderer.domElement;
     if (document.pointerLockElement === canvas && document.exitPointerLock) {
@@ -779,6 +810,7 @@ export class VoxelEngine {
     this.lookTouchId = null;
     this.chopCompletedWaitingRelease = false;
     this.resetChopHold();
+    this.cancelRecallSilent();
 
     const canvas = this.renderer.domElement;
     if (document.pointerLockElement === canvas && document.exitPointerLock) {
@@ -817,6 +849,7 @@ export class VoxelEngine {
     this.lookTouchId = null;
     this.chopCompletedWaitingRelease = false;
     this.resetChopHold();
+    this.cancelRecallSilent();
 
     const canvas = this.renderer.domElement;
     if (document.pointerLockElement === canvas && document.exitPointerLock) {
@@ -1071,6 +1104,78 @@ export class VoxelEngine {
 
   setVirtualJoystick(x: number, y: number): void {
     this.player.setJoystickVector(x, y);
+  }
+
+  private cancelRecallSilent(): void {
+    if (!this.recallActive && this.recallElapsed === 0 && this.recallMode === null) return;
+    this.recallActive = false;
+    this.recallMode = null;
+    this.recallElapsed = 0;
+    this.lastHudRecallProgress = 0;
+    this.emitStats();
+  }
+
+  private interruptRecall(reason?: string): void {
+    if (!this.recallActive) return;
+    const wasReturn = this.recallMode === 'to_return';
+    this.recallActive = false;
+    this.recallMode = null;
+    this.recallElapsed = 0;
+    this.lastHudRecallProgress = 0;
+    this.audio.playRecallInterruptSound();
+    this.callbacks.onToast(
+      reason ??
+        (wasReturn
+          ? 'Bị tấn công! Đã ngắt quá trình biến trở lại.'
+          : 'Bị tấn công! Đã ngắt quá trình biến về.'),
+    );
+    this.emitStats();
+  }
+
+  triggerRecallAction(): void {
+    if (
+      !this.isPlaying ||
+      this.shopOpen ||
+      this.outfitShopOpen ||
+      this.craftingOpen ||
+      this.characterWindowOpen
+    ) {
+      return;
+    }
+
+    if (this.recallActive) {
+      return;
+    }
+
+    if (performance.now() - this.lastRecallCompletedAt < 650) {
+      return;
+    }
+
+    const inCastle = getCitadelZoneAt(this.player.position.x, this.player.position.z) !== 'outside';
+
+    if (inCastle) {
+      if (this.recallReturnPoint) {
+        this.recallActive = true;
+        this.recallMode = 'to_return';
+        this.recallElapsed = 0;
+        this.audio.playRecallStartSound();
+        this.emitStats();
+      } else {
+        const now = performance.now();
+        if (now - this.lastRecallCastleToastAt > 1600) {
+          this.lastRecallCastleToastAt = now;
+          this.audio.playRecallInterruptSound();
+          this.callbacks.onToast('Bạn đang ở trong tòa thành, không thể biến về!');
+        }
+      }
+      return;
+    }
+
+    this.recallActive = true;
+    this.recallMode = 'to_castle';
+    this.recallElapsed = 0;
+    this.audio.playRecallStartSound();
+    this.emitStats();
   }
 
   private resetChopHold(): void {
@@ -1800,6 +1905,16 @@ export class VoxelEngine {
         : 0;
     this.latestStats.chopProgress = chopProgress;
     this.lastHudChopProgress = chopProgress;
+    const inCastle = getCitadelZoneAt(this.player.position.x, this.player.position.z) !== 'outside';
+    const recallProgress = this.recallActive
+      ? Math.min(1, Math.max(0, this.recallElapsed / RECALL_CHANNEL_DURATION))
+      : 0;
+    this.latestStats.inCastle = inCastle;
+    this.latestStats.recallActive = this.recallActive;
+    this.latestStats.recallMode = this.recallMode;
+    this.latestStats.recallProgress = recallProgress;
+    this.latestStats.hasRecallReturnPoint = this.recallReturnPoint !== null;
+    this.lastHudRecallProgress = recallProgress;
     this.latestStats.craftingMaterialCounts = this.world.getCraftingMaterialCounts();
     this.latestStats.backpackItems = this.world.getBackpackItems();
     this.latestStats.bossHud = this.world.getBossHudState(
@@ -2054,6 +2169,8 @@ export class VoxelEngine {
         this.toggleKatana();
       } else if (e.code === 'KeyR') {
         this.toggleShield();
+      } else if (e.code === 'KeyZ') {
+        this.triggerRecallAction();
       } else if (this.backpackOpen) {
         const digitMatch = /^(?:Digit|Numpad)([1-9])$/.exec(e.code);
         if (digitMatch) {
@@ -2737,6 +2854,10 @@ export class VoxelEngine {
           this.hp = Math.max(0, Math.round((this.hp - damage) * 2) / 2);
           this.audio.playPlayerHurtSound();
           if (this.hp <= 0) {
+            this.recallActive = false;
+            this.recallMode = null;
+            this.recallElapsed = 0;
+            this.recallReturnPoint = null;
             this.hp = MAX_PLAYER_HP;
             this.hurtInvulnTimer = 1.2;
             this.player.respawnAtStart();
@@ -2744,6 +2865,7 @@ export class VoxelEngine {
               'Bạn đã hết máu và trở về vị trí ban đầu (đồ đạc được giữ nguyên)!',
             );
           } else {
+            this.interruptRecall();
             this.player.applyKnockback(dirX, dirZ, 1.5, 0.14);
           }
           this.emitStats();
@@ -2751,7 +2873,11 @@ export class VoxelEngine {
         onShieldBlocked: (slimeLevel) => {
           if (!this.isPlaying) return;
           this.audio.playShieldBlockSound();
-          this.callbacks.onToast(`Khiên đã đỡ đòn Slime Lv.${slimeLevel}!`);
+          if (this.recallActive) {
+            this.interruptRecall();
+          } else {
+            this.callbacks.onToast(`Khiên đã đỡ đòn Slime Lv.${slimeLevel}!`);
+          }
         },
       },
       {
@@ -2774,6 +2900,10 @@ export class VoxelEngine {
           }
           this.audio.playPlayerHurtSound();
           if (this.hp <= 0) {
+            this.recallActive = false;
+            this.recallMode = null;
+            this.recallElapsed = 0;
+            this.recallReturnPoint = null;
             this.hp = MAX_PLAYER_HP;
             this.hurtInvulnTimer = 1.2;
             this.player.respawnAtStart();
@@ -2781,17 +2911,21 @@ export class VoxelEngine {
               'Bạn đã hết máu trước Rồng Băng và trở về vị trí ban đầu (đồ đạc được giữ nguyên)!',
             );
           } else {
+            const wasRecalling = this.recallActive;
+            this.interruptRecall();
             const knockDist = skillId === 1 ? 3.0 : 1.0;
             const knockDur = skillId === 1 ? 0.2 : 0.1;
             this.player.applyKnockback(dirX, dirZ, knockDist, knockDur);
-            if (skillId === 1 && shieldMitigated) {
-              this.callbacks.onToast('Khiên đã giảm sát thương dậm đất (-1 tim · Đẩy lùi 3 block)!');
-            } else if (skillId === 1) {
-              this.callbacks.onToast('Dính dậm xung kích Rồng Băng (-3 tim · Đẩy lùi 3 block)!');
-            } else if (skillId === 2) {
-              this.callbacks.onToast('Bị Rồng Băng lao trúng (-2 tim · Khiên vô hiệu)!');
-            } else {
-              this.callbacks.onToast('Dính lửa băng Rồng (-2 tim · Khiên vô hiệu)!');
+            if (!wasRecalling) {
+              if (skillId === 1 && shieldMitigated) {
+                this.callbacks.onToast('Khiên đã giảm sát thương dậm đất (-1 tim · Đẩy lùi 3 block)!');
+              } else if (skillId === 1) {
+                this.callbacks.onToast('Dính dậm xung kích Rồng Băng (-3 tim · Đẩy lùi 3 block)!');
+              } else if (skillId === 2) {
+                this.callbacks.onToast('Bị Rồng Băng lao trúng (-2 tim · Khiên vô hiệu)!');
+              } else {
+                this.callbacks.onToast('Dính lửa băng Rồng (-2 tim · Khiên vô hiệu)!');
+              }
             }
           }
           this.emitStats();
@@ -2818,6 +2952,10 @@ export class VoxelEngine {
           this.hp = Math.max(0, Math.round((this.hp - damage) * 2) / 2);
           this.audio.playPlayerHurtSound();
           if (this.hp <= 0) {
+            this.recallActive = false;
+            this.recallMode = null;
+            this.recallElapsed = 0;
+            this.recallReturnPoint = null;
             this.hp = MAX_PLAYER_HP;
             this.hurtInvulnTimer = 1.2;
             this.player.respawnAtStart();
@@ -2825,19 +2963,27 @@ export class VoxelEngine {
               'Bạn đã hết máu vì khí độc và trở về vị trí ban đầu (đồ đạc được giữ nguyên)!',
             );
           } else {
+            const wasRecalling = this.recallActive;
+            this.interruptRecall();
             this.player.applyKnockback(dirX, dirZ, 0.9, 0.12);
-            this.callbacks.onToast(
-              `Trúng khí độc Nấm Độc Lv.${mushroomLevel} (-${damage} tim)!`,
-            );
+            if (!wasRecalling) {
+              this.callbacks.onToast(
+                `Trúng khí độc Nấm Độc Lv.${mushroomLevel} (-${damage} tim)!`,
+              );
+            }
           }
           this.emitStats();
         },
         onShieldBlocked: (mushroomLevel) => {
           if (!this.isPlaying) return;
           this.audio.playShieldBlockSound();
-          this.callbacks.onToast(
-            `Khiên đã đỡ đòn phun độc của Nấm Độc Lv.${mushroomLevel}!`,
-          );
+          if (this.recallActive) {
+            this.interruptRecall();
+          } else {
+            this.callbacks.onToast(
+              `Khiên đã đỡ đòn phun độc của Nấm Độc Lv.${mushroomLevel}!`,
+            );
+          }
         },
       },
       this.world.isShopItemOwned('backpack'),
@@ -2885,6 +3031,86 @@ export class VoxelEngine {
         this.renderDistance,
       );
     }
+
+    if (this.recallActive && this.isPlaying) {
+      this.recallElapsed += clampedDt;
+      if (this.recallElapsed >= RECALL_CHANNEL_DURATION) {
+        const mode = this.recallMode;
+        this.recallActive = false;
+        this.recallMode = null;
+        this.recallElapsed = 0;
+        this.lastRecallCompletedAt = performance.now();
+
+        if (mode === 'to_return' && this.recallReturnPoint) {
+          const pt = this.recallReturnPoint;
+          this.recallReturnPoint = null;
+          this.player.teleportTo(pt.x, pt.y, pt.z, pt.yaw, pt.pitch);
+          this.world.updateChunksAroundPlayer(
+            this.player.position.x,
+            this.player.position.z,
+            this.renderDistance,
+          );
+          this.updateSunShadowTarget();
+          this.recallVfx.triggerBurst(
+            this.player.position.x,
+            this.world.getMaxGroundHeightInBox(
+              this.player.position.x,
+              this.player.position.z,
+              this.player.halfWidth,
+            ),
+            this.player.position.z,
+          );
+          this.audio.playRecallCompleteSound();
+          this.callbacks.onToast('Đã biến trở lại vị trí trước khi biến về!');
+        } else {
+          this.recallReturnPoint = {
+            x: this.player.position.x,
+            y: this.player.position.y,
+            z: this.player.position.z,
+            yaw: this.player.yaw,
+            pitch: this.player.pitch,
+          };
+          this.player.respawnAtStart();
+          this.world.updateChunksAroundPlayer(
+            this.player.position.x,
+            this.player.position.z,
+            this.renderDistance,
+          );
+          this.updateSunShadowTarget();
+          this.recallVfx.triggerBurst(
+            this.player.position.x,
+            this.world.getMaxGroundHeightInBox(
+              this.player.position.x,
+              this.player.position.z,
+              this.player.halfWidth,
+            ),
+            this.player.position.z,
+          );
+          this.audio.playRecallCompleteSound();
+          this.callbacks.onToast(
+            'Đã biến về thành! Ấn Biến về / Z thêm 1 lần nữa để quay lại vị trí cũ.',
+          );
+        }
+        this.emitStats();
+      }
+    }
+
+    const recallGroundY = this.world.getMaxGroundHeightInBox(
+      this.player.position.x,
+      this.player.position.z,
+      this.player.halfWidth,
+    );
+    const recallProg = this.recallActive
+      ? Math.min(1, Math.max(0, this.recallElapsed / RECALL_CHANNEL_DURATION))
+      : 0;
+    this.recallVfx.update(
+      clampedDt,
+      this.player.position.x,
+      recallGroundY,
+      this.player.position.z,
+      this.recallActive,
+      recallProg,
+    );
 
     this.camera.getWorldDirection(this.rayDir);
     const dropHit = this.world.raycastDroppedIceKatana(this.camera.position, this.rayDir, 6.5);
@@ -3173,8 +3399,15 @@ export class VoxelEngine {
       Math.abs(currentChopProgress - this.lastHudChopProgress) >= 0.015 ||
       (currentChopProgress === 0 && this.lastHudChopProgress !== 0);
 
+    const currentRecallProgress = this.recallActive
+      ? Math.min(1, Math.max(0, this.recallElapsed / RECALL_CHANNEL_DURATION))
+      : 0;
+    const recallProgressChanged =
+      Math.abs(currentRecallProgress - this.lastHudRecallProgress) >= 0.015 ||
+      (currentRecallProgress === 0 && this.lastHudRecallProgress !== 0);
+
     this.hudSyncTimer += dt;
-    if (this.hudSyncTimer >= 0.1 || chopProgressChanged) {
+    if (this.hudSyncTimer >= 0.1 || chopProgressChanged || recallProgressChanged) {
       this.hudSyncTimer = 0;
       this.emitStats();
     }
@@ -3336,6 +3569,7 @@ export class VoxelEngine {
     this.katanaView.dispose();
     this.shieldView.dispose();
     this.potionView.dispose();
+    this.recallVfx.dispose();
     this.selectionBox.geometry.dispose();
     (this.selectionBox.material as THREE.Material).dispose();
     this.treeCutIndicator.geometry.dispose();

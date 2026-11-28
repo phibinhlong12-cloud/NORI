@@ -120,6 +120,36 @@ export class FirstPersonPlayer {
     this.spawnAtSafeHeight(0.5, 0.5);
   }
 
+  teleportTo(x: number, y: number, z: number, yaw: number, pitch: number): void {
+    const cx = Math.floor(x / CHUNK_SIZE);
+    const cz = Math.floor(z / CHUNK_SIZE);
+    for (let dx = -2; dx <= 2; dx++) {
+      for (let dz = -2; dz <= 2; dz++) {
+        this.world.generateChunkData(cx + dx, cz + dz, false);
+      }
+    }
+
+    for (const key of Array.from(this.world.dirtyChunks)) {
+      const ch = this.world.chunks.get(key);
+      if (ch) this.world.buildChunkMesh(ch);
+      this.world.dirtyChunks.delete(key);
+    }
+
+    const groundY = this.world.getMaxGroundHeightInBox(x, z, this.halfWidth);
+    const safeY = Math.max(y, groundY + 0.02);
+
+    this.yaw = yaw;
+    this.pitch = pitch;
+    this.knockRemX = 0;
+    this.knockRemZ = 0;
+    this.knockTimer = 0;
+    this.position.set(x, safeY, z);
+    this.velocity.set(0, 0, 0);
+    this.onGround = safeY <= groundY + 0.05;
+    this.resetMotionEffects();
+    this.updateCameraTransform();
+  }
+
   applyKnockback(dirX: number, dirZ: number, distance = 0.5, duration = 0.1): void {
     const len = Math.hypot(dirX, dirZ);
     if (len < 0.0001 || distance <= 0) return;

@@ -30,6 +30,10 @@ interface MobileHudState {
   isShopTarget: boolean;
   isConveyorTarget: boolean;
   backpackUsed: number;
+  inCastle: boolean;
+  recallActive: boolean;
+  recallProgress: number;
+  hasRecallReturnPoint: boolean;
 }
 
 const INITIAL_MOBILE_HUD: MobileHudState = {
@@ -52,6 +56,10 @@ const INITIAL_MOBILE_HUD: MobileHudState = {
   isShopTarget: false,
   isConveyorTarget: false,
   backpackUsed: 0,
+  inCastle: true,
+  recallActive: false,
+  recallProgress: 0,
+  hasRecallReturnPoint: false,
 };
 
 const JOYSTICK_DEADZONE = 0.12;
@@ -143,7 +151,11 @@ export const MobileControls = memo(function MobileControls({
           prev.carriedLogValue === stats.carriedLogValue &&
           prev.isShopTarget === stats.isShopTarget &&
           prev.isConveyorTarget === stats.isConveyorTarget &&
-          prev.backpackUsed === used
+          prev.backpackUsed === used &&
+          prev.inCastle === stats.inCastle &&
+          prev.recallActive === stats.recallActive &&
+          Math.abs(prev.recallProgress - stats.recallProgress) < 0.01 &&
+          prev.hasRecallReturnPoint === stats.hasRecallReturnPoint
         ) {
           return prev;
         }
@@ -167,6 +179,10 @@ export const MobileControls = memo(function MobileControls({
           isShopTarget: stats.isShopTarget,
           isConveyorTarget: stats.isConveyorTarget,
           backpackUsed: used,
+          inCastle: stats.inCastle,
+          recallActive: stats.recallActive,
+          recallProgress: stats.recallProgress,
+          hasRecallReturnPoint: stats.hasRecallReturnPoint,
         };
       });
     });
@@ -259,63 +275,162 @@ export const MobileControls = memo(function MobileControls({
   };
 
   const holdingPotion = hud.holdingPotionSlot !== null && hud.holdingPotionCount > 0;
+  const recallDisabledInCastle = hud.inCastle && !hud.hasRecallReturnPoint;
+  const recallReturnReady = hud.inCastle && hud.hasRecallReturnPoint;
+  const recallRemainingSec = Math.max(0, (1 - hud.recallProgress) * 3).toFixed(1);
+  const recallRingRadius = 26;
+  const recallRingCircumference = 2 * Math.PI * recallRingRadius;
+  const recallStrokeOffset =
+    recallRingCircumference * (1 - Math.min(1, Math.max(0, hud.recallProgress)));
 
   return (
     <div className="fixed inset-x-0 bottom-3 z-20 px-3 flex justify-between items-end pointer-events-none touch-none select-none">
-      {/* Cụm bên trái: Chạy nhanh + Cần gạt tròn 360 độ kiểu Minecraft / Liên Quân */}
-      <div className="flex flex-col items-start gap-2 pointer-events-auto">
-        <button
-          type="button"
-          onPointerDown={toggleSprint}
-          className={`px-2.5 py-1 rounded-xl border text-[11px] font-bold flex items-center gap-1 transition active:scale-95 ${
-            sprinting
-              ? 'bg-emerald-500/90 border-emerald-300 text-slate-950 shadow-lg'
-              : 'bg-slate-950/75 border-white/20 text-slate-200'
-          }`}
-          aria-pressed={sprinting}
-        >
-          <Zap className="w-3.5 h-3.5" />
-          <span>{sprinting ? 'Đang chạy' : 'Chạy nhanh'}</span>
-        </button>
+      {/* Cụm bên trái: Chạy nhanh + Cần gạt tròn 360 độ + Nút Biến về tròn bên cạnh */}
+      <div className="flex items-end gap-2.5 pointer-events-auto">
+        <div className="flex flex-col items-start gap-2">
+          <button
+            type="button"
+            onPointerDown={toggleSprint}
+            className={`px-2.5 py-1 rounded-xl border text-[11px] font-bold flex items-center gap-1 transition active:scale-95 ${
+              sprinting
+                ? 'bg-emerald-500/90 border-emerald-300 text-slate-950 shadow-lg'
+                : 'bg-slate-950/75 border-white/20 text-slate-200'
+            }`}
+            aria-pressed={sprinting}
+          >
+            <Zap className="w-3.5 h-3.5" />
+            <span>{sprinting ? 'Đang chạy' : 'Chạy nhanh'}</span>
+          </button>
 
-        <div
-          ref={joyBaseRef}
-          role="slider"
-          aria-label="Cần điều khiển di chuyển 360 độ"
-          aria-valuetext="Di chuyển"
-          onPointerDown={handleJoystickPointerDown}
-          onPointerMove={handleJoystickPointerMove}
-          onPointerUp={handleJoystickPointerUp}
-          onPointerCancel={handleJoystickPointerUp}
-          onLostPointerCapture={resetJoystick}
-          className={`relative w-[126px] h-[126px] sm:w-36 sm:h-36 rounded-full border-2 flex items-center justify-center transition-colors touch-none ${
-            joystickActive
-              ? 'bg-slate-950/75 border-emerald-400/70 shadow-[0_0_24px_rgba(52,211,153,0.25)]'
-              : 'bg-slate-950/55 border-white/25 shadow-lg'
-          }`}
-        >
-          {/* Vòng tròn chỉ hướng bên trong */}
-          <div className="absolute inset-[13px] rounded-full border border-white/10 pointer-events-none" />
-          <span className="absolute top-2 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full bg-white/25 pointer-events-none" />
-          <span className="absolute bottom-2 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full bg-white/25 pointer-events-none" />
-          <span className="absolute left-2 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-white/25 pointer-events-none" />
-          <span className="absolute right-2 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-white/25 pointer-events-none" />
-
-          {/* Núm tâm kéo mọi hướng */}
           <div
-            ref={joyKnobRef}
-            className={`w-[54px] h-[54px] sm:w-[58px] sm:h-[58px] rounded-full border-2 flex items-center justify-center pointer-events-none will-change-transform ${
+            ref={joyBaseRef}
+            role="slider"
+            aria-label="Cần điều khiển di chuyển 360 độ"
+            aria-valuetext="Di chuyển"
+            onPointerDown={handleJoystickPointerDown}
+            onPointerMove={handleJoystickPointerMove}
+            onPointerUp={handleJoystickPointerUp}
+            onPointerCancel={handleJoystickPointerUp}
+            onLostPointerCapture={resetJoystick}
+            className={`relative w-[126px] h-[126px] sm:w-36 sm:h-36 rounded-full border-2 flex items-center justify-center transition-colors touch-none ${
               joystickActive
-                ? 'bg-emerald-400/90 border-white shadow-[0_0_16px_rgba(52,211,153,0.65)]'
-                : 'bg-white/25 border-white/60 shadow-md'
+                ? 'bg-slate-950/75 border-emerald-400/70 shadow-[0_0_24px_rgba(52,211,153,0.25)]'
+                : 'bg-slate-950/55 border-white/25 shadow-lg'
             }`}
           >
+            {/* Vòng tròn chỉ hướng bên trong */}
+            <div className="absolute inset-[13px] rounded-full border border-white/10 pointer-events-none" />
+            <span className="absolute top-2 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full bg-white/25 pointer-events-none" />
+            <span className="absolute bottom-2 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full bg-white/25 pointer-events-none" />
+            <span className="absolute left-2 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-white/25 pointer-events-none" />
+            <span className="absolute right-2 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-white/25 pointer-events-none" />
+
+            {/* Núm tâm kéo mọi hướng */}
             <div
-              className={`w-[18px] h-[18px] rounded-full ${
-                joystickActive ? 'bg-slate-950/70' : 'bg-white/60'
+              ref={joyKnobRef}
+              className={`w-[54px] h-[54px] sm:w-[58px] sm:h-[58px] rounded-full border-2 flex items-center justify-center pointer-events-none will-change-transform ${
+                joystickActive
+                  ? 'bg-emerald-400/90 border-white shadow-[0_0_16px_rgba(52,211,153,0.65)]'
+                  : 'bg-white/25 border-white/60 shadow-md'
               }`}
-            />
+            >
+              <div
+                className={`w-[18px] h-[18px] rounded-full ${
+                  joystickActive ? 'bg-slate-950/70' : 'bg-white/60'
+                }`}
+              />
+            </div>
           </div>
+        </div>
+
+        {/* Nút Biến về / Trở lại hình tròn ngay cạnh cần điều khiển */}
+        <div className="flex flex-col items-center gap-1 pb-1">
+          <button
+            type="button"
+            aria-label={
+              recallReturnReady
+                ? 'Biến trở lại vị trí trước khi biến về'
+                : recallDisabledInCastle
+                  ? 'Đang ở trong tòa thành, không thể biến về'
+                  : 'Biến về vị trí ban đầu'
+            }
+            onPointerDown={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              engine?.triggerRecallAction();
+            }}
+            className={`relative w-14 h-14 rounded-full p-[2.5px] transition active:scale-95 flex items-center justify-center ${
+              hud.recallActive
+                ? 'bg-gradient-to-tr from-cyan-400 via-amber-300 to-violet-400 shadow-[0_0_20px_rgba(56,189,248,0.75)]'
+                : recallReturnReady
+                  ? 'bg-gradient-to-tr from-amber-400 via-fuchsia-500 to-cyan-400 shadow-[0_0_18px_rgba(244,114,182,0.65)]'
+                  : recallDisabledInCastle
+                    ? 'bg-slate-700/70 opacity-50 grayscale'
+                    : 'bg-gradient-to-tr from-sky-400 via-indigo-400 to-amber-300 shadow-[0_0_14px_rgba(56,189,248,0.45)]'
+            }`}
+          >
+            <span className="w-full h-full rounded-full overflow-hidden bg-slate-950 flex items-center justify-center">
+              <img
+                src="/assets/aistudio/image_c493d6fb.png"
+                alt="Biến về"
+                draggable={false}
+                className={`w-full h-full object-cover scale-[1.16] pointer-events-none select-none ${
+                  hud.recallActive ? 'animate-spin' : ''
+                }`}
+                style={hud.recallActive ? { animationDuration: '2.4s' } : undefined}
+              />
+            </span>
+
+            {hud.recallActive && (
+              <svg
+                viewBox="0 0 60 60"
+                className="absolute inset-0 w-full h-full -rotate-90 pointer-events-none"
+                aria-hidden="true"
+              >
+                <circle
+                  cx="30"
+                  cy="30"
+                  r={recallRingRadius}
+                  fill="none"
+                  stroke="rgba(15, 23, 42, 0.55)"
+                  strokeWidth="3.5"
+                />
+                <circle
+                  cx="30"
+                  cy="30"
+                  r={recallRingRadius}
+                  fill="none"
+                  stroke="#fde047"
+                  strokeWidth="3.5"
+                  strokeLinecap="round"
+                  strokeDasharray={recallRingCircumference}
+                  strokeDashoffset={recallStrokeOffset}
+                />
+              </svg>
+            )}
+          </button>
+
+          <span
+            className={`px-1.5 py-0.5 rounded-md text-[10px] font-bold leading-none whitespace-nowrap shadow ${
+              hud.recallActive
+                ? recallReturnReady
+                  ? 'bg-fuchsia-950/90 border border-fuchsia-300/60 text-fuchsia-200 font-mono-tech'
+                  : 'bg-cyan-950/90 border border-cyan-300/60 text-cyan-200 font-mono-tech'
+                : recallReturnReady
+                  ? 'bg-fuchsia-950/90 border border-fuchsia-300/60 text-fuchsia-200'
+                  : recallDisabledInCastle
+                    ? 'bg-slate-950/75 border border-white/10 text-slate-400'
+                    : 'bg-slate-950/85 border border-sky-400/35 text-sky-200'
+            }`}
+          >
+            {hud.recallActive
+              ? `${recallRemainingSec}s`
+              : recallReturnReady
+                ? 'Trở lại'
+                : recallDisabledInCastle
+                  ? 'Trong thành'
+                  : 'Biến về'}
+          </span>
         </div>
       </div>
 

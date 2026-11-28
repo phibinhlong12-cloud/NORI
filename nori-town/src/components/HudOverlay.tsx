@@ -35,6 +35,11 @@ export const HudOverlay = memo(function HudOverlay({
   const chopBoxRef = useRef<HTMLDivElement | null>(null);
   const chopBarRef = useRef<HTMLDivElement | null>(null);
   const chopTextRef = useRef<HTMLSpanElement | null>(null);
+  const recallBoxRef = useRef<HTMLDivElement | null>(null);
+  const recallLabelRef = useRef<HTMLSpanElement | null>(null);
+  const recallBarRef = useRef<HTMLDivElement | null>(null);
+  const recallTextRef = useRef<HTMLSpanElement | null>(null);
+  const recallReturnHintRef = useRef<HTMLDivElement | null>(null);
   const crosshairRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -86,8 +91,31 @@ export const HudOverlay = memo(function HudOverlay({
           chopBoxRef.current.style.display = 'none';
         }
       }
+
+      if (recallBoxRef.current && recallBarRef.current && recallTextRef.current) {
+        if (!modalOpen && stats.recallActive) {
+          recallBoxRef.current.style.display = 'flex';
+          if (recallLabelRef.current) {
+            recallLabelRef.current.textContent =
+              stats.recallMode === 'to_return'
+                ? 'Đang biến trở lại... (Bị đánh sẽ ngắt)'
+                : 'Đang biến về... (Bị đánh sẽ ngắt)';
+          }
+          recallBarRef.current.style.width = `${Math.round(stats.recallProgress * 100)}%`;
+          const remaining = Math.max(0, (1 - stats.recallProgress) * 3).toFixed(1);
+          recallTextRef.current.textContent = `${remaining}s`;
+        } else {
+          recallBoxRef.current.style.display = 'none';
+        }
+      }
+
+      if (recallReturnHintRef.current) {
+        const showReturnHint =
+          !modalOpen && !touchMode && !stats.recallActive && stats.inCastle && stats.hasRecallReturnPoint;
+        recallReturnHintRef.current.style.display = showReturnHint ? 'flex' : 'none';
+      }
     });
-  }, [engine]);
+  }, [engine, touchMode]);
 
   return (
     <>
@@ -128,6 +156,39 @@ export const HudOverlay = memo(function HudOverlay({
                 style={{ width: '0%' }}
               />
             </div>
+          </div>
+
+          <div
+            ref={recallBoxRef}
+            style={{ display: 'none' }}
+            className={`fixed left-1/2 -translate-x-1/2 z-20 pointer-events-none flex-col items-center gap-1.5 bg-slate-950/90 border border-cyan-400/55 px-4 py-2 rounded-xl shadow-[0_0_24px_rgba(56,189,248,0.3)] min-w-[210px] ${
+              touchMode ? 'bottom-[212px] sm:bottom-20' : 'bottom-20'
+            }`}
+          >
+            <div className="w-full flex items-center justify-between gap-3 text-[11px] font-bold text-cyan-200">
+              <span ref={recallLabelRef}>Đang biến về... (Bị đánh sẽ ngắt)</span>
+              <span ref={recallTextRef} className="font-mono-tech text-amber-300 tabular-nums">
+                3.0s
+              </span>
+            </div>
+            <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden border border-white/10">
+              <div
+                ref={recallBarRef}
+                className="h-full bg-gradient-to-r from-sky-400 via-cyan-300 to-amber-300 rounded-full transition-[width] duration-75"
+                style={{ width: '0%' }}
+              />
+            </div>
+          </div>
+
+          <div
+            ref={recallReturnHintRef}
+            style={{ display: 'none' }}
+            className="fixed bottom-16 left-1/2 -translate-x-1/2 z-20 pointer-events-none items-center gap-2 bg-slate-950/85 border border-fuchsia-400/45 text-fuchsia-200 px-3 py-1.5 rounded-xl text-xs font-semibold shadow-lg"
+          >
+            <span className="px-1.5 py-0.5 rounded bg-fuchsia-500/25 border border-fuchsia-300/45 text-amber-300 font-mono-tech font-bold">
+              Z
+            </span>
+            <span>Biến trở lại vị trí trước khi biến về</span>
           </div>
         </>
       )}

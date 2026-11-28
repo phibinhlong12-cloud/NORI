@@ -109,6 +109,7 @@ const GUIDE_ITEMS: Array<{ label: string; keys: string }> = [
   { label: 'Cất / Lấy nhanh (1→9)', keys: 'F' },
   { label: 'Đổi Katana', keys: 'Q' },
   { label: 'Che / Cất Khiên chắn', keys: 'R' },
+  { label: 'Biến về / Trở lại vị trí cũ', keys: 'Z' },
   { label: 'Mở cửa sổ nhân vật', keys: 'B' },
 ];
 
