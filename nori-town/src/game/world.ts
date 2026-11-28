@@ -277,6 +277,13 @@ export class WorldManager {
     return this.trees.swapKatanaAtSlot(slotIndex, currentEquipped);
   }
 
+  moveOrSwapBackpackSlots(
+    fromSlot: number,
+    toSlot: number,
+  ): { moved: boolean; swapped: boolean } {
+    return this.trees.moveOrSwapBackpackSlots(fromSlot, toSlot);
+  }
+
   deleteBackpackSlot(
     slotIndex: number,
     quantity?: number,

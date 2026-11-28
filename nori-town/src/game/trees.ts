@@ -610,6 +610,30 @@ export class TreeManager {
     return { swapped: true, newVariant };
   }
 
+  moveOrSwapBackpackSlots(
+    fromSlot: number,
+    toSlot: number,
+  ): { moved: boolean; swapped: boolean } {
+    if (
+      fromSlot < 0 ||
+      fromSlot >= BACKPACK_CAPACITY ||
+      toSlot < 0 ||
+      toSlot >= BACKPACK_CAPACITY ||
+      fromSlot === toSlot
+    ) {
+      return { moved: false, swapped: false };
+    }
+    const source = this.backpackSlots[fromSlot];
+    if (!source) {
+      return { moved: false, swapped: false };
+    }
+    const target = this.backpackSlots[toSlot];
+    this.backpackSlots[toSlot] = source;
+    this.backpackSlots[fromSlot] = target;
+    this.rebuildBackpackSnapshot();
+    return { moved: true, swapped: target !== null };
+  }
+
   deleteBackpackSlot(
     slotIndex: number,
     quantity?: number,

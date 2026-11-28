@@ -858,7 +858,7 @@ export class PoisonMushroomManager {
         const isMedium = level === 10;
 
         const maxHp = isLarge ? 1500 : isMedium ? 1000 : 600;
-        const damage = isLarge ? 2.0 : isMedium ? 1.5 : 1.0;
+        const damage = isLarge ? 20 : isMedium ? 15 : 10;
         const xpReward = isLarge ? 500 : isMedium ? 300 : 200;
         const scale = isLarge ? 1.48 : isMedium ? 1.05 : 0.74;
         const radius = 0.65 * scale;

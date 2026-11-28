@@ -73,7 +73,7 @@ function getItemSummary(item: BackpackItem): {
     case 'potion':
       return {
         title: `Thuốc hồi máu (x${item.count})`,
-        subtitle: 'Cầm lên tay và bấm chuột phải / Uống để hồi +2 tim',
+        subtitle: 'Cầm lên tay và bấm chuột phải / Uống để hồi +20 máu',
         useLabel: 'Sử dụng',
         canUseDirectly: true,
       };
@@ -357,8 +357,8 @@ export const BackpackHud = memo(function BackpackHud({
               </div>
               <div className="text-[11px] sm:text-xs font-semibold text-rose-300">
                 {touchMode
-                  ? `Cầm x${state.holdingPotionCount} · Bấm Hồi máu (+2 tim)`
-                  : `Đang cầm (x${state.holdingPotionCount}) · Chuột phải uống (+2 tim)`}
+                  ? `Cầm x${state.holdingPotionCount} · Bấm Hồi máu (+20 máu)`
+                  : `Đang cầm (x${state.holdingPotionCount}) · Chuột phải uống (+20 máu)`}
               </div>
             </div>
           </div>
@@ -445,16 +445,20 @@ export const BackpackHud = memo(function BackpackHud({
               <div className="flex items-center gap-1.5">
                 <span
                   className={`text-[10px] sm:text-[11px] font-mono-tech font-semibold px-2 py-0.5 rounded ${
-                    isFull
-                      ? 'bg-rose-600 text-white'
-                      : 'bg-slate-800 text-slate-300 border border-white/10'
+                    selectedSlot !== null
+                      ? 'bg-cyan-500/20 text-cyan-200 border border-cyan-400/40'
+                      : isFull
+                        ? 'bg-rose-600 text-white'
+                        : 'bg-slate-800 text-slate-300 border border-white/10'
                   }`}
                 >
-                  {touchMode
-                    ? 'Chạm ô chọn · Dùng / Xóa'
-                    : isFull
-                      ? 'BALO ĐẦY · Chọn ô xử lý'
-                      : 'Chọn ô để Sử dụng / Xóa · E đóng'}
+                  {selectedSlot !== null
+                    ? `Đang chọn Ô ${selectedSlot + 1} · Chạm ô khác để chuyển/đổi chỗ`
+                    : touchMode
+                      ? 'Chạm ô chọn · Chạm ô khác đổi chỗ'
+                      : isFull
+                        ? 'BALO ĐẦY · Chọn ô xử lý'
+                        : 'Chọn ô · Chạm ô khác đổi chỗ · E đóng'}
                 </span>
                 <button
                   type="button"
@@ -474,8 +478,11 @@ export const BackpackHud = memo(function BackpackHud({
                 const isHeldPotion =
                   item?.kind === 'potion' && state.holdingPotionSlot === index;
                 const isSelected = selectedSlot === index;
+                const canMoveHere = selectedSlot !== null && selectedSlot !== index;
 
-                let slotStyle = 'bg-slate-900/75 border-white/10 text-slate-500';
+                let slotStyle = canMoveHere
+                  ? 'bg-slate-900/85 border-cyan-400/35 text-slate-400 hover:border-cyan-300 hover:bg-cyan-950/35'
+                  : 'bg-slate-900/75 border-white/10 text-slate-500';
                 if (item?.kind === 'potion') {
                   slotStyle = isHeldPotion
                     ? 'bg-rose-950/95 border-rose-400 text-rose-100'
@@ -504,11 +511,22 @@ export const BackpackHud = memo(function BackpackHud({
                     key={index}
                     type="button"
                     onClick={() => {
+                      if (selectedSlot !== null) {
+                        if (selectedSlot === index) {
+                          setSelectedSlot(null);
+                          return;
+                        }
+                        const moved = engine?.moveOrSwapBackpackSlots(selectedSlot, index);
+                        if (moved) {
+                          setSelectedSlot(null);
+                        }
+                        return;
+                      }
                       if (!item) {
                         setSelectedSlot(null);
                         return;
                       }
-                      setSelectedSlot((prev) => (prev === index ? null : index));
+                      setSelectedSlot(index);
                     }}
                     className={`relative h-[62px] sm:h-[68px] rounded-xl border flex flex-col items-center justify-center px-1 text-center transition active:scale-95 cursor-pointer ${slotStyle} ${
                       isSelected ? 'ring-2 ring-amber-300 border-amber-300' : ''

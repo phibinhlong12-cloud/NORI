@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { Backpack, Coins, FlaskConical, Shield, Sword, TreePine, User, Zap } from 'lucide-react';
 import { HudStats, VoxelEngine } from '../game/engine';
 import { BACKPACK_CAPACITY, BackpackKatanaVariant } from '../game/trees';
+import recallCircleIcon from '../assets/recall-circle-icon.png';
 
 interface MobileControlsProps {
   visible: boolean;
@@ -284,7 +285,24 @@ export const MobileControls = memo(function MobileControls({
     recallRingCircumference * (1 - Math.min(1, Math.max(0, hud.recallProgress)));
 
   return (
-    <div className="fixed inset-x-0 bottom-3 z-20 px-3 flex justify-between items-end pointer-events-none touch-none select-none">
+    <>
+      {/* Nút Nhân vật tách riêng 1 dòng cao ở góc trên bên phải */}
+      <div className="fixed top-11 sm:top-12 right-3 z-20 pointer-events-auto touch-none select-none">
+        <button
+          type="button"
+          onPointerDown={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            engine?.toggleCharacterWindow();
+          }}
+          className="h-9 px-3 rounded-xl border text-[11px] font-bold flex items-center gap-1.5 active:scale-95 transition bg-slate-950/85 border-cyan-400/40 text-cyan-200 shadow-lg"
+        >
+          <User className="w-3.5 h-3.5" />
+          <span>Nhân vật</span>
+        </button>
+      </div>
+
+      <div className="fixed inset-x-0 bottom-3 z-20 px-3 flex justify-between items-end pointer-events-none touch-none select-none">
       {/* Cụm bên trái: Chạy nhanh + Cần gạt tròn 360 độ + Nút Biến về tròn bên cạnh */}
       <div className="flex items-end gap-2.5 pointer-events-auto">
         <div className="flex flex-col items-start gap-2">
@@ -371,10 +389,10 @@ export const MobileControls = memo(function MobileControls({
           >
             <span className="w-full h-full rounded-full overflow-hidden bg-slate-950 flex items-center justify-center">
               <img
-                src="/assets/aistudio/image_c493d6fb.png"
+                src={recallCircleIcon}
                 alt="Biến về"
                 draggable={false}
-                className={`w-full h-full object-cover scale-[1.16] pointer-events-none select-none ${
+                className={`w-full h-full object-cover scale-[1.08] pointer-events-none select-none ${
                   hud.recallActive ? 'animate-spin' : ''
                 }`}
                 style={hud.recallActive ? { animationDuration: '2.4s' } : undefined}
@@ -434,24 +452,10 @@ export const MobileControls = memo(function MobileControls({
         </div>
       </div>
 
-      {/* Cụm bên phải: Dòng 1 (Nhân vật & Ba lô) -> Dòng 2 (Hành động) -> Dòng 3 (Nút Nhảy tròn) */}
+      {/* Cụm bên phải: Dòng 1 (Ba lô) -> Dòng 2 (Hành động) -> Dòng 3 (Nút Nhảy tròn 2.5x) */}
       <div className="flex flex-col gap-2 items-end pointer-events-auto">
-        {/* Dòng 1: Nhân vật & Ba lô */}
-        <div className="flex flex-wrap justify-end gap-1.5">
-          <button
-            type="button"
-            onPointerDown={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              engine?.toggleCharacterWindow();
-            }}
-            className="h-9 px-2.5 rounded-xl border text-[11px] font-bold flex items-center gap-1 active:scale-95 transition bg-slate-950/80 border-cyan-400/35 text-cyan-200"
-          >
-            <User className="w-3.5 h-3.5" />
-            <span>Nhân vật</span>
-          </button>
-
-          {hud.hasBackpack && (
+        {hud.hasBackpack && (
+          <div className="flex flex-wrap justify-end gap-1.5">
             <button
               type="button"
               onPointerDown={(e) => {
@@ -470,8 +474,8 @@ export const MobileControls = memo(function MobileControls({
                 Ba lô {hud.backpackUsed}/{BACKPACK_CAPACITY}
               </span>
             </button>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* Dòng 2: Các nút hành động (Kiếm, Khiên, Hồi máu, Cất/Lấy gỗ, Bán đồ) */}
         {(hud.hasKatana ||
@@ -591,17 +595,17 @@ export const MobileControls = memo(function MobileControls({
           </div>
         )}
 
-        {/* Dòng 3: Nút Nhảy hình tròn chỉ hiển thị icon */}
+        {/* Dòng 3: Nút Nhảy hình tròn phóng to gấp 2.5 lần (140px) */}
         <button
           type="button"
           aria-label="Nhảy"
           {...bindKeyProps('Space')}
-          className="relative w-14 h-14 rounded-full p-[2.5px] bg-gradient-to-tr from-sky-400 via-violet-500 to-fuchsia-400 shadow-[0_0_16px_rgba(192,132,252,0.45)] active:scale-95 transition flex items-center justify-center"
+          className="relative w-[140px] h-[140px] rounded-full p-[4px] bg-gradient-to-tr from-sky-400 via-violet-500 to-fuchsia-400 shadow-[0_0_24px_rgba(192,132,252,0.5)] active:scale-95 transition flex items-center justify-center"
         >
           <span className="w-full h-full rounded-full bg-slate-900/85 flex items-center justify-center">
             <svg
               viewBox="0 0 64 64"
-              className="w-9 h-9 text-slate-100"
+              className="w-[90px] h-[90px] text-slate-100"
               fill="currentColor"
               aria-hidden="true"
             >
@@ -616,6 +620,7 @@ export const MobileControls = memo(function MobileControls({
           </span>
         </button>
       </div>
-    </div>
+      </div>
+    </>
   );
 });

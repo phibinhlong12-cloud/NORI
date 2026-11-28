@@ -1596,7 +1596,7 @@ export class DragonBossManager {
         this.skillTimer / this.getTelegraphSeconds(this.activeSkill),
       );
       if (this.activeSkill === 1) {
-        warningLabel = 'Rồng sắp Dậm Xung Kích! Chạy khỏi vòng đỏ (Khiên giảm còn 1 tim)';
+        warningLabel = 'Rồng sắp Dậm Xung Kích! Chạy khỏi vòng đỏ (Khiên giảm còn 10 máu)';
       } else if (this.activeSkill === 2) {
         warningLabel = 'Rồng sắp Lao Tới! Né khỏi vạch đỏ (Khiên vô hiệu)';
       } else {
@@ -2006,11 +2006,11 @@ export class DragonBossManager {
             const frontDot = dirToImpactX * playerFwdX + dirToImpactZ * playerFwdZ;
 
             if (shieldRaised && frontDot > 0.15) {
-              // Đỡ khiên kịp vẫn mất 1 tim
-              callbacks?.onPlayerHit?.(1.0, 1, true, dirX, dirZ);
+              // Đỡ khiên kịp vẫn mất 10 máu
+              callbacks?.onPlayerHit?.(10, 1, true, dirX, dirZ);
             } else {
-              // Dính trọn xung kích mất 3 tim
-              callbacks?.onPlayerHit?.(3.0, 1, false, dirX, dirZ);
+              // Dính trọn xung kích mất 30 máu
+              callbacks?.onPlayerHit?.(30, 1, false, dirX, dirZ);
             }
           }
         } else if (this.activeSkill === 2) {
@@ -2040,7 +2040,7 @@ export class DragonBossManager {
         );
         bodyPitch = 0.3 * (1 - t);
       } else if (this.activeSkill === 2) {
-        // Lao nhanh dọc theo hành lang đỏ đã khóa (khiên vô hiệu, 2 tim)
+        // Lao nhanh dọc theo hành lang đỏ đã khóa (khiên vô hiệu, 20 máu)
         this.x = this.skillStartX + (this.skillTargetX - this.skillStartX) * t;
         this.z = this.skillStartZ + (this.skillTargetZ - this.skillStartZ) * t;
         bodyPitch = 0.28;
@@ -2056,11 +2056,11 @@ export class DragonBossManager {
               (playerX - this.x) * perpX + (playerZ - this.z) * perpZ >= 0 ? 1 : -1;
             const pushX = (this.skillDirX * 0.5 + perpX * sideSign * 0.85);
             const pushZ = (this.skillDirZ * 0.5 + perpZ * sideSign * 0.85);
-            callbacks?.onPlayerHit?.(2.0, 2, false, pushX, pushZ);
+            callbacks?.onPlayerHit?.(20, 2, false, pushX, pushZ);
           }
         }
       } else {
-        // Phun chùm tia lửa băng trực tiếp từ miệng rồng dọc theo đường đỏ (khiên vô hiệu, 2 tim)
+        // Phun chùm tia lửa băng trực tiếp từ miệng rồng dọc theo đường đỏ (khiên vô hiệu, 20 máu)
         jawOpen = 0.78;
         bodyPitch = 0.06;
         headPitch = 0.16;
@@ -2086,7 +2086,7 @@ export class DragonBossManager {
             Math.abs(playerY - this.y) < 5.0
           ) {
             this.skillHitDealt = true;
-            callbacks?.onPlayerHit?.(2.0, 3, false, this.skillDirX, this.skillDirZ);
+            callbacks?.onPlayerHit?.(20, 3, false, this.skillDirX, this.skillDirZ);
           }
         }
       }

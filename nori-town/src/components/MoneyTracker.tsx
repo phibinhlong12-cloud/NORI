@@ -46,24 +46,24 @@ export const MoneyTracker = memo(function MoneyTracker({ engine }: MoneyTrackerP
   }, []);
 
   return (
-    <div className="bg-slate-950/85 border border-emerald-400/25 text-white px-2.5 py-1.5 sm:px-4 sm:py-2.5 rounded-xl shadow-lg pointer-events-none flex items-center gap-2 sm:gap-3">
-      <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-lg bg-emerald-500/20 border border-emerald-400/30 flex items-center justify-center shrink-0">
-        <Banknote className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-300" />
+    <div className="bg-slate-950/85 border border-emerald-400/25 text-white px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-lg shadow-md pointer-events-none flex items-center gap-1.5">
+      <div className="w-4 h-4 sm:w-5 sm:h-5 rounded bg-emerald-500/20 border border-emerald-400/30 flex items-center justify-center shrink-0">
+        <Banknote className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-emerald-300" />
       </div>
       <div className="leading-tight">
-        <div className="hidden sm:block text-[11px] uppercase tracking-wider text-slate-400 font-medium">
+        <div className="hidden sm:block text-[8px] uppercase tracking-wider text-slate-400 font-medium leading-none">
           Tiền kiếm được
         </div>
-        <div className="flex items-baseline gap-1.5 sm:gap-2">
+        <div className="flex items-baseline gap-1">
           <span
             ref={moneyRef}
-            className="font-mono-tech text-xs sm:text-base font-bold text-amber-300 tabular-nums whitespace-nowrap"
+            className="font-mono-tech text-[10px] sm:text-[11px] font-bold text-amber-300 tabular-nums whitespace-nowrap leading-tight"
           >
             0 VNĐ
           </span>
           <span
             ref={deltaRef}
-            className="font-mono-tech text-[10px] sm:text-xs font-semibold text-emerald-300 transition-opacity duration-300 opacity-0 tabular-nums whitespace-nowrap"
+            className="font-mono-tech text-[9px] font-semibold text-emerald-300 transition-opacity duration-300 opacity-0 tabular-nums whitespace-nowrap leading-tight"
           />
         </div>
       </div>

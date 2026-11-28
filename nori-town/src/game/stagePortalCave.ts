@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { OutsideGenerator } from './outside';
 import { createParabolicEllipsoidGeometry, createParabolicLatheGeometry } from './parabolic';
 import { DRAGON_ZONE_SPEC } from './slimeZones';
+import stage2PortalUrl from '../assets/stage2-portal.png';
 
 export const STAGE_CAVE_X = DRAGON_ZONE_SPEC.x;
 export const STAGE_CAVE_Z = DRAGON_ZONE_SPEC.z - 11.5;
@@ -303,7 +304,7 @@ export class StagePortalCave {
 
     const loader = new THREE.TextureLoader();
     loader.load(
-      '/assets/aistudio/image_aa33cec6.png',
+      stage2PortalUrl,
       (loadedTex) => {
         if (this.disposed) {
           loadedTex.dispose();

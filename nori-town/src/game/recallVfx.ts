@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import recallCircleVfxUrl from '../assets/recall-circle-vfx.png';
 
 function createFallbackMagicCircleTexture(): THREE.CanvasTexture {
   const size = 512;
@@ -196,7 +197,7 @@ export class RecallVfx {
     // Nạp ảnh vòng tròn phép thuật mẫu nếu tải được
     const loader = new THREE.TextureLoader();
     loader.load(
-      '/assets/aistudio/image_c493d6fb.png',
+      recallCircleVfxUrl,
       (loadedTex) => {
         if (this.disposed) {
           loadedTex.dispose();

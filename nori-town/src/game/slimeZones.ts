@@ -86,7 +86,7 @@ export function isInsideDragonZone(wx: number, wz: number, padding = 0): boolean
   return dx * dx + dz * dz <= r * r;
 }
 
-export const MAX_PLAYER_HP = 10;
+export const MAX_PLAYER_HP = 100;
 export const MAX_LEVEL = 30;
 
 /**

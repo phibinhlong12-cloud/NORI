@@ -1590,7 +1590,7 @@ export class VoxelEngine {
       this.emitStats();
       const count = this.world.getPotionCountAtSlot(slotIndex);
       this.callbacks.onToast(
-        `Đang cầm Lọ thuốc hồi máu (x${count}) · Chuột phải để uống (+2 tim)!`,
+        `Đang cầm Lọ thuốc hồi máu (x${count}) · Chuột phải để uống (+20 máu)!`,
       );
       return;
     }
@@ -1634,6 +1634,22 @@ export class VoxelEngine {
 
   retrieveBackpackSlot(slotIndex: number): void {
     this.useBackpackSlot(slotIndex);
+  }
+
+  moveOrSwapBackpackSlots(fromSlot: number, toSlot: number): boolean {
+    if (!this.world.isShopItemOwned('backpack') || !this.backpackOpen) return false;
+    const res = this.world.moveOrSwapBackpackSlots(fromSlot, toSlot);
+    if (!res.moved) return false;
+
+    if (this.holdingPotionSlot === fromSlot) {
+      this.holdingPotionSlot = toSlot;
+    } else if (this.holdingPotionSlot === toSlot) {
+      this.holdingPotionSlot = fromSlot;
+    }
+
+    this.audio.playStowSound();
+    this.emitStats();
+    return true;
   }
 
   private placeCarriedLogInFront(): boolean {
@@ -1698,11 +1714,11 @@ export class VoxelEngine {
       return false;
     }
     if (this.hp >= MAX_PLAYER_HP) {
-      this.callbacks.onToast('Máu đã đầy (10/10 tim), chưa cần uống thuốc!');
+      this.callbacks.onToast(`Máu đã đầy (${MAX_PLAYER_HP}/${MAX_PLAYER_HP}), chưa cần uống thuốc!`);
       return true;
     }
     const remaining = this.world.consumePotionFromSlot(this.holdingPotionSlot);
-    this.hp = Math.min(MAX_PLAYER_HP, Math.round((this.hp + 2.0) * 2) / 2);
+    this.hp = Math.min(MAX_PLAYER_HP, Math.round(this.hp + 20));
     this.potionView.triggerDrink();
     this.audio.playPotionDrinkSound();
     if (remaining <= 0) {
@@ -1711,8 +1727,8 @@ export class VoxelEngine {
     this.emitStats();
     this.callbacks.onToast(
       remaining > 0
-        ? `Đã uống Lọ thuốc hồi máu (+2 tim) · Còn ${remaining} lọ`
-        : 'Đã uống Lọ thuốc hồi máu (+2 tim) · Đã hết lọ trong ô!',
+        ? `Đã uống Lọ thuốc hồi máu (+20 máu) · Còn ${remaining} lọ`
+        : 'Đã uống Lọ thuốc hồi máu (+20 máu) · Đã hết lọ trong ô!',
     );
     return true;
   }
@@ -2955,7 +2971,7 @@ export class VoxelEngine {
       this.safeHealTimer += clampedDt;
       if (this.safeHealTimer >= 2.5) {
         this.safeHealTimer = 0;
-        this.hp = Math.min(MAX_PLAYER_HP, Math.round((this.hp + 1) * 2) / 2);
+        this.hp = Math.min(MAX_PLAYER_HP, Math.round(this.hp + 10));
         this.emitStats();
       }
     } else {
@@ -2982,7 +2998,7 @@ export class VoxelEngine {
         onPlayerHit: (damage, _slimeLevel, dirX, dirZ) => {
           if (!this.isPlaying || this.hurtInvulnTimer > 0) return;
           this.hurtInvulnTimer = 0.5;
-          this.hp = Math.max(0, Math.round((this.hp - damage) * 2) / 2);
+          this.hp = Math.max(0, Math.round(this.hp - damage));
           this.audio.playPlayerHurtSound();
           if (this.hp <= 0) {
             this.recallActive = false;
@@ -3025,7 +3041,7 @@ export class VoxelEngine {
         onPlayerHit: (damage, skillId, shieldMitigated, dirX, dirZ) => {
           if (!this.isPlaying || this.hurtInvulnTimer > 0) return;
           this.hurtInvulnTimer = 0.65;
-          this.hp = Math.max(0, Math.round((this.hp - damage) * 2) / 2);
+          this.hp = Math.max(0, Math.round(this.hp - damage));
           if (shieldMitigated) {
             this.audio.playShieldBlockSound();
           }
@@ -3049,13 +3065,13 @@ export class VoxelEngine {
             this.player.applyKnockback(dirX, dirZ, knockDist, knockDur);
             if (!wasRecalling) {
               if (skillId === 1 && shieldMitigated) {
-                this.callbacks.onToast('Khiên đã giảm sát thương dậm đất (-1 tim · Đẩy lùi 3 block)!');
+                this.callbacks.onToast('Khiên đã giảm sát thương dậm đất (-10 máu · Đẩy lùi 3 block)!');
               } else if (skillId === 1) {
-                this.callbacks.onToast('Dính dậm xung kích Rồng Băng (-3 tim · Đẩy lùi 3 block)!');
+                this.callbacks.onToast('Dính dậm xung kích Rồng Băng (-30 máu · Đẩy lùi 3 block)!');
               } else if (skillId === 2) {
-                this.callbacks.onToast('Bị Rồng Băng lao trúng (-2 tim · Khiên vô hiệu)!');
+                this.callbacks.onToast('Bị Rồng Băng lao trúng (-20 máu · Khiên vô hiệu)!');
               } else {
-                this.callbacks.onToast('Dính lửa băng Rồng (-2 tim · Khiên vô hiệu)!');
+                this.callbacks.onToast('Dính lửa băng Rồng (-20 máu · Khiên vô hiệu)!');
               }
             }
           }
@@ -3080,7 +3096,7 @@ export class VoxelEngine {
         onPlayerHit: (damage, mushroomLevel, dirX, dirZ) => {
           if (!this.isPlaying || this.hurtInvulnTimer > 0) return;
           this.hurtInvulnTimer = 0.55;
-          this.hp = Math.max(0, Math.round((this.hp - damage) * 2) / 2);
+          this.hp = Math.max(0, Math.round(this.hp - damage));
           this.audio.playPlayerHurtSound();
           if (this.hp <= 0) {
             this.recallActive = false;
@@ -3099,7 +3115,7 @@ export class VoxelEngine {
             this.player.applyKnockback(dirX, dirZ, 0.9, 0.12);
             if (!wasRecalling) {
               this.callbacks.onToast(
-                `Trúng khí độc Nấm Độc Lv.${mushroomLevel} (-${damage} tim)!`,
+                `Trúng khí độc Nấm Độc Lv.${mushroomLevel} (-${damage} máu)!`,
               );
             }
           }

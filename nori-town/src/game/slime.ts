@@ -1039,7 +1039,7 @@ export class SlimeManager {
       ) {
         slime.attackCooldown = 1.0;
 
-        const damage = slime.level === 3 ? 1.5 : slime.level === 2 ? 1.0 : 0.5;
+        const damage = slime.level === 3 ? 15 : slime.level === 2 ? 10 : 5;
         let dirToSlimeX = -playerFwdX;
         let dirToSlimeZ = -playerFwdZ;
         if (distToPlayer > 0.001) {

@@ -264,10 +264,10 @@ export const HudOverlay = memo(function HudOverlay({
         </>
       )}
 
-      <div className="fixed top-2.5 left-2.5 sm:top-4 sm:left-4 z-20 flex flex-col items-start gap-1.5 sm:gap-2.5 pointer-events-none">
-        <div className="flex flex-row sm:flex-col items-center sm:items-start gap-1.5 sm:gap-2.5">
-          <div className="bg-slate-950/80 border border-white/15 text-white px-2.5 py-1.5 sm:px-4 sm:py-2.5 rounded-xl shadow-lg text-xs sm:text-sm space-y-1.5">
-            <div className="font-bold text-emerald-300 tracking-wide text-[11px] sm:text-xs whitespace-nowrap">
+      <div className="fixed top-1.5 left-1.5 sm:top-2.5 sm:left-2.5 z-20 flex flex-col items-start gap-1 pointer-events-none">
+        <div className="flex flex-row sm:flex-col items-center sm:items-start gap-1">
+          <div className="bg-slate-950/80 border border-white/15 text-white px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-lg shadow-md text-[10px] sm:text-[11px] space-y-1">
+            <div className="font-bold text-emerald-300 tracking-wide text-[10px] sm:text-[11px] leading-tight whitespace-nowrap">
               Nori Town
             </div>
             {SHOW_DEBUG_HUD && (
@@ -305,22 +305,22 @@ export const HudOverlay = memo(function HudOverlay({
       </div>
 
       {isPlaying && (
-        <div className="fixed top-2.5 right-2.5 sm:top-4 sm:right-4 z-20 flex flex-col items-end gap-2">
-          <div className="flex items-center gap-1.5 sm:gap-2">
+        <div className="fixed top-1.5 right-1.5 sm:top-2.5 sm:right-2.5 z-20 flex flex-col items-end gap-1.5">
+          <div className="flex items-center gap-1">
             {onToggleAudioMute && (
               <button
                 type="button"
                 onClick={onToggleAudioMute}
                 aria-label={audioMuted ? 'Bật âm thanh' : 'Tắt âm thanh'}
                 title={audioMuted ? 'Bật âm thanh' : 'Tắt âm thanh'}
-                className={`bg-slate-950/80 border hover:bg-slate-800/90 active:scale-95 text-white px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-xl text-xs sm:text-sm font-medium shadow-lg transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                className={`bg-slate-950/80 border hover:bg-slate-800/90 active:scale-95 text-white px-1.5 py-1 sm:px-2 sm:py-1 rounded-lg text-[10px] font-medium shadow-md transition flex items-center justify-center cursor-pointer whitespace-nowrap ${
                   audioMuted ? 'border-rose-400/40 text-rose-200' : 'border-white/15'
                 }`}
               >
                 {audioMuted ? (
-                  <VolumeX className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-rose-300" />
+                  <VolumeX className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-rose-300" />
                 ) : (
-                  <Volume2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-300" />
+                  <Volume2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-emerald-300" />
                 )}
               </button>
             )}
@@ -329,12 +329,12 @@ export const HudOverlay = memo(function HudOverlay({
               type="button"
               onClick={onToggleFullscreen}
               aria-label={isFullscreen ? 'Thu nhỏ màn hình' : 'Phóng toàn màn hình'}
-              className="bg-slate-950/80 border border-white/15 hover:bg-slate-800/90 active:scale-95 text-white px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-xl text-xs sm:text-sm font-medium shadow-lg transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+              className="bg-slate-950/80 border border-white/15 hover:bg-slate-800/90 active:scale-95 text-white px-1.5 py-1 sm:px-2 sm:py-1 rounded-lg text-[10px] font-medium shadow-md transition flex items-center gap-1 cursor-pointer whitespace-nowrap"
             >
               {isFullscreen ? (
-                <Minimize2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-cyan-300" />
+                <Minimize2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-cyan-300" />
               ) : (
-                <Maximize2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-cyan-300" />
+                <Maximize2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-cyan-300" />
               )}
               <span className="sm:hidden">{isFullscreen ? 'Thu' : 'Full'}</span>
             </button>
@@ -342,9 +342,9 @@ export const HudOverlay = memo(function HudOverlay({
             <button
               type="button"
               onClick={onPause}
-              className="bg-slate-950/80 border border-white/15 hover:bg-slate-800/90 active:scale-95 text-white px-2.5 py-1.5 sm:px-4 sm:py-2 rounded-xl text-xs sm:text-sm font-medium shadow-lg transition flex items-center gap-1.5 sm:gap-2 cursor-pointer whitespace-nowrap"
+              className="bg-slate-950/80 border border-white/15 hover:bg-slate-800/90 active:scale-95 text-white px-2 py-1 sm:px-2.5 sm:py-1 rounded-lg text-[10px] sm:text-[11px] font-medium shadow-md transition flex items-center gap-1 cursor-pointer whitespace-nowrap"
             >
-              <Settings className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-300" />
+              <Settings className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-amber-300" />
               <span className="sm:hidden">Menu</span>
               <span className="hidden sm:inline">Menu (ESC)</span>
             </button>
