@@ -738,6 +738,106 @@ export class VoxelAudio {
     }
   }
 
+  playCaveRumblePulseSound(): void {
+    try {
+      if (!this.audioCtx) {
+        const AudioContextClass =
+          window.AudioContext ||
+          (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+        if (!AudioContextClass) return;
+        this.audioCtx = new AudioContextClass();
+      }
+      if (this.audioCtx.state === 'suspended') {
+        void this.audioCtx.resume();
+      }
+
+      const ctx = this.audioCtx;
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(64, now);
+      osc.frequency.exponentialRampToValueAtTime(34, now + 0.65);
+      gain.gain.setValueAtTime(0.001, now);
+      gain.gain.linearRampToValueAtTime(0.14, now + 0.08);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.72);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.75);
+    } catch {
+      // Bỏ qua nếu trình duyệt chặn audio trước tương tác
+    }
+  }
+
+  playCaveCompleteFanfareSound(): void {
+    try {
+      if (!this.audioCtx) {
+        const AudioContextClass =
+          window.AudioContext ||
+          (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+        if (!AudioContextClass) return;
+        this.audioCtx = new AudioContextClass();
+      }
+      if (this.audioCtx.state === 'suspended') {
+        void this.audioCtx.resume();
+      }
+
+      const ctx = this.audioCtx;
+      const now = ctx.currentTime;
+      const notes = [392.0, 493.88, 587.33, 783.99, 987.77];
+      notes.forEach((f, idx) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        const t = now + idx * 0.075;
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(f, t);
+        gain.gain.setValueAtTime(0.12, t);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.45);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(t);
+        osc.stop(t + 0.48);
+      });
+    } catch {
+      // Bỏ qua nếu trình duyệt chặn audio trước tương tác
+    }
+  }
+
+  playPortalEnterSound(unlocked: boolean): void {
+    try {
+      if (!this.audioCtx) {
+        const AudioContextClass =
+          window.AudioContext ||
+          (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+        if (!AudioContextClass) return;
+        this.audioCtx = new AudioContextClass();
+      }
+      if (this.audioCtx.state === 'suspended') {
+        void this.audioCtx.resume();
+      }
+
+      const ctx = this.audioCtx;
+      const now = ctx.currentTime;
+      const freqs = unlocked ? [440, 659.25, 880, 1174.66] : [320, 220];
+      freqs.forEach((f, idx) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        const t = now + idx * 0.06;
+        osc.type = unlocked ? 'sine' : 'triangle';
+        osc.frequency.setValueAtTime(f, t);
+        gain.gain.setValueAtTime(0.11, t);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.28);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(t);
+        osc.stop(t + 0.3);
+      });
+    } catch {
+      // Bỏ qua nếu trình duyệt chặn audio trước tương tác
+    }
+  }
+
   dispose(): void {
     if (this.audioCtx) {
       void this.audioCtx.close().catch(() => {});

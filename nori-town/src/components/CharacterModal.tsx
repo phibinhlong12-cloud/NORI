@@ -2,7 +2,7 @@ import { memo, useEffect, useState } from 'react';
 import { ArrowLeftRight, Shield, Shirt, Sword, User, X } from 'lucide-react';
 import { HudStats, VoxelEngine } from '../game/engine';
 import { CharacterGender } from '../game/firstPersonArms';
-import { getKatanaDisplayName } from '../game/katana';
+import { getKatanaDisplayName, getKatanaStatInfo } from '../game/katana';
 import {
   getOutfitName,
   isOutfitCompatibleWithGender,
@@ -41,6 +41,7 @@ const INITIAL_STATE: CharacterWindowState = {
 
 export const CharacterModal = memo(function CharacterModal({ engine }: CharacterModalProps) {
   const [state, setState] = useState<CharacterWindowState>(INITIAL_STATE);
+  const [showWeaponInfo, setShowWeaponInfo] = useState(false);
 
   useEffect(() => {
     if (!engine) {
@@ -75,6 +76,12 @@ export const CharacterModal = memo(function CharacterModal({ engine }: Character
       });
     });
   }, [engine]);
+
+  useEffect(() => {
+    if (!state.open || !state.hasKatana || !state.equippedKatana) {
+      setShowWeaponInfo(false);
+    }
+  }, [state.open, state.hasKatana, state.equippedKatana]);
 
   if (!state.open) return null;
 
@@ -137,45 +144,50 @@ export const CharacterModal = memo(function CharacterModal({ engine }: Character
         <div className="grid grid-cols-1 md:grid-cols-[180px_minmax(0,1fr)_180px] gap-4 items-center">
           {/* Cột trái: Hình thanh kiếm + Hình tấm khiên */}
           <div className="grid grid-cols-2 md:grid-cols-1 gap-3">
-            <div
-              className={`rounded-2xl border p-3.5 flex flex-col items-center justify-center gap-2 text-center min-h-[112px] ${
-                state.hasKatana
-                  ? state.equippedKatana === 'leaf'
-                    ? 'bg-emerald-950/35 border-emerald-400/45'
+            {state.hasKatana && state.equippedKatana ? (
+              <button
+                type="button"
+                onClick={() => setShowWeaponInfo((prev) => !prev)}
+                className={`rounded-2xl border p-3.5 flex flex-col items-center justify-center gap-2 text-center min-h-[112px] transition active:scale-95 cursor-pointer ${
+                  state.equippedKatana === 'leaf'
+                    ? 'bg-emerald-950/35 hover:bg-emerald-950/55 border-emerald-400/50'
                     : state.equippedKatana === 'ice'
-                      ? 'bg-cyan-950/35 border-cyan-400/45'
-                      : 'bg-sky-950/35 border-sky-400/45'
-                  : 'bg-slate-800/65 border-white/10'
-              }`}
-            >
-              {state.hasKatana && state.equippedKatana ? (
+                      ? 'bg-cyan-950/35 hover:bg-cyan-950/55 border-cyan-400/50'
+                      : 'bg-sky-950/35 hover:bg-sky-950/55 border-sky-400/50'
+                } ${showWeaponInfo ? 'ring-2 ring-amber-300 border-amber-300' : ''}`}
+              >
                 <div className="w-full max-w-[136px] h-11 rounded-xl bg-slate-950/85 border border-white/15 flex items-center justify-center px-2">
                   <KatanaVariantSvg variant={state.equippedKatana} className="w-full h-8" />
                 </div>
-              ) : (
-                <div className="w-11 h-11 rounded-xl bg-slate-950/85 border border-white/15 flex items-center justify-center">
-                  <Sword className="w-6 h-6 text-slate-500" />
-                </div>
-              )}
-              <div>
-                <div className="text-xs font-bold text-slate-200">Thanh Kiếm</div>
-                <div
-                  className={`text-[11px] mt-0.5 font-semibold ${
-                    state.hasKatana
-                      ? state.equippedKatana === 'leaf'
+                <div>
+                  <div className="text-xs font-bold text-slate-200">Thanh Kiếm</div>
+                  <div
+                    className={`text-[11px] mt-0.5 font-semibold ${
+                      state.equippedKatana === 'leaf'
                         ? 'text-emerald-300'
                         : state.equippedKatana === 'ice'
                           ? 'text-cyan-300'
                           : 'text-sky-300'
-                      : 'text-slate-500'
-                  }`}
-                >
-                  {state.equippedKatana
-                    ? getKatanaDisplayName(state.equippedKatana)
-                    : 'Trống'}
+                    }`}
+                  >
+                    {getKatanaDisplayName(state.equippedKatana)}
+                  </div>
+                  <div className="text-[10px] text-amber-300/90 mt-0.5">
+                    {showWeaponInfo ? 'Ấn để ẩn thông tin' : 'Ấn xem sức mạnh'}
+                  </div>
+                </div>
+              </button>
+            ) : (
+              <div className="rounded-2xl border p-3.5 flex flex-col items-center justify-center gap-2 text-center min-h-[112px] bg-slate-800/65 border-white/10">
+                <div className="w-11 h-11 rounded-xl bg-slate-950/85 border border-white/15 flex items-center justify-center">
+                  <Sword className="w-6 h-6 text-slate-500" />
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-slate-200">Thanh Kiếm</div>
+                  <div className="text-[11px] mt-0.5 font-semibold text-slate-500">Trống</div>
                 </div>
               </div>
-            </div>
+            )}
 
             <div
               className={`rounded-2xl border p-3.5 flex flex-col items-center justify-center gap-2 text-center min-h-[112px] ${
@@ -272,6 +284,46 @@ export const CharacterModal = memo(function CharacterModal({ engine }: Character
             )}
           </div>
         </div>
+
+        {showWeaponInfo && state.hasKatana && state.equippedKatana && (() => {
+          const stat = getKatanaStatInfo(state.equippedKatana);
+          const panelClasses =
+            state.equippedKatana === 'ice'
+              ? 'bg-cyan-950/45 border-cyan-400/45'
+              : state.equippedKatana === 'leaf'
+                ? 'bg-emerald-950/45 border-emerald-400/45'
+                : 'bg-sky-950/40 border-sky-400/40';
+          return (
+            <div className={`rounded-2xl border p-3.5 sm:p-4 space-y-2.5 ${panelClasses}`}>
+              <div className="flex flex-wrap items-center justify-between gap-2.5 border-b border-white/10 pb-2.5">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-24 h-10 rounded-xl bg-slate-950/85 border border-white/15 flex items-center justify-center px-2 shrink-0">
+                    <KatanaVariantSvg variant={state.equippedKatana} className="w-full h-7" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-sm font-bold text-white truncate">{stat.name}</div>
+                    <div className="text-[11px] font-semibold text-amber-300">
+                      Sát thương: {stat.damage} ({stat.damageBonusText})
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowWeaponInfo(false)}
+                  aria-label="Đóng thông tin kiếm"
+                  className="w-7 h-7 rounded-lg bg-slate-800 hover:bg-slate-700 border border-white/15 text-slate-300 flex items-center justify-center cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+              <ul className="space-y-1 text-xs text-slate-200">
+                {stat.effects.map((effect) => (
+                  <li key={effect}>• {effect}</li>
+                ))}
+              </ul>
+            </div>
+          );
+        })()}
       </div>
     </div>
   );

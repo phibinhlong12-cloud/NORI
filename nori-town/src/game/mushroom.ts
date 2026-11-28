@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { ICE_KATANA_SLOW_MULTIPLIER } from './katana';
 import { OutsideGenerator } from './outside';
 import {
   createParabolicEllipsoidGeometry,
@@ -49,10 +50,14 @@ export interface MushroomEntity {
   sprayDirX: number;
   sprayDirZ: number;
   hitFlashTimer: number;
+  slowTimer: number;
+  frostAnimTime: number;
   alive: boolean;
   respawnTimer: number;
   group: THREE.Group;
   bodyGroup: THREE.Group;
+  frostGroup: THREE.Group;
+  frostCrystals: THREE.Mesh[];
   mouthAnchor: THREE.Object3D;
   mouthOrbMesh: THREE.Mesh;
   mouthMat: THREE.MeshStandardMaterial;
@@ -774,6 +779,27 @@ export class PoisonMushroomManager {
 
     const puffGeo = createParabolicEllipsoidGeometry(0.48, 0.42, 0.52, 10, 8);
 
+    const frostRingGeo = new THREE.RingGeometry(0.75, 0.96, 24);
+    frostRingGeo.rotateX(-Math.PI / 2);
+    const frostCrystalGeo = new THREE.OctahedronGeometry(0.13, 0);
+    const frostRingMat = new THREE.MeshBasicMaterial({
+      color: '#7dd3fc',
+      transparent: true,
+      opacity: 0.72,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    });
+    const frostCrystalMat = new THREE.MeshStandardMaterial({
+      color: '#e0f2fe',
+      emissive: '#38bdf8',
+      emissiveIntensity: 1.15,
+      roughness: 0.14,
+      metalness: 0.18,
+      transparent: true,
+      opacity: 0.88,
+    });
+    this.materials.push(frostRingMat, frostCrystalMat);
+
     this.geometries.push(
       capGeo,
       gillsGeo,
@@ -797,6 +823,8 @@ export class PoisonMushroomManager {
       beamOuterGeo,
       beamInnerGeo,
       puffGeo,
+      frostRingGeo,
+      frostCrystalGeo,
     );
 
     // Vị trí các đốm kem nổi trên mũ nấm
@@ -997,6 +1025,24 @@ export class PoisonMushroomManager {
         }
         this.vfxRoot.add(sprayGroup);
 
+        // Hiệu ứng đóng băng làm chậm quanh nấm độc
+        const frostGroup = new THREE.Group();
+        frostGroup.scale.setScalar(scale);
+        frostGroup.visible = false;
+        const frostRing = new THREE.Mesh(frostRingGeo, frostRingMat);
+        frostRing.position.y = 0.08;
+        frostGroup.add(frostRing);
+        const frostCrystals: THREE.Mesh[] = [];
+        for (let fc = 0; fc < 4; fc++) {
+          const ang = (fc / 4) * Math.PI * 2;
+          const crystal = new THREE.Mesh(frostCrystalGeo, frostCrystalMat);
+          crystal.position.set(Math.cos(ang) * 0.82, 0.62, Math.sin(ang) * 0.82);
+          crystal.scale.set(0.8, 1.7, 0.8);
+          frostGroup.add(crystal);
+          frostCrystals.push(crystal);
+        }
+        group.add(frostGroup);
+
         const entity: MushroomEntity = {
           id: `${zone.id}:mushroom:${idx}`,
           zone,
@@ -1031,10 +1077,14 @@ export class PoisonMushroomManager {
           sprayDirX: 0,
           sprayDirZ: 1,
           hitFlashTimer: 0,
+          slowTimer: 0,
+          frostAnimTime: 0,
           alive: true,
           respawnTimer: 0,
           group,
           bodyGroup,
+          frostGroup,
+          frostCrystals,
           mouthAnchor,
           mouthOrbMesh,
           mouthMat,
@@ -1144,6 +1194,7 @@ export class PoisonMushroomManager {
     forwardDir: THREE.Vector3,
     damage = 100,
     maxRange = 3.8,
+    frostSlowDuration = 0,
   ): MushroomAttackResult {
     let target: MushroomEntity | null = null;
     const rayHit = this.raycastMushroom(cameraPos, forwardDir, maxRange);
@@ -1191,6 +1242,10 @@ export class PoisonMushroomManager {
     target.hitFlashTimer = 0.14;
     this.setMushroomFlash(target, true);
 
+    if (target.hp > 0 && frostSlowDuration > 0) {
+      target.slowTimer = Math.max(target.slowTimer, frostSlowDuration);
+    }
+
     const kx = target.x - cameraPos.x;
     const kz = target.z - cameraPos.z;
     const kLen = Math.hypot(kx, kz) || 1;
@@ -1201,6 +1256,8 @@ export class PoisonMushroomManager {
     if (target.hp <= 0) {
       target.alive = false;
       target.skillPhase = 'idle';
+      target.slowTimer = 0;
+      target.frostGroup.visible = false;
       target.respawnTimer = MUSHROOM_RESPAWN_SECONDS;
       target.group.visible = false;
       target.shadowMesh.visible = false;
@@ -1274,6 +1331,8 @@ export class PoisonMushroomManager {
           m.skillTimer = 0;
           m.attackCooldown = 1.0;
           m.hitFlashTimer = 0;
+          m.slowTimer = 0;
+          m.frostGroup.visible = false;
           this.setMushroomFlash(m, false);
           this.hideEntityVfx(m);
           m.labelSprite.material = this.getLabelMaterial(m.level, m.hp, m.maxHp);
@@ -1284,6 +1343,12 @@ export class PoisonMushroomManager {
         }
         continue;
       }
+
+      if (m.slowTimer > 0) {
+        m.slowTimer = Math.max(0, m.slowTimer - dt);
+      }
+      const isSlowed = m.slowTimer > 0;
+      const effDt = isSlowed ? dt * ICE_KATANA_SLOW_MULTIPLIER : dt;
 
       if (m.hitFlashTimer > 0) {
         m.hitFlashTimer -= dt;
@@ -1309,7 +1374,7 @@ export class PoisonMushroomManager {
 
       if (m.skillPhase === 'idle') {
         if (m.attackCooldown > 0) {
-          m.attackCooldown = Math.max(0, m.attackCooldown - dt);
+          m.attackCooldown = Math.max(0, m.attackCooldown - effDt);
         }
 
         if (playerInsideOrangeZone && distToPlayer <= m.aggroRadius) {
@@ -1318,7 +1383,7 @@ export class PoisonMushroomManager {
             const dirX = toPlayerX / distToPlayer;
             const dirZ = toPlayerZ / distToPlayer;
             const targetYaw = Math.atan2(dirX, dirZ);
-            m.yaw += normalizeAngle(targetYaw - m.yaw) * Math.min(1, 7.5 * dt);
+            m.yaw += normalizeAngle(targetYaw - m.yaw) * Math.min(1, 7.5 * effDt);
 
             if (distToPlayer > 7.5) {
               moveDirX = dirX;
@@ -1383,7 +1448,7 @@ export class PoisonMushroomManager {
           }
         } else {
           // Đi lang thang nhẹ quanh khu vực màu cam
-          m.wanderTimer -= dt;
+          m.wanderTimer -= effDt;
           if (m.wanderTimer <= 0) {
             m.wanderTimer = 1.8 + seededRand(i * 29 + performance.now() * 0.01) * 2.4;
             const distFromCenter = Math.hypot(m.x - m.zone.x, m.z - m.zone.z);
@@ -1403,10 +1468,10 @@ export class PoisonMushroomManager {
           m.attackCooldown = 0.6;
           this.hideEntityVfx(m);
         } else {
-          m.skillTimer += dt;
+          m.skillTimer += effDt;
           const progress = Math.min(1, m.skillTimer / POISON_TELEGRAPH_SECONDS);
           const targetYaw = Math.atan2(m.sprayDirX, m.sprayDirZ);
-          m.yaw += normalizeAngle(targetYaw - m.yaw) * Math.min(1, 14 * dt);
+          m.yaw += normalizeAngle(targetYaw - m.yaw) * Math.min(1, 14 * effDt);
 
           m.mouthMat.emissiveIntensity = 0.7 + progress * 2.4;
           const mouthScale = 1 + progress * 0.65;
@@ -1435,7 +1500,7 @@ export class PoisonMushroomManager {
           }
         }
       } else if (m.skillPhase === 'execute') {
-        m.skillTimer += dt;
+        m.skillTimer += effDt;
         const t = Math.min(1, m.skillTimer / POISON_EXECUTE_SECONDS);
 
         m.mouthMat.emissiveIntensity = 3.0 * (1 - t * 0.4);
@@ -1541,24 +1606,35 @@ export class PoisonMushroomManager {
         m.knockTimer = Math.max(0, m.knockTimer - dt);
       }
 
-      m.x += (moveDirX * speed + sepX) * dt + knockStepX;
-      m.z += (moveDirZ * speed + sepZ) * dt + knockStepZ;
+      m.x += (moveDirX * speed + sepX) * effDt + knockStepX;
+      m.z += (moveDirZ * speed + sepZ) * effDt + knockStepZ;
       this.clampInsideZone(m);
 
       const groundY = this.outside.getHeightAt(m.x, m.z);
       const isMoving = speed > 0.1;
-      m.walkPhase += dt * (m.skillPhase === 'telegraph' ? 11.0 : isMoving ? 6.8 : 2.8);
+      m.walkPhase += effDt * (m.skillPhase === 'telegraph' ? 11.0 : isMoving ? 6.8 : 2.8);
 
       const bounceY = isMoving ? Math.abs(Math.sin(m.walkPhase)) * 0.09 * m.scale : 0;
       m.y = groundY + bounceY;
 
       if (m.skillPhase === 'idle' && Math.hypot(moveDirX, moveDirZ) > 0.05) {
         const targetYaw = Math.atan2(moveDirX, moveDirZ);
-        m.yaw += normalizeAngle(targetYaw - m.yaw) * Math.min(1, 8.5 * dt);
+        m.yaw += normalizeAngle(targetYaw - m.yaw) * Math.min(1, 8.5 * effDt);
       }
 
       m.group.position.set(m.x, m.y, m.z);
       m.group.rotation.y = m.yaw;
+
+      m.frostGroup.visible = isSlowed;
+      if (isSlowed) {
+        m.frostAnimTime += dt;
+        m.frostGroup.rotation.y += dt * 1.65;
+        for (let fc = 0; fc < m.frostCrystals.length; fc++) {
+          const crystal = m.frostCrystals[fc];
+          crystal.position.y = 0.6 + Math.sin(m.frostAnimTime * 4.2 + fc * 1.6) * 0.11;
+          crystal.rotation.y += dt * 2.2;
+        }
+      }
 
       // Hoạt ảnh lắc lư dễ thương / tụ lực hít vào trước khi phun
       if (m.skillPhase === 'telegraph') {

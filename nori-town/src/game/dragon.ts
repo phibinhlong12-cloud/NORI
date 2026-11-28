@@ -1,5 +1,9 @@
 import * as THREE from 'three';
-import { createKatanaMeshGroup, KatanaAssetHandles } from './katana';
+import {
+  createKatanaMeshGroup,
+  ICE_KATANA_SLOW_MULTIPLIER,
+  KatanaAssetHandles,
+} from './katana';
 import { OutsideGenerator } from './outside';
 import {
   createParabolicEllipsoidGeometry,
@@ -119,7 +123,7 @@ export class DragonBossManager {
   private readonly breathShards: THREE.Mesh[] = [];
 
   // Vật phẩm Katana Băng rơi ra sau khi hạ rồng
-  private readonly dropAssets: KatanaAssetHandles = { geometries: [], materials: [] };
+  private readonly dropAssets: KatanaAssetHandles = { geometries: [], materials: [], textures: [] };
   private readonly dropKatanaGroup: THREE.Group;
   private readonly dropRingMesh: THREE.Mesh;
   private readonly dropHitSphere: THREE.Mesh;
@@ -129,6 +133,12 @@ export class DragonBossManager {
   private dropY = 4;
   private dropZ = DRAGON_ZONE_SPEC.z;
   private dropAge = 0;
+
+  // Hiệu ứng đóng băng làm chậm (20%) khi trúng Katana Băng
+  private readonly frostGroup = new THREE.Group();
+  private readonly frostCrystals: THREE.Mesh[] = [];
+  private slowTimer = 0;
+  private frostAnimTime = 0;
 
   // Trạng thái Boss
   private alive = true;
@@ -186,6 +196,42 @@ export class DragonBossManager {
     this.materials.push(contactShadowMat);
     this.contactShadowMesh = new THREE.Mesh(contactShadowGeo, contactShadowMat);
     this.vfxRoot.add(this.contactShadowMesh);
+
+    const frostRingGeo = new THREE.RingGeometry(2.6, 3.15, 32);
+    frostRingGeo.rotateX(-Math.PI / 2);
+    const frostCrystalGeo = new THREE.OctahedronGeometry(0.42, 0);
+    const frostRingMat = new THREE.MeshBasicMaterial({
+      color: '#7dd3fc',
+      transparent: true,
+      opacity: 0.72,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    });
+    const frostCrystalMat = new THREE.MeshStandardMaterial({
+      color: '#e0f2fe',
+      emissive: '#38bdf8',
+      emissiveIntensity: 1.25,
+      roughness: 0.14,
+      metalness: 0.18,
+      transparent: true,
+      opacity: 0.88,
+    });
+    this.geometries.push(frostRingGeo, frostCrystalGeo);
+    this.materials.push(frostRingMat, frostCrystalMat);
+
+    const frostRingMesh = new THREE.Mesh(frostRingGeo, frostRingMat);
+    frostRingMesh.position.y = 0.25;
+    this.frostGroup.add(frostRingMesh);
+    for (let fc = 0; fc < 6; fc++) {
+      const ang = (fc / 6) * Math.PI * 2;
+      const crystal = new THREE.Mesh(frostCrystalGeo, frostCrystalMat);
+      crystal.position.set(Math.cos(ang) * 2.9, 1.9, Math.sin(ang) * 2.9);
+      crystal.scale.set(0.72, 1.85, 0.72);
+      this.frostGroup.add(crystal);
+      this.frostCrystals.push(crystal);
+    }
+    this.frostGroup.visible = false;
+    this.dragonRoot.add(this.frostGroup);
 
     this.buildBlueZone();
     this.buildDragonModel(maxAnisotropy);
@@ -1425,6 +1471,7 @@ export class DragonBossManager {
     damage = 100,
     maxRange = 5.4,
     playerLevel = 1,
+    frostSlowDuration = 0,
   ): DragonAttackResult {
     if (!this.alive) {
       return {
@@ -1480,10 +1527,16 @@ export class DragonBossManager {
     this.hitFlashTimer = 0.11;
     this.setDragonFlash(true);
 
+    if (this.hp > 0 && frostSlowDuration > 0) {
+      this.slowTimer = Math.max(this.slowTimer, frostSlowDuration);
+    }
+
     if (this.hp <= 0) {
       this.alive = false;
       this.activeSkill = null;
       this.skillPhase = 'idle';
+      this.slowTimer = 0;
+      this.frostGroup.visible = false;
       this.respawnTimer = DRAGON_RESPAWN_SECONDS;
       this.dragonRoot.visible = false;
       this.contactShadowMesh.visible = false;
@@ -1704,8 +1757,6 @@ export class DragonBossManager {
     shieldRaised: boolean,
     callbacks?: DragonUpdateCallbacks,
   ): void {
-    this.animTime += dt;
-
     // Hoạt ảnh xoay nhẹ của Katana Băng khi rơi trên mặt đất + bay vào ô balo khi người chơi nhặt
     if (this.dropActive) {
       this.dropAge += dt;
@@ -1773,6 +1824,8 @@ export class DragonBossManager {
         this.skillCooldown = 1.6;
         this.nextSkillId = 1;
         this.hitFlashTimer = 0;
+        this.slowTimer = 0;
+        this.frostGroup.visible = false;
         this.setDragonFlash(false);
         this.bodyGroup.rotation.x = 0;
         this.headGroup.rotation.x = 0;
@@ -1786,6 +1839,13 @@ export class DragonBossManager {
       }
       return;
     }
+
+    if (this.slowTimer > 0) {
+      this.slowTimer = Math.max(0, this.slowTimer - dt);
+    }
+    const isSlowed = this.slowTimer > 0;
+    const effDt = isSlowed ? dt * ICE_KATANA_SLOW_MULTIPLIER : dt;
+    this.animTime += effDt;
 
     if (this.hitFlashTimer > 0) {
       this.hitFlashTimer -= dt;
@@ -1827,10 +1887,10 @@ export class DragonBossManager {
       if (distC > 2.0) {
         const moveX = toCenterX / distC;
         const moveZ = toCenterZ / distC;
-        this.x += moveX * 4.2 * dt;
-        this.z += moveZ * 4.2 * dt;
+        this.x += moveX * 4.2 * effDt;
+        this.z += moveZ * 4.2 * effDt;
         const targetYaw = Math.atan2(moveX, moveZ);
-        this.yaw += normalizeAngle(targetYaw - this.yaw) * Math.min(1, 5 * dt);
+        this.yaw += normalizeAngle(targetYaw - this.yaw) * Math.min(1, 5 * effDt);
       }
     } else if (this.skillPhase === 'idle' || this.skillPhase === 'recover') {
       // Tiến về phía người chơi và chuẩn bị tung chiêu kế tiếp
@@ -1841,11 +1901,11 @@ export class DragonBossManager {
         const dirX = toPlayerX / distP;
         const dirZ = toPlayerZ / distP;
         const targetYaw = Math.atan2(dirX, dirZ);
-        this.yaw += normalizeAngle(targetYaw - this.yaw) * Math.min(1, 6.5 * dt);
+        this.yaw += normalizeAngle(targetYaw - this.yaw) * Math.min(1, 6.5 * effDt);
 
         if (distP > 5.8) {
-          this.x += dirX * 4.6 * dt;
-          this.z += dirZ * 4.6 * dt;
+          this.x += dirX * 4.6 * effDt;
+          this.z += dirZ * 4.6 * effDt;
           const clamped = this.clampPointInsideBlueZone(this.x, this.z);
           this.x = clamped.x;
           this.z = clamped.z;
@@ -1853,13 +1913,13 @@ export class DragonBossManager {
       }
 
       if (this.skillPhase === 'recover') {
-        this.skillTimer -= dt;
+        this.skillTimer -= effDt;
         if (this.skillTimer <= 0) {
           this.skillPhase = 'idle';
           this.activeSkill = null;
         }
       } else {
-        this.skillCooldown -= dt;
+        this.skillCooldown -= effDt;
         if (this.skillCooldown <= 0) {
           this.startNextSkill(playerX, playerZ, callbacks);
         }
@@ -1867,7 +1927,7 @@ export class DragonBossManager {
     } else if (this.skillPhase === 'telegraph' && this.activeSkill) {
       // Thời gian cảnh báo đỏ trước khi tung chiêu (Skill 1: 2.0s, Skill 2 & 3: 1.0s)
       const telegraphSeconds = this.getTelegraphSeconds(this.activeSkill);
-      this.skillTimer += dt;
+      this.skillTimer += effDt;
       const progress = Math.min(1, this.skillTimer / telegraphSeconds);
 
       if (this.activeSkill === 1) {
@@ -1876,7 +1936,7 @@ export class DragonBossManager {
           this.skillTargetZ - this.skillStartZ,
         );
         if (Math.hypot(this.skillTargetX - this.skillStartX, this.skillTargetZ - this.skillStartZ) > 0.2) {
-          this.yaw += normalizeAngle(targetYaw - this.yaw) * Math.min(1, 8 * dt);
+          this.yaw += normalizeAngle(targetYaw - this.yaw) * Math.min(1, 8 * effDt);
         }
         this.updateTerrainCircle(
           this.warnCircleProgressMesh,
@@ -1901,13 +1961,13 @@ export class DragonBossManager {
         }
       } else if (this.activeSkill === 2) {
         const targetYaw = Math.atan2(this.skillDirX, this.skillDirZ);
-        this.yaw += normalizeAngle(targetYaw - this.yaw) * Math.min(1, 14 * dt);
+        this.yaw += normalizeAngle(targetYaw - this.yaw) * Math.min(1, 14 * effDt);
         bodyPitch = -0.22;
         wingFlapSpeed = 9.0;
         wingAmp = 0.44;
       } else {
         const targetYaw = Math.atan2(this.skillDirX, this.skillDirZ);
-        this.yaw += normalizeAngle(targetYaw - this.yaw) * Math.min(1, 14 * dt);
+        this.yaw += normalizeAngle(targetYaw - this.yaw) * Math.min(1, 14 * effDt);
         jawOpen = 0.15 + progress * 0.62;
         bodyPitch = -0.18;
         wingFlapSpeed = 6.5;
@@ -1963,7 +2023,7 @@ export class DragonBossManager {
         }
       }
     } else if (this.skillPhase === 'execute' && this.activeSkill) {
-      this.skillTimer += dt;
+      this.skillTimer += effDt;
       const t = Math.min(1, this.skillTimer / this.skillDuration);
 
       if (this.activeSkill === 1) {
@@ -2044,6 +2104,17 @@ export class DragonBossManager {
     this.y = groundY + jumpOffsetY;
     this.dragonRoot.position.set(this.x, this.y, this.z);
     this.dragonRoot.rotation.y = this.yaw;
+
+    this.frostGroup.visible = isSlowed;
+    if (isSlowed) {
+      this.frostAnimTime += dt;
+      this.frostGroup.rotation.y += dt * 1.25;
+      for (let fc = 0; fc < this.frostCrystals.length; fc++) {
+        const crystal = this.frostCrystals[fc];
+        crystal.position.y = 1.9 + Math.sin(this.frostAnimTime * 3.8 + fc * 1.1) * 0.35;
+        crystal.rotation.y += dt * 2.0;
+      }
+    }
 
     const shadowScale = Math.max(0.45, 1 - jumpOffsetY * 0.06);
     this.contactShadowMesh.visible = true;
@@ -2134,6 +2205,12 @@ export class DragonBossManager {
     }
     for (const mat of this.dropAssets.materials) {
       mat.dispose();
+    }
+    if (this.dropAssets.textures) {
+      for (const tex of this.dropAssets.textures) {
+        tex.dispose();
+      }
+      this.dropAssets.textures.length = 0;
     }
     this.geometries.length = 0;
     this.materials.length = 0;

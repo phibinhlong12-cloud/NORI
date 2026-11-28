@@ -129,49 +129,118 @@ export function IceKatanaSvg({ className = 'w-full h-auto' }: { className?: stri
   return (
     <svg viewBox="0 0 360 80" className={className} fill="none" aria-hidden="true">
       <defs>
-        <linearGradient id="iceBladeGrad" x1="108" y1="30" x2="346" y2="30" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stopColor="#0284c7" />
-          <stop offset="50%" stopColor="#38bdf8" />
-          <stop offset="100%" stopColor="#e0f2fe" />
+        <linearGradient id="iceBladeGrad" x1="115" y1="24" x2="348" y2="28" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor="#1d4ed8" />
+          <stop offset="28%" stopColor="#0ea5e9" />
+          <stop offset="68%" stopColor="#38bdf8" />
+          <stop offset="92%" stopColor="#bae6fd" />
+          <stop offset="100%" stopColor="#f0f9ff" />
         </linearGradient>
-        <linearGradient id="iceEdgeGrad" x1="108" y1="42" x2="348" y2="26" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stopColor="#7dd3fc" />
+        <linearGradient id="iceEdgeGrad" x1="115" y1="44" x2="348" y2="24" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor="#bae6fd" />
+          <stop offset="55%" stopColor="#e0f2fe" />
           <stop offset="100%" stopColor="#ffffff" />
+        </linearGradient>
+        <linearGradient id="iceHabakiGrad" x1="106" y1="30" x2="122" y2="48" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor="#cbd5e1" />
+          <stop offset="50%" stopColor="#e0f2fe" />
+          <stop offset="100%" stopColor="#64748b" />
+        </linearGradient>
+        <linearGradient id="iceIcicleGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#bae6fd" />
+          <stop offset="100%" stopColor="#ffffff" stopOpacity="0.88" />
         </linearGradient>
       </defs>
 
-      {/* Kashira tinh thể băng */}
-      <rect x="8" y="34" width="12" height="17" rx="4" fill="#7dd3fc" stroke="#0369a1" strokeWidth="1.5" />
-
-      {/* Chuôi kiếm xanh biển sâu + dây quấn băng */}
-      <path d="M18 35 L98 33 L98 48 L18 50 Z" fill="#0c4a6e" stroke="#082f49" strokeWidth="1.5" />
-      <polygon points="27,42 32,37 37,42 32,47" fill="#0284c7" stroke="#bae6fd" strokeWidth="0.8" />
-      <polygon points="39,42 44,37 49,42 44,47" fill="#0284c7" stroke="#bae6fd" strokeWidth="0.8" />
-      <polygon points="51,42 56,37 61,42 56,47" fill="#38bdf8" stroke="#bae6fd" strokeWidth="0.8" />
-      <polygon points="63,41 68,36 73,41 68,46" fill="#0284c7" stroke="#bae6fd" strokeWidth="0.8" />
-      <polygon points="75,41 80,36 85,41 80,46" fill="#0284c7" stroke="#bae6fd" strokeWidth="0.8" />
-      <polygon points="87,40 91,36 95,40 91,45" fill="#0284c7" stroke="#bae6fd" strokeWidth="0.8" />
-
-      {/* Tsuba tinh thể băng + ngọc băng */}
-      <ellipse cx="101" cy="40" rx="5.5" ry="17" fill="#7dd3fc" stroke="#0284c7" strokeWidth="1.6" />
-      <polygon points="101,19 107,26 101,33 95,26" fill="#e0f2fe" stroke="#38bdf8" strokeWidth="1.1" />
-
-      {/* Habaki băng sáng */}
-      <path d="M105 33 L117 33 L117 46 L105 46 Z" fill="#38bdf8" stroke="#0369a1" strokeWidth="1.2" />
-
-      {/* Lưỡi băng phát sáng */}
+      {/* Làn sương băng tỏa nhẹ quanh thanh kiếm */}
       <path
-        d="M117 33 Q238 32 348 16 L338 28 Q236 45 117 46 Z"
-        fill="url(#iceBladeGrad)"
+        d="M28 45 Q130 56 245 36 Q315 24 348 18"
+        stroke="#7dd3fc"
+        strokeWidth="6"
+        strokeLinecap="round"
+        opacity="0.18"
+      />
+
+      {/* Kashira vương miện tinh thể băng nhọn */}
+      <polygon
+        points="20,34 11,30 14,37 6,41 13,45 9,52 20,49"
+        fill="#bae6fd"
         stroke="#0284c7"
-        strokeWidth="1.4"
+        strokeWidth="1.2"
+        strokeLinejoin="round"
+      />
+      <polygon points="18,36 10,41 18,47" fill="#e0f2fe" />
+
+      {/* Nhũ băng rủ dưới chuôi kiếm */}
+      <polygon points="24,49 27,49 25.5,64" fill="url(#iceIcicleGrad)" stroke="#38bdf8" strokeWidth="0.6" />
+      <polygon points="35,49 38,49 36.5,58" fill="url(#iceIcicleGrad)" stroke="#38bdf8" strokeWidth="0.6" />
+      <polygon points="62,48 65,48 63.5,61" fill="url(#iceIcicleGrad)" stroke="#38bdf8" strokeWidth="0.6" />
+      <polygon points="73,48 75.5,48 74,56" fill="url(#iceIcicleGrad)" stroke="#38bdf8" strokeWidth="0.6" />
+
+      {/* Chuôi kiếm xanh navy sâu + dây quấn băng chéo */}
+      <path d="M20 35 L96 33 L96 48 L20 50 Z" fill="#172554" stroke="#0f172a" strokeWidth="1.4" />
+      <polygon points="26,42 31,37 36,42 31,47" fill="#dbeafe" stroke="#1e3a8a" strokeWidth="0.8" />
+      <polygon points="38,42 43,37 48,42 43,47" fill="#e0f2fe" stroke="#1e3a8a" strokeWidth="0.8" />
+      <polygon points="50,41.5 55,36.5 60,41.5 55,46.5" fill="#bae6fd" stroke="#1e3a8a" strokeWidth="0.8" />
+      <polygon points="62,41 67,36 72,41 67,46" fill="#e0f2fe" stroke="#1e3a8a" strokeWidth="0.8" />
+      <polygon points="74,40.5 79,35.5 84,40.5 79,45.5" fill="#dbeafe" stroke="#1e3a8a" strokeWidth="0.8" />
+      <polygon points="86,40 90,36 94,40 90,44.5" fill="#e0f2fe" stroke="#1e3a8a" strokeWidth="0.8" />
+      {/* Sương trắng viền mép chuôi */}
+      <path d="M22 35 L95 33" stroke="#bae6fd" strokeWidth="1" opacity="0.6" />
+
+      {/* Tsuba hoa tuyết 6 cánh tinh thể băng + nhũ băng rủ */}
+      <polygon points="99,40 94,20 101,12 108,20" fill="#bae6fd" stroke="#0284c7" strokeWidth="1.1" />
+      <polygon points="101,40 94,59 101,69 108,59" fill="#93c5fd" stroke="#0284c7" strokeWidth="1.1" />
+      <polygon points="101,38 89,26 95,21 104,33" fill="#e0f2fe" stroke="#0284c7" strokeWidth="0.9" />
+      <polygon points="101,38 113,26 107,21 98,33" fill="#e0f2fe" stroke="#0284c7" strokeWidth="0.9" />
+      <polygon points="101,42 89,54 95,58 104,46" fill="#bae6fd" stroke="#0284c7" strokeWidth="0.9" />
+      <polygon points="101,42 113,54 107,58 98,46" fill="#bae6fd" stroke="#0284c7" strokeWidth="0.9" />
+      <polygon points="94,59 96.5,59 95,72" fill="url(#iceIcicleGrad)" stroke="#38bdf8" strokeWidth="0.6" />
+      <ellipse cx="101" cy="40" rx="5.5" ry="11" fill="#7dd3fc" stroke="#0369a1" strokeWidth="1.2" />
+
+      {/* Habaki bạc khắc chạm + viên ngọc lam hình thoi */}
+      <path d="M106 32.5 L121 32.5 L121 46.5 L106 46.5 Z" fill="url(#iceHabakiGrad)" stroke="#334155" strokeWidth="1.2" />
+      <polygon points="113.5,35.5 117.5,39.5 113.5,43.5 109.5,39.5" fill="#38bdf8" stroke="#e0f2fe" strokeWidth="0.9" />
+
+      {/* Lưỡi kiếm pha lê băng cong + vân nứt + cổ ngữ + bông tuyết */}
+      <path
+        d="M121 32.5 Q240 31.5 352 14 L341 28 Q238 45.5 121 46.5 Z"
+        fill="url(#iceBladeGrad)"
+        stroke="#0369a1"
+        strokeWidth="1.3"
       />
       <path
-        d="M117 41 Q236 39 343 18 L338 28 Q236 45 117 46 Z"
+        d="M121 41 Q238 39.5 346 17 L341 28 Q238 45.5 121 46.5 Z"
         fill="url(#iceEdgeGrad)"
-        opacity="0.92"
+        opacity="0.93"
       />
-      <path d="M120 35 Q236 34 342 19" stroke="#ffffff" strokeWidth="1.3" strokeLinecap="round" opacity="0.8" />
+
+      {/* Đường nứt tinh thể phát sáng dọc lưỡi kiếm */}
+      <path
+        d="M136 37 L160 35 L178 38 L206 33 L232 36 L262 29 L292 30 L322 21 L344 17"
+        stroke="#e0f2fe"
+        strokeWidth="1.15"
+        strokeLinecap="round"
+        opacity="0.9"
+      />
+      <path d="M178 38 L192 42" stroke="#bae6fd" strokeWidth="0.9" opacity="0.75" />
+      <path d="M232 36 L248 39" stroke="#bae6fd" strokeWidth="0.9" opacity="0.75" />
+      <path d="M292 30 L306 32" stroke="#ffffff" strokeWidth="0.9" opacity="0.8" />
+
+      {/* Bông tuyết & ký tự băng trên lưỡi kiếm */}
+      <g stroke="#ffffff" strokeWidth="0.85" opacity="0.9">
+        <line x1="274" y1="31" x2="280" y2="31" />
+        <line x1="277" y1="28" x2="277" y2="34" />
+        <line x1="275" y1="29" x2="279" y2="33" />
+        <line x1="279" y1="29" x2="275" y2="33" />
+
+        <line x1="311" y1="24" x2="317" y2="24" />
+        <line x1="314" y1="21" x2="314" y2="27" />
+        <line x1="312" y1="22" x2="316" y2="26" />
+        <line x1="316" y1="22" x2="312" y2="26" />
+      </g>
+      {/* Viền sống kiếm sáng trắng */}
+      <path d="M123 34.5 Q240 33.5 346 17" stroke="#ffffff" strokeWidth="1.2" strokeLinecap="round" opacity="0.85" />
     </svg>
   );
 }

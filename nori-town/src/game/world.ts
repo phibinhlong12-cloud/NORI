@@ -36,6 +36,7 @@ import {
   TreeManager,
 } from './trees';
 import { ShopItemId, WeaponShop } from './weaponShop';
+import { StageCaveStatus, StagePortalCave } from './stagePortalCave';
 
 export interface Chunk {
   cx: number;
@@ -86,6 +87,7 @@ export class WorldManager {
   private mushrooms: PoisonMushroomManager;
   private dragon: DragonBossManager;
   private monsterDrops: MonsterDropManager;
+  private stagePortalCave: StagePortalCave;
 
   readonly chunks = new Map<string, Chunk>();
   readonly dirtyChunks = new Set<string>();
@@ -116,6 +118,7 @@ export class WorldManager {
     this.mushrooms = new PoisonMushroomManager(this.scene, this.outside, this.seed, this.maxAnisotropy);
     this.dragon = new DragonBossManager(this.scene, this.outside, this.maxAnisotropy);
     this.monsterDrops = new MonsterDropManager(this.scene, this.outside);
+    this.stagePortalCave = new StagePortalCave(this.scene, this.outside, this.maxAnisotropy);
   }
 
   setPlayerGender(gender: CharacterGender): void {
@@ -138,6 +141,7 @@ export class WorldManager {
     this.mushrooms = new PoisonMushroomManager(this.scene, this.outside, this.seed, this.maxAnisotropy);
     this.dragon = new DragonBossManager(this.scene, this.outside, this.maxAnisotropy);
     this.monsterDrops = new MonsterDropManager(this.scene, this.outside);
+    this.stagePortalCave = new StagePortalCave(this.scene, this.outside, this.maxAnisotropy);
     this.lastPlayerCx = Number.NaN;
     this.lastPlayerCz = Number.NaN;
     this.pendingCoords = [];
@@ -366,8 +370,9 @@ export class WorldManager {
     forwardDir: THREE.Vector3,
     damage = 100,
     maxRange = 3.8,
+    frostSlowDuration = 0,
   ): SlimeAttackResult {
-    return this.slimes.attackWithKatana(cameraPos, forwardDir, damage, maxRange);
+    return this.slimes.attackWithKatana(cameraPos, forwardDir, damage, maxRange, frostSlowDuration);
   }
 
   raycastMushroom(
@@ -383,8 +388,15 @@ export class WorldManager {
     forwardDir: THREE.Vector3,
     damage = 100,
     maxRange = 4.0,
+    frostSlowDuration = 0,
   ): MushroomAttackResult {
-    return this.mushrooms.attackWithKatana(cameraPos, forwardDir, damage, maxRange);
+    return this.mushrooms.attackWithKatana(
+      cameraPos,
+      forwardDir,
+      damage,
+      maxRange,
+      frostSlowDuration,
+    );
   }
 
   raycastDragon(
@@ -413,12 +425,40 @@ export class WorldManager {
     damage = 100,
     maxRange = 5.4,
     playerLevel = 1,
+    frostSlowDuration = 0,
   ): DragonAttackResult {
-    return this.dragon.attackWithKatana(cameraPos, forwardDir, damage, maxRange, playerLevel);
+    return this.dragon.attackWithKatana(
+      cameraPos,
+      forwardDir,
+      damage,
+      maxRange,
+      playerLevel,
+      frostSlowDuration,
+    );
   }
 
   getBossHudState(playerX: number, playerZ: number): DragonBossHudState {
     return this.dragon.getBossHudState(playerX, playerZ);
+  }
+
+  startStageCaveEmergence(): boolean {
+    return this.stagePortalCave.startEmergence();
+  }
+
+  getStageCaveStatus(): StageCaveStatus {
+    return this.stagePortalCave.getStatus();
+  }
+
+  isInsideStagePortal(px: number, py: number, pz: number): boolean {
+    return this.stagePortalCave.isInsidePortalTrigger(px, py, pz);
+  }
+
+  raycastStagePortal(
+    origin: THREE.Vector3,
+    direction: THREE.Vector3,
+    maxDistance = 12.0,
+  ): { point: THREE.Vector3 } | null {
+    return this.stagePortalCave.raycastPortal(origin, direction, maxDistance);
   }
 
   update(
@@ -435,6 +475,10 @@ export class WorldManager {
     mushroomCallbacks?: MushroomUpdateCallbacks,
     hasBackpack = false,
     dropCallbacks?: MonsterDropCallbacks,
+    stageCaveCallbacks?: {
+      onRumblePulse?: () => void;
+      onEmergeComplete?: () => void;
+    },
   ): void {
     this.trees.update(dt, onTreeLanded);
     this.grass.update(dt, playerX, playerZ);
@@ -453,6 +497,7 @@ export class WorldManager {
     );
     this.dragon.update(dt, playerX, playerY, playerZ, playerYaw, shieldRaised, dragonCallbacks);
     this.monsterDrops.update(dt, playerX, playerY, playerZ, hasBackpack, dropCallbacks);
+    this.stagePortalCave.update(dt, stageCaveCallbacks);
 
     const bounds = this.cashier.getConveyorDropBounds();
     const droppedOnBelt = this.trees.popFallenLogInZone(bounds);
@@ -504,6 +549,16 @@ export class WorldManager {
     );
     if (craftingTop !== null && (highest === null || craftingTop > highest)) {
       highest = craftingTop;
+    }
+    const stageCaveTop = this.stagePortalCave.getObstacleTopY(
+      px,
+      py,
+      pz,
+      halfWidth,
+      playerHeight,
+    );
+    if (stageCaveTop !== null && (highest === null || stageCaveTop > highest)) {
+      highest = stageCaveTop;
     }
     return highest;
   }
@@ -1143,6 +1198,7 @@ export class WorldManager {
     this.mushrooms.dispose();
     this.dragon.dispose();
     this.monsterDrops.dispose();
+    this.stagePortalCave.dispose();
     this.chunks.clear();
     this.dirtyChunks.clear();
     this.pendingCoords = [];

@@ -670,6 +670,58 @@ function createDrapedKimonoSleeveGeometry(
   return geo;
 }
 
+function createIceScabbardTexture(): THREE.CanvasTexture {
+  const w = 256;
+  const h = 64;
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d')!;
+
+  const grad = ctx.createLinearGradient(0, 0, w, 0);
+  grad.addColorStop(0, '#0f294d');
+  grad.addColorStop(0.5, '#163d6e');
+  grad.addColorStop(1, '#0c2342');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, w, h);
+
+  // Sương mờ ánh băng phủ dọc vỏ kiếm
+  ctx.fillStyle = 'rgba(186, 230, 253, 0.16)';
+  ctx.beginPath();
+  ctx.ellipse(90, 26, 54, 14, -0.1, 0, Math.PI * 2);
+  ctx.ellipse(190, 36, 48, 12, 0.08, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Đường vân dây leo băng mảnh
+  ctx.strokeStyle = 'rgba(186, 230, 253, 0.55)';
+  ctx.lineWidth = 1.4;
+  ctx.beginPath();
+  ctx.moveTo(45, 32);
+  ctx.bezierCurveTo(75, 16, 105, 48, 140, 28);
+  ctx.bezierCurveTo(175, 14, 200, 44, 228, 30);
+  ctx.stroke();
+
+  // Bông tuyết trang trí trên vỏ kiếm
+  const drawFlake = (cx: number, cy: number, r: number) => {
+    ctx.strokeStyle = 'rgba(224, 242, 254, 0.85)';
+    ctx.lineWidth = 1.2;
+    for (let i = 0; i < 6; i++) {
+      const a = (i * Math.PI) / 3;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r);
+      ctx.stroke();
+    }
+  };
+  drawFlake(58, 22, 6);
+  drawFlake(168, 36, 7);
+  drawFlake(218, 24, 5.5);
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
 function createScabbardGroup(
   handles: CharacterAssetHandles,
   variant: KatanaVisualVariant,
@@ -680,31 +732,39 @@ function createScabbardGroup(
   const isLeaf = variant === 'leaf';
   const isCrimson = variant === 'crimson';
 
-  const bodyColor = isIce ? '#082f49' : isLeaf ? '#14532d' : '#111827';
-  const trimColor = isIce ? '#7dd3fc' : isLeaf ? '#d4af37' : '#eab308';
+  const bodyColor = isIce ? '#ffffff' : isLeaf ? '#14532d' : '#111827';
+  const trimColor = isIce ? '#cbd5e1' : isLeaf ? '#d4af37' : '#eab308';
   const cordColor = isIce
-    ? '#38bdf8'
+    ? '#bae6fd'
     : isLeaf
       ? '#991b1b'
       : isCrimson
         ? '#dc2626'
         : '#b45309';
 
+  const iceSayaTex = isIce ? createIceScabbardTexture() : null;
+  if (iceSayaTex) {
+    handles.textures.push(iceSayaTex);
+  }
+
   const bodyMat = new THREE.MeshPhysicalMaterial({
     color: bodyColor,
-    roughness: 0.2,
-    metalness: 0.35,
+    map: iceSayaTex ?? undefined,
+    roughness: isIce ? 0.16 : 0.2,
+    metalness: isIce ? 0.28 : 0.35,
     clearcoat: 0.95,
   });
   const trimMat = new THREE.MeshStandardMaterial({
     color: trimColor,
+    emissive: isIce ? '#0284c7' : '#000000',
+    emissiveIntensity: isIce ? 0.2 : 0,
     roughness: 0.2,
     metalness: 0.88,
   });
   const cordMat = new THREE.MeshStandardMaterial({
     color: cordColor,
-    roughness: 0.62,
-    metalness: 0.08,
+    roughness: 0.52,
+    metalness: 0.12,
   });
   handles.materials.push(bodyMat, trimMat, cordMat);
 
@@ -751,6 +811,34 @@ function createScabbardGroup(
   tassel.position.set(0.022, 0.02, -0.015);
   tassel.rotation.z = 0.18;
   scabbard.add(tassel);
+
+  if (isIce) {
+    const icicleMat = new THREE.MeshPhysicalMaterial({
+      color: '#bae6fd',
+      emissive: '#38bdf8',
+      emissiveIntensity: 0.42,
+      roughness: 0.1,
+      clearcoat: 1.0,
+      transparent: true,
+      opacity: 0.88,
+    });
+    const icicleGeo = new THREE.ConeGeometry(0.006, 0.058, 5);
+    handles.materials.push(icicleMat);
+    handles.geometries.push(icicleGeo);
+
+    const iciclePts: Array<[number, number, number]> = [
+      [0.09, -0.028, 1.2],
+      [0.32, -0.044, 0.95],
+      [0.58, -0.068, 1.15],
+    ];
+    for (const [py, pz, sc] of iciclePts) {
+      const icicle = new THREE.Mesh(icicleGeo, icicleMat);
+      icicle.position.set(0, py, pz);
+      icicle.rotation.x = -Math.PI * 0.56;
+      icicle.scale.set(sc, sc, sc);
+      scabbard.add(icicle);
+    }
+  }
 
   return scabbard;
 }

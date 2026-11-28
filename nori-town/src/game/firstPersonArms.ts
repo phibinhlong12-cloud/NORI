@@ -8,6 +8,7 @@ export type CharacterGender = 'male' | 'female';
 export interface FirstPersonArmHandles {
   geometries: THREE.BufferGeometry[];
   materials: THREE.Material[];
+  textures?: THREE.Texture[];
   skeletons?: THREE.Skeleton[];
 }
 

@@ -8,7 +8,7 @@ import {
   X,
 } from 'lucide-react';
 import { HudStats, VoxelEngine } from '../game/engine';
-import { getKatanaDisplayName } from '../game/katana';
+import { getKatanaDisplayName, getKatanaStatInfo } from '../game/katana';
 import {
   BACKPACK_CAPACITY,
   BackpackItem,
@@ -91,18 +91,15 @@ function getItemSummary(item: BackpackItem): {
         useLabel: 'Sử dụng',
         canUseDirectly: false,
       };
-    case 'katana':
+    case 'katana': {
+      const stat = getKatanaStatInfo(item.variant);
       return {
-        title: getKatanaDisplayName(item.variant),
-        subtitle:
-          item.variant === 'leaf'
-            ? 'Kiếm Lá đặc biệt (120 sát thương · +20% tốc chạy)'
-            : item.variant === 'ice'
-              ? 'Katana Băng (200 sát thương · Sức mạnh sẽ cập nhật sau)'
-              : 'Kiếm Katana tiêu chuẩn (100 sát thương)',
+        title: stat.name,
+        subtitle: stat.summaryText,
         useLabel: 'Sử dụng (Trang bị kiếm)',
         canUseDirectly: true,
       };
+    }
   }
 }
 
@@ -597,47 +594,74 @@ export const BackpackHud = memo(function BackpackHud({
             </div>
 
             {selectedSlot !== null && selectedItem && selectedInfo && (
-              <div className="mt-3 rounded-xl bg-slate-900/95 border border-amber-400/35 p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-                <div className="min-w-0">
-                  <div className="text-xs sm:text-sm font-bold text-amber-200 truncate">
-                    Ô {selectedSlot + 1}: {selectedInfo.title}
+              <div className="mt-3 rounded-xl bg-slate-900/95 border border-amber-400/35 p-3 flex flex-col gap-2.5">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                  <div className="min-w-0">
+                    <div className="text-xs sm:text-sm font-bold text-amber-200 truncate">
+                      Ô {selectedSlot + 1}: {selectedInfo.title}
+                    </div>
+                    <div className="text-[11px] text-slate-300 mt-0.5 leading-snug">
+                      {selectedInfo.subtitle}
+                    </div>
                   </div>
-                  <div className="text-[11px] text-slate-300 mt-0.5 leading-snug">
-                    {selectedInfo.subtitle}
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => engine?.useBackpackSlot(selectedSlot)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition active:scale-95 cursor-pointer ${
+                        selectedInfo.canUseDirectly
+                          ? 'bg-emerald-500 hover:bg-emerald-400 text-slate-950'
+                          : 'bg-slate-700 hover:bg-slate-600 text-slate-200 border border-white/15'
+                      }`}
+                    >
+                      {selectedInfo.useLabel}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const stackCount = getItemStackCount(selectedItem);
+                        if (stackCount > 1) {
+                          setDeleteQuantity(1);
+                          setDeleteSlot(selectedSlot);
+                        } else {
+                          engine?.deleteBackpackSlot(selectedSlot, 1);
+                          setSelectedSlot(null);
+                        }
+                      }}
+                      className="px-3 py-1.5 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white flex items-center gap-1.5 transition active:scale-95 cursor-pointer"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Xóa bỏ vĩnh viễn</span>
+                    </button>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => engine?.useBackpackSlot(selectedSlot)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition active:scale-95 cursor-pointer ${
-                      selectedInfo.canUseDirectly
-                        ? 'bg-emerald-500 hover:bg-emerald-400 text-slate-950'
-                        : 'bg-slate-700 hover:bg-slate-600 text-slate-200 border border-white/15'
-                    }`}
-                  >
-                    {selectedInfo.useLabel}
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const stackCount = getItemStackCount(selectedItem);
-                      if (stackCount > 1) {
-                        setDeleteQuantity(1);
-                        setDeleteSlot(selectedSlot);
-                      } else {
-                        engine?.deleteBackpackSlot(selectedSlot, 1);
-                        setSelectedSlot(null);
-                      }
-                    }}
-                    className="px-3 py-1.5 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white flex items-center gap-1.5 transition active:scale-95 cursor-pointer"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                    <span>Xóa bỏ vĩnh viễn</span>
-                  </button>
-                </div>
+                {selectedItem.kind === 'katana' && (() => {
+                  const stat = getKatanaStatInfo(selectedItem.variant);
+                  const accentClass =
+                    selectedItem.variant === 'ice'
+                      ? 'bg-cyan-950/60 border-cyan-400/35 text-cyan-200'
+                      : selectedItem.variant === 'leaf'
+                        ? 'bg-emerald-950/60 border-emerald-400/35 text-emerald-200'
+                        : 'bg-slate-950/75 border-sky-400/30 text-sky-200';
+                  return (
+                    <div className={`rounded-xl border px-3 py-2 text-[11px] ${accentClass}`}>
+                      <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
+                        <span className="font-bold text-white">Thông tin sức mạnh kiếm</span>
+                        <span className="font-mono-tech font-bold px-2 py-0.5 rounded bg-slate-950/70 border border-white/15 text-amber-300">
+                          {stat.damage} ST · {stat.damageBonusText}
+                        </span>
+                      </div>
+                      <ul className="space-y-0.5 text-slate-200">
+                        {stat.effects.map((effect) => (
+                          <li key={effect}>• {effect}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  );
+                })()}
               </div>
             )}
           </div>

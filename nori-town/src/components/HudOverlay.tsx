@@ -1,5 +1,5 @@
 import { memo, ReactNode, useEffect, useRef } from 'react';
-import { Maximize2, Minimize2, Settings } from 'lucide-react';
+import { Maximize2, Minimize2, Settings, Sparkles } from 'lucide-react';
 import { HudStats, VoxelEngine } from '../game/engine';
 
 interface HudOverlayProps {
@@ -40,6 +40,11 @@ export const HudOverlay = memo(function HudOverlay({
   const recallBarRef = useRef<HTMLDivElement | null>(null);
   const recallTextRef = useRef<HTMLSpanElement | null>(null);
   const recallReturnHintRef = useRef<HTMLDivElement | null>(null);
+  const caveEmergeBoxRef = useRef<HTMLDivElement | null>(null);
+  const caveEmergeBarRef = useRef<HTMLDivElement | null>(null);
+  const caveEmergeTextRef = useRef<HTMLSpanElement | null>(null);
+  const stageClearBoxRef = useRef<HTMLDivElement | null>(null);
+  const stageClearTimerRef = useRef<HTMLSpanElement | null>(null);
   const crosshairRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -113,6 +118,25 @@ export const HudOverlay = memo(function HudOverlay({
         const showReturnHint =
           !modalOpen && !touchMode && !stats.recallActive && stats.inCastle && stats.hasRecallReturnPoint;
         recallReturnHintRef.current.style.display = showReturnHint ? 'flex' : 'none';
+      }
+
+      if (caveEmergeBoxRef.current && caveEmergeBarRef.current && caveEmergeTextRef.current) {
+        if (!modalOpen && stats.stageCavePhase === 'emerging') {
+          caveEmergeBoxRef.current.style.display = 'flex';
+          caveEmergeBarRef.current.style.width = `${Math.round(stats.stageCaveEmergeProgress * 100)}%`;
+          caveEmergeTextRef.current.textContent = `${stats.stageCaveEmergeRemaining.toFixed(1)}s`;
+        } else {
+          caveEmergeBoxRef.current.style.display = 'none';
+        }
+      }
+
+      if (stageClearBoxRef.current && stageClearTimerRef.current) {
+        if (!modalOpen && stats.stage1ClearBannerRemaining > 0) {
+          stageClearBoxRef.current.style.display = 'flex';
+          stageClearTimerRef.current.textContent = `${Math.ceil(stats.stage1ClearBannerRemaining)}s`;
+        } else {
+          stageClearBoxRef.current.style.display = 'none';
+        }
       }
     });
   }, [engine, touchMode]);
@@ -189,6 +213,49 @@ export const HudOverlay = memo(function HudOverlay({
               Z
             </span>
             <span>Biến trở lại vị trí trước khi biến về</span>
+          </div>
+
+          <div
+            ref={caveEmergeBoxRef}
+            style={{ display: 'none' }}
+            className="fixed top-[88px] sm:top-[68px] left-1/2 -translate-x-1/2 z-20 pointer-events-none flex-col items-center gap-1.5 bg-slate-950/92 border border-sky-400/50 px-4 py-2 rounded-xl shadow-[0_8px_24px_rgba(2,132,199,0.28)] w-[min(90vw,310px)]"
+          >
+            <div className="w-full flex items-center justify-between gap-3 text-[11px] font-bold text-sky-200">
+              <span>Hang động bí ẩn đang trồi lên...</span>
+              <span ref={caveEmergeTextRef} className="font-mono-tech text-cyan-300 tabular-nums">
+                15.0s
+              </span>
+            </div>
+            <div className="w-full h-2 bg-slate-900 rounded-full overflow-hidden border border-white/10">
+              <div
+                ref={caveEmergeBarRef}
+                className="h-full bg-gradient-to-r from-sky-500 via-cyan-300 to-indigo-400 rounded-full transition-[width] duration-75"
+                style={{ width: '0%' }}
+              />
+            </div>
+          </div>
+
+          <div
+            ref={stageClearBoxRef}
+            style={{ display: 'none' }}
+            className="fixed top-[88px] sm:top-[68px] left-1/2 -translate-x-1/2 z-30 pointer-events-none flex-col gap-1.5 bg-slate-950/95 border border-cyan-400/55 px-4 py-3 sm:px-5 sm:py-3.5 rounded-2xl shadow-[0_12px_36px_rgba(14,165,233,0.32)] w-[min(92vw,470px)] text-center"
+          >
+            <div className="flex items-center justify-center gap-2 text-xs sm:text-sm font-extrabold text-amber-300 tracking-wide">
+              <Sparkles className="w-4 h-4 text-cyan-300 shrink-0" />
+              <span>Chúc mừng đã hoàn thành Ải 1 - Khởi đầu!</span>
+              <span
+                ref={stageClearTimerRef}
+                className="ml-1 px-1.5 py-0.5 rounded bg-cyan-500/20 border border-cyan-300/40 font-mono-tech text-[10px] sm:text-[11px] text-cyan-200 tabular-nums"
+              >
+                15s
+              </span>
+            </div>
+            <div className="text-xs sm:text-sm font-semibold text-cyan-100">
+              Lối đi đến <span className="text-sky-300 font-bold">Ải 2 - Hang động chết</span> đã mở!
+            </div>
+            <div className="text-[11px] sm:text-xs font-medium text-amber-200/95">
+              Yêu cầu Cấp 15 để qua ải 2 · Bước vào cổng dịch chuyển trong hang để tiếp tục.
+            </div>
           </div>
         </>
       )}

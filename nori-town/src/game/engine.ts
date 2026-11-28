@@ -23,6 +23,7 @@ import {
   getKatanaDamage,
   getKatanaDisplayName,
   getKatanaMoveSpeedMultiplier,
+  ICE_KATANA_SLOW_DURATION,
   KatanaViewModel,
 } from './katana';
 import { MushroomEntity } from './mushroom';
@@ -54,7 +55,11 @@ import {
   DetachedLog,
   InteractiveTree,
 } from './trees';
-import { SHOP_ITEM_NAMES, SHOP_ITEM_PRICES, ShopItemId } from './weaponShop';
+import { ShopItemId, SHOP_ITEM_NAMES, SHOP_ITEM_PRICES } from './weaponShop';
+import {
+  PORTAL_REQUIRED_LEVEL,
+  StageCavePhase,
+} from './stagePortalCave';
 import { WorldManager } from './world';
 
 export interface HudStats {
@@ -99,6 +104,10 @@ export interface HudStats {
   recallMode: 'to_castle' | 'to_return' | null;
   recallProgress: number;
   hasRecallReturnPoint: boolean;
+  stageCavePhase: StageCavePhase;
+  stageCaveEmergeProgress: number;
+  stageCaveEmergeRemaining: number;
+  stage1ClearBannerRemaining: number;
   craftingMaterialCounts: {
     mushroomCount: number;
     slimeOrbCount: number;
@@ -458,6 +467,9 @@ export class VoxelEngine {
   private currentMushroomTarget: { mushroom: MushroomEntity; point: THREE.Vector3 } | null = null;
   private currentDragonTarget: { point: THREE.Vector3; hp: number; maxHp: number } | null = null;
   private currentIceKatanaDropTarget: { point: THREE.Vector3 } | null = null;
+  private currentStagePortalTarget: { point: THREE.Vector3 } | null = null;
+  private wasInsideStagePortal = false;
+  private lastPortalTriggerAt = 0;
   private latestStats: HudStats = {
     x: 0.5,
     y: 4.05,
@@ -500,6 +512,10 @@ export class VoxelEngine {
     recallMode: null,
     recallProgress: 0,
     hasRecallReturnPoint: false,
+    stageCavePhase: 'hidden',
+    stageCaveEmergeProgress: 0,
+    stageCaveEmergeRemaining: 0,
+    stage1ClearBannerRemaining: 0,
     craftingMaterialCounts: {
       mushroomCount: 0,
       slimeOrbCount: 0,
@@ -1226,6 +1242,8 @@ export class VoxelEngine {
       this.audio.playSlashSound();
 
       const katanaDmg = getKatanaDamage(this.equippedKatana);
+      const frostSlowDuration =
+        this.equippedKatana === 'ice' ? ICE_KATANA_SLOW_DURATION : 0;
 
       this.camera.getWorldDirection(this.rayDir);
       const atk = this.world.attackSlimeWithKatana(
@@ -1233,6 +1251,7 @@ export class VoxelEngine {
         this.rayDir,
         katanaDmg,
         3.8,
+        frostSlowDuration,
       );
       if (atk.hit) {
         this.audio.playSlimeHitSound();
@@ -1256,6 +1275,7 @@ export class VoxelEngine {
         this.rayDir,
         katanaDmg,
         4.0,
+        frostSlowDuration,
       );
       if (mushroomAtk.hit) {
         this.audio.playSlimeHitSound();
@@ -1287,6 +1307,7 @@ export class VoxelEngine {
         katanaDmg,
         5.4,
         this.level,
+        frostSlowDuration,
       );
       if (dragonAtk.hit) {
         if (dragonAtk.blockedByLevel) {
@@ -1298,11 +1319,7 @@ export class VoxelEngine {
         }
         this.audio.playSlimeHitSound();
         if (dragonAtk.killed) {
-          this.audio.playDragonDefeatSound();
-          this.grantXp(dragonAtk.xpReward);
-          this.callbacks.onToast(
-            `Hạ Rồng Băng Lv.${DRAGON_LEVEL}! (+5.000 XP) Katana Băng đã rơi ra!`,
-          );
+          this.handleDragonKilled(dragonAtk.xpReward);
         } else {
           this.emitStats();
         }
@@ -1375,6 +1392,11 @@ export class VoxelEngine {
         this.currentIceKatanaDropTarget = null;
         return;
       }
+    }
+
+    if (this.currentStagePortalTarget && !this.world.isCarryingLog()) {
+      this.triggerPortalCheck(true);
+      return;
     }
 
     if (this.currentCraftingTarget && !this.world.isCarryingLog()) {
@@ -1774,6 +1796,40 @@ export class VoxelEngine {
     );
   }
 
+  private handleDragonKilled(xpReward: number): void {
+    this.audio.playDragonDefeatSound();
+    this.grantXp(xpReward);
+    const startedCave = this.world.startStageCaveEmergence();
+    if (startedCave) {
+      this.audio.playCaveRumblePulseSound();
+      this.callbacks.onToast(
+        `Hạ Rồng Băng Lv.${DRAGON_LEVEL}! (+5.000 XP) Mặt đất rung chuyển — Hang động bí ẩn đang trồi lên!`,
+      );
+    } else {
+      this.callbacks.onToast(
+        `Hạ Rồng Băng Lv.${DRAGON_LEVEL}! (+5.000 XP) Katana Băng đã rơi ra!`,
+      );
+    }
+    this.emitStats();
+  }
+
+  private triggerPortalCheck(forceToast = false): void {
+    const now = performance.now();
+    if (!forceToast && now - this.lastPortalTriggerAt < 2600) {
+      return;
+    }
+    this.lastPortalTriggerAt = now;
+    if (this.level >= PORTAL_REQUIRED_LEVEL) {
+      this.audio.playPortalEnterSound(true);
+      this.callbacks.onToast('Chờ phiên bản cập nhật tiếp theo');
+    } else {
+      this.audio.playPortalEnterSound(false);
+      this.callbacks.onToast(
+        `Yêu cầu cấp ${PORTAL_REQUIRED_LEVEL} để qua ải 2 - Hang động chết! (Hiện tại: Cấp ${this.level}/${PORTAL_REQUIRED_LEVEL})`,
+      );
+    }
+  }
+
   private syncOutfitToViewModels(): void {
     const activeOutfit: OutfitId = isOutfitCompatibleWithGender(
       this.equippedOutfit,
@@ -1914,6 +1970,11 @@ export class VoxelEngine {
     this.latestStats.recallMode = this.recallMode;
     this.latestStats.recallProgress = recallProgress;
     this.latestStats.hasRecallReturnPoint = this.recallReturnPoint !== null;
+    const stageCaveStatus = this.world.getStageCaveStatus();
+    this.latestStats.stageCavePhase = stageCaveStatus.phase;
+    this.latestStats.stageCaveEmergeProgress = stageCaveStatus.emergeProgress;
+    this.latestStats.stageCaveEmergeRemaining = stageCaveStatus.emergeRemainingSec;
+    this.latestStats.stage1ClearBannerRemaining = stageCaveStatus.clearBannerRemainingSec;
     this.lastHudRecallProgress = recallProgress;
     this.latestStats.craftingMaterialCounts = this.world.getCraftingMaterialCounts();
     this.latestStats.backpackItems = this.world.getBackpackItems();
@@ -1925,6 +1986,17 @@ export class VoxelEngine {
     if (this.currentIceKatanaDropTarget) {
       const p = this.currentIceKatanaDropTarget.point;
       this.latestStats.targetName = 'Katana Băng · Chuột phải hoặc lại gần nhận vào Balo';
+      this.latestStats.targetCoords = [
+        Math.round(p.x),
+        Math.round(p.y * 10) / 10,
+        Math.round(p.z),
+      ];
+    } else if (this.currentStagePortalTarget) {
+      const p = this.currentStagePortalTarget.point;
+      this.latestStats.targetName =
+        this.level >= PORTAL_REQUIRED_LEVEL
+          ? 'Cổng Dịch Chuyển Ải 2: Hang Động Chết · Bước vào để qua ải'
+          : `Cổng Dịch Chuyển Ải 2 · Yêu cầu Cấp ${PORTAL_REQUIRED_LEVEL}`;
       this.latestStats.targetCoords = [
         Math.round(p.x),
         Math.round(p.y * 10) / 10,
@@ -2373,15 +2445,24 @@ export class VoxelEngine {
       this.audio.playSlashSound();
 
       const katanaDmg = getKatanaDamage(this.equippedKatana);
+      const frostSlowDuration =
+        this.equippedKatana === 'ice' ? ICE_KATANA_SLOW_DURATION : 0;
 
       this.camera.getWorldDirection(this.rayDir);
-      let atk = this.world.attackSlimeWithKatana(ray.origin, ray.direction, katanaDmg, 4.2);
+      let atk = this.world.attackSlimeWithKatana(
+        ray.origin,
+        ray.direction,
+        katanaDmg,
+        4.2,
+        frostSlowDuration,
+      );
       if (!atk.hit) {
         atk = this.world.attackSlimeWithKatana(
           this.camera.position,
           this.rayDir,
           katanaDmg,
           3.8,
+          frostSlowDuration,
         );
       }
       if (atk.hit) {
@@ -2406,6 +2487,7 @@ export class VoxelEngine {
         ray.direction,
         katanaDmg,
         4.4,
+        frostSlowDuration,
       );
       if (!mushroomAtk.hit) {
         mushroomAtk = this.world.attackMushroomWithKatana(
@@ -2413,6 +2495,7 @@ export class VoxelEngine {
           this.rayDir,
           katanaDmg,
           4.0,
+          frostSlowDuration,
         );
       }
       if (mushroomAtk.hit) {
@@ -2445,6 +2528,7 @@ export class VoxelEngine {
         katanaDmg,
         5.6,
         this.level,
+        frostSlowDuration,
       );
       if (!dragonAtk.hit) {
         dragonAtk = this.world.attackDragonWithKatana(
@@ -2453,6 +2537,7 @@ export class VoxelEngine {
           katanaDmg,
           5.4,
           this.level,
+          frostSlowDuration,
         );
       }
       if (dragonAtk.hit) {
@@ -2465,11 +2550,7 @@ export class VoxelEngine {
         }
         this.audio.playSlimeHitSound();
         if (dragonAtk.killed) {
-          this.audio.playDragonDefeatSound();
-          this.grantXp(dragonAtk.xpReward);
-          this.callbacks.onToast(
-            `Hạ Rồng Băng Lv.${DRAGON_LEVEL}! (+5.000 XP) Katana Băng đã rơi ra!`,
-          );
+          this.handleDragonKilled(dragonAtk.xpReward);
         } else {
           this.emitStats();
         }
@@ -2993,6 +3074,20 @@ export class VoxelEngine {
         onBlocked: (kind) =>
           this.notifyDropBlocked(kind === 'slime_orb' ? 'Quả cầu Slime' : 'Nấm đỏ'),
       },
+      {
+        onRumblePulse: () => {
+          if (
+            this.isPlaying &&
+            isInsideDragonZone(this.player.position.x, this.player.position.z, 26)
+          ) {
+            this.audio.playCaveRumblePulseSound();
+          }
+        },
+        onEmergeComplete: () => {
+          this.audio.playCaveCompleteFanfareSound();
+          this.emitStats();
+        },
+      },
     );
     if (!this.hasStarted && !this.isPlaying) {
       this.applyTitleMeadowCamera(now);
@@ -3112,8 +3207,42 @@ export class VoxelEngine {
       recallProg,
     );
 
+    const stageCaveNow = this.world.getStageCaveStatus();
+    if (
+      this.isPlaying &&
+      !this.shopOpen &&
+      !this.outfitShopOpen &&
+      !this.craftingOpen &&
+      !this.characterWindowOpen
+    ) {
+      const insidePortal = this.world.isInsideStagePortal(
+        this.player.position.x,
+        this.player.position.y,
+        this.player.position.z,
+      );
+      if (insidePortal && !this.wasInsideStagePortal) {
+        this.triggerPortalCheck(true);
+      } else if (insidePortal) {
+        this.triggerPortalCheck(false);
+      }
+      this.wasInsideStagePortal = insidePortal;
+    } else {
+      this.wasInsideStagePortal = false;
+    }
+
+    if (
+      this.isPlaying &&
+      stageCaveNow.phase === 'emerging' &&
+      isInsideDragonZone(this.player.position.x, this.player.position.z, 24)
+    ) {
+      const shakeAmp = 0.022 * (1 - stageCaveNow.emergeProgress * 0.45);
+      this.camera.position.x += Math.sin(now * 0.038) * shakeAmp;
+      this.camera.position.y += Math.cos(now * 0.047) * shakeAmp * 0.7;
+    }
+
     this.camera.getWorldDirection(this.rayDir);
     const dropHit = this.world.raycastDroppedIceKatana(this.camera.position, this.rayDir, 6.5);
+    const portalHit = this.world.raycastStagePortal(this.camera.position, this.rayDir, 10.5);
     const craftingHit = this.world.raycastCraftingStation(this.camera.position, this.rayDir, 7.5);
     const craftingDist = craftingHit
       ? craftingHit.point.distanceTo(this.camera.position)
@@ -3124,6 +3253,8 @@ export class VoxelEngine {
       : Infinity;
     const shopHit = this.world.raycastShop(this.camera.position, this.rayDir, 7.0);
     const shopDist = shopHit ? shopHit.point.distanceTo(this.camera.position) : Infinity;
+
+    this.currentStagePortalTarget = portalHit;
 
     if (dropHit) {
       this.currentIceKatanaDropTarget = dropHit;

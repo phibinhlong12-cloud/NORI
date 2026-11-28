@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { ICE_KATANA_SLOW_MULTIPLIER } from './katana';
 import { OutsideGenerator } from './outside';
 import { createParabolicEllipsoidGeometry, createParabolicLatheGeometry } from './parabolic';
 import { SLIME_ZONE_SPECS, SlimeZoneSpec } from './slimeZones';
@@ -34,11 +35,15 @@ export interface SlimeEntity {
   wanderTimer: number;
   attackCooldown: number;
   hitFlashTimer: number;
+  slowTimer: number;
+  frostAnimTime: number;
   isChasing: boolean;
   alive: boolean;
   respawnTimer: number;
   group: THREE.Group;
   bodyGroup: THREE.Group;
+  frostGroup: THREE.Group;
+  frostCrystals: THREE.Mesh[];
   shadowMesh: THREE.Mesh;
   bodyParts: SlimeMeshPart[];
   labelSprite: THREE.Sprite;
@@ -496,6 +501,27 @@ export class SlimeManager {
     const shadowGeo = new THREE.PlaneGeometry(1.45, 1.45);
     shadowGeo.rotateX(-Math.PI / 2);
 
+    const frostRingGeo = new THREE.RingGeometry(0.68, 0.88, 24);
+    frostRingGeo.rotateX(-Math.PI / 2);
+    const frostCrystalGeo = new THREE.OctahedronGeometry(0.11, 0);
+    const frostRingMat = new THREE.MeshBasicMaterial({
+      color: '#7dd3fc',
+      transparent: true,
+      opacity: 0.72,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    });
+    const frostCrystalMat = new THREE.MeshStandardMaterial({
+      color: '#e0f2fe',
+      emissive: '#38bdf8',
+      emissiveIntensity: 1.15,
+      roughness: 0.14,
+      metalness: 0.18,
+      transparent: true,
+      opacity: 0.88,
+    });
+    this.materials.push(frostRingMat, frostCrystalMat);
+
     this.geometries.push(
       outerDomeGeo,
       coreBodyGeo,
@@ -505,6 +531,8 @@ export class SlimeManager {
       crownBandGeo,
       crownSpikeGeo,
       shadowGeo,
+      frostRingGeo,
+      frostCrystalGeo,
     );
 
     let globalIdx = 0;
@@ -604,6 +632,24 @@ export class SlimeManager {
 
         this.slimeRoot.add(group);
 
+        // Hiệu ứng đóng băng làm chậm xoay quanh slime
+        const frostGroup = new THREE.Group();
+        frostGroup.scale.setScalar(scale);
+        frostGroup.visible = false;
+        const frostRing = new THREE.Mesh(frostRingGeo, frostRingMat);
+        frostRing.position.y = 0.08;
+        frostGroup.add(frostRing);
+        const frostCrystals: THREE.Mesh[] = [];
+        for (let fc = 0; fc < 4; fc++) {
+          const ang = (fc / 4) * Math.PI * 2;
+          const crystal = new THREE.Mesh(frostCrystalGeo, frostCrystalMat);
+          crystal.position.set(Math.cos(ang) * 0.74, 0.36, Math.sin(ang) * 0.74);
+          crystal.scale.set(0.75, 1.55, 0.75);
+          frostGroup.add(crystal);
+          frostCrystals.push(crystal);
+        }
+        group.add(frostGroup);
+
         const slime: SlimeEntity = {
           id: `${zone.id}:slime:${idx}`,
           zone,
@@ -627,11 +673,15 @@ export class SlimeManager {
           wanderTimer: 1 + seededRand(globalIdx * 53) * 2.5,
           attackCooldown: 0,
           hitFlashTimer: 0,
+          slowTimer: 0,
+          frostAnimTime: 0,
           isChasing: false,
           alive: true,
           respawnTimer: 0,
           group,
           bodyGroup,
+          frostGroup,
+          frostCrystals,
           shadowMesh,
           bodyParts,
           labelSprite,
@@ -702,6 +752,7 @@ export class SlimeManager {
     forwardDir: THREE.Vector3,
     damage = 100,
     maxRange = 3.8,
+    frostSlowDuration = 0,
   ): SlimeAttackResult {
     let target: SlimeEntity | null = null;
     const rayHit = this.raycastSlime(cameraPos, forwardDir, maxRange);
@@ -749,6 +800,10 @@ export class SlimeManager {
     target.hitFlashTimer = 0.14;
     this.setSlimeFlash(target, true);
 
+    if (target.hp > 0 && frostSlowDuration > 0) {
+      target.slowTimer = Math.max(target.slowTimer, frostSlowDuration);
+    }
+
     const kx = target.x - cameraPos.x;
     const kz = target.z - cameraPos.z;
     const kLen = Math.hypot(kx, kz) || 1;
@@ -759,6 +814,8 @@ export class SlimeManager {
     if (target.hp <= 0) {
       target.alive = false;
       target.isChasing = false;
+      target.slowTimer = 0;
+      target.frostGroup.visible = false;
       target.respawnTimer = SLIME_RESPAWN_SECONDS;
       target.group.visible = false;
       target.shadowMesh.visible = false;
@@ -829,6 +886,8 @@ export class SlimeManager {
           slime.isChasing = false;
           slime.attackCooldown = 0.8;
           slime.hitFlashTimer = 0;
+          slime.slowTimer = 0;
+          slime.frostGroup.visible = false;
           this.setSlimeFlash(slime, false);
           slime.labelSprite.material = this.getLabelMaterial(
             slime.level,
@@ -843,8 +902,14 @@ export class SlimeManager {
         continue;
       }
 
+      if (slime.slowTimer > 0) {
+        slime.slowTimer = Math.max(0, slime.slowTimer - dt);
+      }
+      const isSlowed = slime.slowTimer > 0;
+      const effDt = isSlowed ? dt * ICE_KATANA_SLOW_MULTIPLIER : dt;
+
       if (slime.attackCooldown > 0) {
-        slime.attackCooldown = Math.max(0, slime.attackCooldown - dt);
+        slime.attackCooldown = Math.max(0, slime.attackCooldown - effDt);
       }
 
       if (slime.hitFlashTimer > 0) {
@@ -880,7 +945,7 @@ export class SlimeManager {
         moveDirZ = toPlayerZ / distToPlayer;
         speed = slime.moveSpeed;
       } else {
-        slime.wanderTimer -= dt;
+        slime.wanderTimer -= effDt;
         if (slime.wanderTimer <= 0) {
           slime.wanderTimer = 1.6 + seededRand(i * 19 + performance.now() * 0.01) * 2.4;
           const distFromCenter = Math.hypot(slime.x - slime.zone.x, slime.z - slime.zone.z);
@@ -924,12 +989,12 @@ export class SlimeManager {
         slime.knockTimer = Math.max(0, slime.knockTimer - dt);
       }
 
-      slime.x += (moveDirX * speed + sepX) * dt + knockStepX;
-      slime.z += (moveDirZ * speed + sepZ) * dt + knockStepZ;
+      slime.x += (moveDirX * speed + sepX) * effDt + knockStepX;
+      slime.z += (moveDirZ * speed + sepZ) * effDt + knockStepZ;
       this.clampSlimeInsideZone(slime);
 
       const groundY = this.outside.getHeightAt(slime.x, slime.z);
-      slime.hopPhase += dt * (slime.isChasing ? 8.5 : 4.2);
+      slime.hopPhase += effDt * (slime.isChasing ? 8.5 : 4.2);
       const hopHeight = Math.abs(Math.sin(slime.hopPhase)) * (slime.isChasing ? 0.32 : 0.12);
       slime.y = groundY + hopHeight;
 
@@ -938,11 +1003,22 @@ export class SlimeManager {
         let diff = targetYaw - slime.yaw;
         while (diff > Math.PI) diff -= Math.PI * 2;
         while (diff < -Math.PI) diff += Math.PI * 2;
-        slime.yaw += diff * Math.min(1, 10 * dt);
+        slime.yaw += diff * Math.min(1, 10 * effDt);
       }
 
       slime.group.position.set(slime.x, slime.y, slime.z);
       slime.group.rotation.y = slime.yaw;
+
+      slime.frostGroup.visible = isSlowed;
+      if (isSlowed) {
+        slime.frostAnimTime += dt;
+        slime.frostGroup.rotation.y += dt * 1.9;
+        for (let fc = 0; fc < slime.frostCrystals.length; fc++) {
+          const crystal = slime.frostCrystals[fc];
+          crystal.position.y = 0.34 + Math.sin(slime.frostAnimTime * 4.5 + fc * 1.6) * 0.09;
+          crystal.rotation.y += dt * 2.4;
+        }
+      }
 
       const shadowScale = slime.scale * (1 - Math.min(0.32, hopHeight * 0.7));
       slime.shadowMesh.position.set(slime.x, groundY + 0.03, slime.z);

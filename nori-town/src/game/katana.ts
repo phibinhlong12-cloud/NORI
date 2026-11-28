@@ -12,13 +12,24 @@ export interface KatanaAssetHandles extends FirstPersonArmHandles {}
 export type KatanaVisualVariant = 'normal' | 'ice' | 'crimson' | 'leaf';
 
 export const BASE_KATANA_DAMAGE = 100;
+export const ICE_KATANA_SLOW_MULTIPLIER = 0.8; // Giảm 20% tốc độ di chuyển & hoạt ảnh kẻ địch
+export const ICE_KATANA_SLOW_DURATION = 4.0; // Thời gian duy trì hiệu ứng làm chậm (giây)
+
+export interface KatanaStatInfo {
+  variant: KatanaVisualVariant;
+  name: string;
+  damage: number;
+  damageBonusText: string;
+  summaryText: string;
+  effects: string[];
+}
 
 export function getKatanaDamage(variant: KatanaVisualVariant | null): number {
   switch (variant) {
     case 'leaf':
       return Math.round(BASE_KATANA_DAMAGE * 1.2); // 120 (+20% so với kiếm thường)
     case 'ice':
-      return Math.round(BASE_KATANA_DAMAGE * 2.0); // 200 (giữ sức mạnh x2 tạm thời cho đến khi cập nhật sau)
+      return Math.round(BASE_KATANA_DAMAGE * 1.5); // 150 (+50% so với kiếm thường)
     case 'crimson':
     case 'normal':
       return BASE_KATANA_DAMAGE;
@@ -42,6 +53,219 @@ export function getKatanaDisplayName(variant: KatanaVisualVariant): string {
     default:
       return 'Katana';
   }
+}
+
+export function getKatanaStatInfo(variant: KatanaVisualVariant): KatanaStatInfo {
+  const damage = getKatanaDamage(variant);
+  switch (variant) {
+    case 'ice':
+      return {
+        variant,
+        name: 'Katana Băng',
+        damage,
+        damageBonusText: '+50% sát thương',
+        summaryText: `${damage} sát thương (+50%) · Làm chậm kẻ địch 20%`,
+        effects: [
+          `Sát thương: ${damage} (+50% so với Katana thường)`,
+          'Khi đánh trúng kẻ địch: làm chậm 20% tốc độ di chuyển & hoạt ảnh trong 4 giây',
+          'Chặt đổ cây chỉ với 1 nhát chém',
+        ],
+      };
+    case 'leaf':
+      return {
+        variant,
+        name: 'Kiếm Lá',
+        damage,
+        damageBonusText: '+20% sát thương',
+        summaryText: `${damage} sát thương (+20%) · +20% tốc chạy`,
+        effects: [
+          `Sát thương: ${damage} (+20% so với Katana thường)`,
+          'Tăng +20% tốc độ di chuyển khi trang bị',
+          'Chặt đổ cây chỉ với 1 nhát chém',
+        ],
+      };
+    case 'crimson':
+      return {
+        variant,
+        name: 'Katana Huyết',
+        damage,
+        damageBonusText: 'Sát thương chuẩn',
+        summaryText: `${damage} sát thương · Kiếm tiêu chuẩn`,
+        effects: [
+          `Sát thương: ${damage} (tiêu chuẩn)`,
+          'Chặt đổ cây chỉ với 1 nhát chém',
+        ],
+      };
+    default:
+      return {
+        variant: 'normal',
+        name: 'Katana',
+        damage,
+        damageBonusText: 'Sát thương chuẩn',
+        summaryText: `${damage} sát thương · Kiếm tiêu chuẩn`,
+        effects: [
+          `Sát thương: ${damage} (tiêu chuẩn)`,
+          'Chặt đổ cây chỉ với 1 nhát chém',
+        ],
+      };
+  }
+}
+
+function drawSixPointSnowflake(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  radius: number,
+  color: string,
+  lineWidth = 1.4,
+): void {
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = lineWidth;
+  ctx.lineCap = 'round';
+  for (let i = 0; i < 6; i++) {
+    const angle = (i * Math.PI) / 3;
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(cos * radius, sin * radius);
+    ctx.stroke();
+
+    const bx = cos * radius * 0.56;
+    const by = sin * radius * 0.56;
+    const branchLen = radius * 0.34;
+    ctx.beginPath();
+    ctx.moveTo(bx, by);
+    ctx.lineTo(bx + Math.cos(angle + 0.65) * branchLen, by + Math.sin(angle + 0.65) * branchLen);
+    ctx.moveTo(bx, by);
+    ctx.lineTo(bx + Math.cos(angle - 0.65) * branchLen, by + Math.sin(angle - 0.65) * branchLen);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function createIceBladeTexture(): THREE.CanvasTexture {
+  const w = 256;
+  const h = 64;
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d')!;
+
+  // Nền lưỡi băng chuyển sắc xanh lam pha lê -> trắng tuyết ở mép cắt
+  const grad = ctx.createLinearGradient(0, 0, w, h);
+  grad.addColorStop(0, '#1d6fb8');
+  grad.addColorStop(0.45, '#4ebef7');
+  grad.addColorStop(0.82, '#a8e3ff');
+  grad.addColorStop(1, '#e8f8ff');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, w, h);
+
+  // Vệt sáng cạnh lưỡi sắc bén ở mép trên/dưới
+  const edgeGrad = ctx.createLinearGradient(0, 0, 0, h);
+  edgeGrad.addColorStop(0, 'rgba(224, 247, 255, 0.85)');
+  edgeGrad.addColorStop(0.28, 'rgba(56, 189, 248, 0.15)');
+  edgeGrad.addColorStop(0.75, 'rgba(14, 116, 194, 0.28)');
+  edgeGrad.addColorStop(1, 'rgba(240, 251, 255, 0.92)');
+  ctx.fillStyle = edgeGrad;
+  ctx.fillRect(0, 0, w, h);
+
+  // Vết nứt băng pha lê dọc theo sống lưỡi
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.78)';
+  ctx.lineWidth = 1.4;
+  const cracks: Array<Array<[number, number]>> = [
+    [[26, 22], [58, 30], [92, 19], [128, 34], [164, 23], [202, 31], [238, 21]],
+    [[48, 44], [84, 33], [116, 46], [154, 32], [190, 44], [224, 33]],
+    [[72, 26], [90, 40], [108, 49]],
+    [[140, 14], [158, 28], [176, 42]],
+    [[188, 18], [206, 36]],
+  ];
+  for (const pts of cracks) {
+    ctx.beginPath();
+    ctx.moveTo(pts[0][0], pts[0][1]);
+    for (let i = 1; i < pts.length; i++) {
+      ctx.lineTo(pts[i][0], pts[i][1]);
+    }
+    ctx.stroke();
+  }
+
+  // Hoa văn băng & ký tự rune cổ gần gốc lưỡi
+  ctx.strokeStyle = 'rgba(224, 242, 254, 0.86)';
+  ctx.lineWidth = 1.3;
+  for (let i = 0; i < 4; i++) {
+    const rx = 20 + i * 16;
+    ctx.beginPath();
+    ctx.moveTo(rx, 24);
+    ctx.lineTo(rx + 4, 36);
+    ctx.lineTo(rx + 8, 26);
+    ctx.moveTo(rx + 4, 21);
+    ctx.lineTo(rx + 4, 41);
+    ctx.stroke();
+  }
+
+  // Bông tuyết tinh thể dọc nửa ngoài lưỡi kiếm
+  drawSixPointSnowflake(ctx, 132, 32, 8.5, 'rgba(240, 249, 255, 0.9)', 1.2);
+  drawSixPointSnowflake(ctx, 186, 28, 7.5, 'rgba(255, 255, 255, 0.92)', 1.1);
+  drawSixPointSnowflake(ctx, 224, 34, 6.5, 'rgba(255, 255, 255, 0.95)', 1.0);
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+function createIceHiltWrapTexture(): THREE.CanvasTexture {
+  const w = 128;
+  const h = 128;
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d')!;
+
+  // Nền lớp lót trắng bạc mờ bên dưới dây quấn
+  ctx.fillStyle = '#dbeafe';
+  ctx.fillRect(0, 0, w, h);
+
+  // Vẩy lấm tấm ánh băng trên lớp lót
+  ctx.fillStyle = 'rgba(148, 163, 184, 0.35)';
+  for (let y = 4; y < h; y += 8) {
+    for (let x = 4; x < w; x += 8) {
+      ctx.fillRect(x, y, 2, 2);
+    }
+  }
+
+  // Dải quấn Tsuka-ito xanh navy đậm đan chéo tạo các ô hình thoi trắng băng
+  ctx.strokeStyle = '#132a57';
+  ctx.lineWidth = 10;
+  for (let offset = -h; offset <= w + h; offset += 24) {
+    ctx.beginPath();
+    ctx.moveTo(offset, 0);
+    ctx.lineTo(offset + h, h);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(offset + h, 0);
+    ctx.lineTo(offset, h);
+    ctx.stroke();
+  }
+
+  // Viền chỉ sáng mảnh dọc mép dây quấn
+  ctx.strokeStyle = 'rgba(125, 211, 252, 0.45)';
+  ctx.lineWidth = 1.5;
+  for (let offset = -h; offset <= w + h; offset += 24) {
+    ctx.beginPath();
+    ctx.moveTo(offset, 0);
+    ctx.lineTo(offset + h, h);
+    ctx.stroke();
+  }
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(2, 3);
+  return tex;
 }
 
 function createCurvedBladeGeometry(
@@ -71,6 +295,21 @@ function createCurvedBladeGeometry(
   // Căn giữa theo độ dày Z rồi xoay sao cho lưỡi hướng dọc trục Y và bản rộng dọc trục Z
   geo.translate(0, 0, -thickness * 0.5);
   geo.rotateY(Math.PI / 2);
+
+  // Chuẩn hóa UV dọc theo chiều dài lưỡi (u: 0..1) và chiều rộng lưỡi (v: 0..1)
+  const posAttr = geo.getAttribute('position') as THREE.BufferAttribute;
+  const uvAttr = geo.getAttribute('uv') as THREE.BufferAttribute;
+  if (posAttr && uvAttr) {
+    for (let i = 0; i < posAttr.count; i++) {
+      const py = posAttr.getY(i);
+      const pz = posAttr.getZ(i);
+      const u = THREE.MathUtils.clamp(py / Math.max(0.01, length + 0.06), 0, 1);
+      const v = THREE.MathUtils.clamp((pz + width * 0.55) / Math.max(0.01, width * 1.25), 0, 1);
+      uvAttr.setXY(i, u, v);
+    }
+    uvAttr.needsUpdate = true;
+  }
+
   geo.computeVertexNormals();
   return geo;
 }
@@ -88,19 +327,27 @@ export function createKatanaMeshGroup(
 
   const group = new THREE.Group();
 
+  const iceWrapTex = iceMode ? createIceHiltWrapTexture() : null;
+  if (iceWrapTex && handles.textures) {
+    handles.textures.push(iceWrapTex);
+  }
+
   const hiltMat = new THREE.MeshStandardMaterial({
-    color: iceMode ? '#0c4a6e' : leafMode ? '#e7dfd0' : '#18181b',
-    roughness: 0.74,
+    color: iceMode ? '#ffffff' : leafMode ? '#e7dfd0' : '#18181b',
+    map: iceWrapTex ?? undefined,
+    roughness: iceMode ? 0.62 : 0.74,
     metalness: 0.14,
   });
   const wrapMat = new THREE.MeshStandardMaterial({
-    color: iceMode ? '#0284c7' : crimsonMode || leafMode ? '#991b1b' : '#b45309',
-    roughness: 0.78,
-    metalness: 0.12,
+    color: iceMode ? '#1e3a8a' : crimsonMode || leafMode ? '#991b1b' : '#b45309',
+    roughness: 0.74,
+    metalness: 0.14,
   });
   const goldMat = new THREE.MeshStandardMaterial({
-    color: iceMode ? '#7dd3fc' : leafMode ? '#d4af37' : '#eab308',
-    roughness: 0.24,
+    color: iceMode ? '#cbd5e1' : leafMode ? '#d4af37' : '#eab308',
+    emissive: iceMode ? '#0284c7' : '#000000',
+    emissiveIntensity: iceMode ? 0.22 : 0,
+    roughness: iceMode ? 0.22 : 0.24,
     metalness: 0.88,
   });
   const guardMat = leafMode
@@ -129,44 +376,169 @@ export function createKatanaMeshGroup(
   pommel.position.set(0, 0.014, 0);
   group.add(pommel);
 
-  // Dải quấn tsuka hình thoi mềm mại
-  const ringGeo = new THREE.TorusGeometry(0.022, 0.0045, 6, 14);
-  ringGeo.rotateX(Math.PI / 2);
-  handles.geometries.push(ringGeo);
-  for (let i = 0; i < 6; i++) {
-    const wrapRing = new THREE.Mesh(ringGeo, wrapMat);
-    wrapRing.position.set(0, 0.052 + i * 0.032, 0);
-    wrapRing.rotation.z = (i % 2 === 0 ? 1 : -1) * 0.22;
-    group.add(wrapRing);
-  }
+  if (iceMode) {
+    // Đỉnh chuôi kiếm vương miện tinh thể băng + các nhũ băng rủ dưới chuôi giống mẫu
+    const icicleMat = new THREE.MeshPhysicalMaterial({
+      color: '#bae6fd',
+      emissive: '#38bdf8',
+      emissiveIntensity: 0.48,
+      roughness: 0.1,
+      metalness: 0.15,
+      clearcoat: 1.0,
+      transparent: true,
+      opacity: 0.9,
+    });
+    handles.materials.push(icicleMat);
 
-  // Chắn tay (Tsuba) bo tròn cạnh
-  const guardGeo = new THREE.CylinderGeometry(0.052, 0.052, 0.015, 20);
-  handles.geometries.push(guardGeo);
-  const guard = new THREE.Mesh(guardGeo, guardMat);
-  guard.position.set(0, 0.245, 0);
-  group.add(guard);
+    const crownSpikeGeo = new THREE.ConeGeometry(0.0085, 0.042, 5);
+    handles.geometries.push(crownSpikeGeo);
+    for (let s = 0; s < 6; s++) {
+      const a = (s / 6) * Math.PI * 2;
+      const spike = new THREE.Mesh(crownSpikeGeo, icicleMat);
+      spike.position.set(Math.cos(a) * 0.016, -0.014, Math.sin(a) * 0.016);
+      spike.rotation.set(Math.PI + Math.sin(a) * 0.48, 0, -Math.cos(a) * 0.48);
+      group.add(spike);
+    }
+    const centerCrown = new THREE.Mesh(crownSpikeGeo, icicleMat);
+    centerCrown.position.set(0, -0.022, 0);
+    centerCrown.rotation.x = Math.PI;
+    centerCrown.scale.set(1.15, 1.35, 1.15);
+    group.add(centerCrown);
 
-  if (leafMode) {
-    // Khâu đồng vàng (Habaki) ôm sát gốc lưỡi Kiếm Lá
-    const habakiGeo = new THREE.CylinderGeometry(0.019, 0.021, 0.036, 12);
-    handles.geometries.push(habakiGeo);
-    const habaki = new THREE.Mesh(habakiGeo, goldMat);
-    habaki.position.set(0, 0.27, 0);
-    habaki.scale.set(0.7, 1, 1.35);
+    // Nhũ băng rủ dọc mép dưới tay cầm
+    const hiltIcicleGeo = new THREE.ConeGeometry(0.0055, 0.048, 5);
+    handles.geometries.push(hiltIcicleGeo);
+    const icicleOffsets = [0.035, 0.085, 0.16];
+    icicleOffsets.forEach((iy, idx) => {
+      const icicle = new THREE.Mesh(hiltIcicleGeo, icicleMat);
+      icicle.position.set(0, iy, -0.036);
+      icicle.rotation.x = -Math.PI * 0.56;
+      const sc = idx === 0 ? 1.25 : idx === 1 ? 0.95 : 0.8;
+      icicle.scale.set(sc, sc, sc);
+      group.add(icicle);
+    });
+
+    // Dây đan nổi xanh navy đậm ôm tay cầm
+    const ringGeo = new THREE.TorusGeometry(0.0225, 0.0038, 6, 14);
+    ringGeo.rotateX(Math.PI / 2);
+    handles.geometries.push(ringGeo);
+    for (let i = 0; i < 6; i++) {
+      const wrapRing = new THREE.Mesh(ringGeo, wrapMat);
+      wrapRing.position.set(0, 0.048 + i * 0.032, 0);
+      wrapRing.rotation.z = (i % 2 === 0 ? 1 : -1) * 0.25;
+      group.add(wrapRing);
+    }
+
+    // Chắn tay (Tsuba) hình bông tuyết 6 cánh bằng tinh thể băng + nhũ băng rủ
+    const guardCoreGeo = new THREE.CylinderGeometry(0.036, 0.036, 0.014, 12);
+    const snowflakeArmGeo = new THREE.OctahedronGeometry(0.028, 0);
+    const snowflakeTipGeo = new THREE.ConeGeometry(0.008, 0.032, 5);
+    handles.geometries.push(guardCoreGeo, snowflakeArmGeo, snowflakeTipGeo);
+
+    const guardCore = new THREE.Mesh(guardCoreGeo, guardMat);
+    guardCore.position.set(0, 0.245, 0);
+    group.add(guardCore);
+
+    for (let i = 0; i < 6; i++) {
+      const ang = (i / 6) * Math.PI * 2;
+      const arm = new THREE.Mesh(snowflakeArmGeo, icicleMat);
+      arm.position.set(Math.cos(ang) * 0.048, 0.245, Math.sin(ang) * 0.048);
+      arm.rotation.y = -ang;
+      arm.scale.set(1.18, 0.34, 0.52);
+      group.add(arm);
+
+      const tip = new THREE.Mesh(snowflakeTipGeo, icicleMat);
+      tip.position.set(Math.cos(ang) * 0.072, 0.245, Math.sin(ang) * 0.072);
+      tip.rotation.set(0, -ang, -Math.PI / 2);
+      group.add(tip);
+    }
+
+    // Nhũ băng rủ dưới chắn tay
+    const guardDropLeft = new THREE.Mesh(hiltIcicleGeo, icicleMat);
+    guardDropLeft.position.set(0.018, 0.24, -0.068);
+    guardDropLeft.rotation.x = -Math.PI * 0.52;
+    guardDropLeft.scale.set(1.2, 1.35, 1.2);
+    group.add(guardDropLeft);
+
+    const guardDropRight = new THREE.Mesh(hiltIcicleGeo, icicleMat);
+    guardDropRight.position.set(-0.018, 0.24, -0.062);
+    guardDropRight.rotation.x = -Math.PI * 0.52;
+    guardDropRight.scale.set(1.0, 1.1, 1.0);
+    group.add(guardDropRight);
+
+    // Khâu kiếm (Habaki) chạm bạc băng với viên ngọc thoi xanh phát sáng chính giữa
+    const habakiGeo = new THREE.BoxGeometry(0.018, 0.044, 0.042);
+    const gemGeo = new THREE.OctahedronGeometry(0.011, 0);
+    const gemMat = new THREE.MeshStandardMaterial({
+      color: '#e0f2fe',
+      emissive: '#38bdf8',
+      emissiveIntensity: 1.65,
+      roughness: 0.08,
+      metalness: 0.2,
+    });
+    handles.geometries.push(habakiGeo, gemGeo);
+    handles.materials.push(gemMat);
+
+    const habaki = new THREE.Mesh(habakiGeo, guardMat);
+    habaki.position.set(0, 0.273, 0);
     group.add(habaki);
+
+    const gemL = new THREE.Mesh(gemGeo, gemMat);
+    gemL.position.set(0.01, 0.273, 0);
+    gemL.scale.set(0.35, 1.2, 0.72);
+    group.add(gemL);
+
+    const gemR = new THREE.Mesh(gemGeo, gemMat);
+    gemR.position.set(-0.01, 0.273, 0);
+    gemR.scale.set(0.35, 1.2, 0.72);
+    group.add(gemR);
+  } else {
+    // Dải quấn tsuka hình thoi mềm mại cho các kiếm khác
+    const ringGeo = new THREE.TorusGeometry(0.022, 0.0045, 6, 14);
+    ringGeo.rotateX(Math.PI / 2);
+    handles.geometries.push(ringGeo);
+    for (let i = 0; i < 6; i++) {
+      const wrapRing = new THREE.Mesh(ringGeo, wrapMat);
+      wrapRing.position.set(0, 0.052 + i * 0.032, 0);
+      wrapRing.rotation.z = (i % 2 === 0 ? 1 : -1) * 0.22;
+      group.add(wrapRing);
+    }
+
+    // Chắn tay (Tsuba) bo tròn cạnh
+    const guardGeo = new THREE.CylinderGeometry(0.052, 0.052, 0.015, 20);
+    handles.geometries.push(guardGeo);
+    const guard = new THREE.Mesh(guardGeo, guardMat);
+    guard.position.set(0, 0.245, 0);
+    group.add(guard);
+
+    if (leafMode) {
+      // Khâu đồng vàng (Habaki) ôm sát gốc lưỡi Kiếm Lá
+      const habakiGeo = new THREE.CylinderGeometry(0.019, 0.021, 0.036, 12);
+      handles.geometries.push(habakiGeo);
+      const habaki = new THREE.Mesh(habakiGeo, goldMat);
+      habaki.position.set(0, 0.27, 0);
+      habaki.scale.set(0.7, 1, 1.35);
+      group.add(habaki);
+    }
   }
 
   if (!sheathed) {
+    const iceBladeTex = iceMode ? createIceBladeTexture() : null;
+    if (iceBladeTex && handles.textures) {
+      handles.textures.push(iceBladeTex);
+    }
+
     const bladeMat = iceMode
       ? new THREE.MeshPhysicalMaterial({
-          color: '#bae6fd',
-          emissive: '#0284c7',
-          emissiveIntensity: 0.45,
-          roughness: 0.1,
-          metalness: 0.72,
+          color: '#d8f3ff',
+          map: iceBladeTex ?? undefined,
+          emissive: '#38bdf8',
+          emissiveMap: iceBladeTex ?? undefined,
+          emissiveIntensity: 0.72,
+          roughness: 0.08,
+          metalness: 0.35,
           clearcoat: 1.0,
-          clearcoatRoughness: 0.08,
+          clearcoatRoughness: 0.05,
         })
       : leafMode
         ? new THREE.MeshPhysicalMaterial({
@@ -194,8 +566,10 @@ export function createKatanaMeshGroup(
               metalness: 0.92,
             });
     const spineMat = new THREE.MeshStandardMaterial({
-      color: iceMode ? '#0ea5e9' : leafMode ? '#14532d' : crimsonMode ? '#27272a' : '#64748b',
-      roughness: 0.28,
+      color: iceMode ? '#7dd3fc' : leafMode ? '#14532d' : crimsonMode ? '#27272a' : '#64748b',
+      emissive: iceMode ? '#0284c7' : '#000000',
+      emissiveIntensity: iceMode ? 0.35 : 0,
+      roughness: 0.22,
       metalness: 0.78,
     });
     handles.materials.push(bladeMat, spineMat);
@@ -232,30 +606,49 @@ export function createKatanaMeshGroup(
     }
   }
 
-  // Hiệu ứng tinh thể/ánh sáng cho Katana Băng hoặc Crimson
+  // Hiệu ứng tinh thể & luồng sương băng phát sáng cho Katana Băng hoặc Crimson
   if (iceMode || crimsonMode) {
     const glowMat = new THREE.MeshStandardMaterial({
       color: iceMode ? '#e0f2fe' : '#ffe4e6',
-      emissive: iceMode ? '#38bdf8' : '#fb7185',
-      emissiveIntensity: 1.25,
+      emissive: iceMode ? '#7dd3fc' : '#fb7185',
+      emissiveIntensity: iceMode ? 1.45 : 1.25,
       roughness: 0.12,
       metalness: 0.2,
     });
     handles.materials.push(glowMat);
 
-    const crystalGeo = new THREE.OctahedronGeometry(0.032, 1);
-    handles.geometries.push(crystalGeo);
-    const crystal = new THREE.Mesh(crystalGeo, glowMat);
-    crystal.position.set(0, 0.255, 0.044);
-    crystal.scale.set(0.72, 1.25, 0.72);
-    group.add(crystal);
+    if (crimsonMode) {
+      const crystalGeo = new THREE.OctahedronGeometry(0.032, 1);
+      handles.geometries.push(crystalGeo);
+      const crystal = new THREE.Mesh(crystalGeo, glowMat);
+      crystal.position.set(0, 0.255, 0.044);
+      crystal.scale.set(0.72, 1.25, 0.72);
+      group.add(crystal);
+    }
 
     if (!sheathed) {
-      const edgeGlowGeo = createCurvedBladeGeometry(0.66, 0.012, 0.004, -0.042);
+      const edgeGlowGeo = createCurvedBladeGeometry(0.68, 0.011, 0.004, -0.044);
       handles.geometries.push(edgeGlowGeo);
       const edgeGlow = new THREE.Mesh(edgeGlowGeo, glowMat);
-      edgeGlow.position.set(0, 0.252, -0.016);
+      edgeGlow.position.set(0, 0.254, -0.016);
       group.add(edgeGlow);
+
+      if (iceMode) {
+        // Màn sương băng mờ bao quanh lưỡi kiếm giống mẫu
+        const mistMat = new THREE.MeshBasicMaterial({
+          color: '#7dd3fc',
+          transparent: true,
+          opacity: 0.22,
+          depthWrite: false,
+          blending: THREE.AdditiveBlending,
+        });
+        handles.materials.push(mistMat);
+        const mistGeo = createCurvedBladeGeometry(0.71, 0.056, 0.016, -0.046);
+        handles.geometries.push(mistGeo);
+        const mist = new THREE.Mesh(mistGeo, mistMat);
+        mist.position.set(0, 0.252, -0.002);
+        group.add(mist);
+      }
     }
   }
 
@@ -345,7 +738,7 @@ export class KatanaViewModel {
   private slashArcMesh: THREE.Mesh | null = null;
   private slashArcMat: THREE.MeshBasicMaterial | null = null;
 
-  private assets: KatanaAssetHandles = { geometries: [], materials: [], skeletons: [] };
+  private assets: KatanaAssetHandles = { geometries: [], materials: [], textures: [], skeletons: [] };
   private variant: KatanaVisualVariant = 'normal';
   private gender: CharacterGender = 'male';
   private outfit: OutfitId = 'default';
@@ -499,6 +892,12 @@ export class KatanaViewModel {
     }
     for (const mat of this.assets.materials) {
       mat.dispose();
+    }
+    if (this.assets.textures) {
+      for (const tex of this.assets.textures) {
+        tex.dispose();
+      }
+      this.assets.textures.length = 0;
     }
     this.assets.geometries.length = 0;
     this.assets.materials.length = 0;
