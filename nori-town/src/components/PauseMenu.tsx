@@ -15,10 +15,12 @@ interface PauseMenuProps {
   sensitivity: number;
   touchControlsEnabled: boolean;
   isFullscreen: boolean;
+  audioMuted?: boolean;
   onRenderDistanceChange: (value: number) => void;
   onSensitivityChange: (value: number) => void;
   onToggleTouchControls: () => void;
   onToggleFullscreen: () => void;
+  onToggleAudioMute?: () => void;
   onPlay: () => void;
 }
 
@@ -176,21 +178,23 @@ export const PauseMenu = memo(function PauseMenu({
   sensitivity,
   touchControlsEnabled,
   isFullscreen,
+  audioMuted = false,
   onRenderDistanceChange,
   onSensitivityChange,
   onToggleTouchControls,
   onToggleFullscreen,
+  onToggleAudioMute,
   onPlay,
 }: PauseMenuProps) {
   const [guideOpen, setGuideOpen] = useState(false);
   const [themeKey, setThemeKey] = useState<ElementThemeKey>('lightning');
-  const [soundEnabled, setSoundEnabled] = useState(false);
+  const soundEnabled = !audioMuted;
 
   const fxCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const katanaWrapperRef = useRef<HTMLDivElement | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const themeRef = useRef<ElementThemeConfig>(ELEMENT_THEMES.lightning);
-  const soundEnabledRef = useRef(false);
+  const soundEnabledRef = useRef(!audioMuted);
 
   const particlesRef = useRef<{
     petals: Petal[];
@@ -332,15 +336,13 @@ export const PauseMenu = memo(function PauseMenu({
   );
 
   const handleToggleSound = useCallback(() => {
-    setSoundEnabled((prev) => {
-      const next = !prev;
-      soundEnabledRef.current = next;
-      if (next) {
-        playKatanaSound('draw', true);
-      }
-      return next;
-    });
-  }, [playKatanaSound]);
+    const nextEnabled = !soundEnabledRef.current;
+    soundEnabledRef.current = nextEnabled;
+    if (nextEnabled) {
+      playKatanaSound('draw', true);
+    }
+    onToggleAudioMute?.();
+  }, [onToggleAudioMute, playKatanaSound]);
 
   useEffect(() => {
     if (!visible) return;

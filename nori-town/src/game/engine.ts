@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
-import { VoxelAudio } from './audio';
+import { AudioManager } from './audio';
 import { getCitadelZoneAt } from './citadel';
 import {
   BLOCK_NAMES,
@@ -115,6 +115,7 @@ export interface HudStats {
   };
   backpackItems: Array<BackpackItem | null>;
   bossHud: DragonBossHudState;
+  audioMuted: boolean;
   targetName: string | null;
   targetCoords: [number, number, number] | null;
 }
@@ -342,7 +343,7 @@ export class VoxelEngine {
   private readonly camera: THREE.PerspectiveCamera;
   private readonly world: WorldManager;
   private readonly player: FirstPersonPlayer;
-  private readonly audio: VoxelAudio;
+  private readonly audio: AudioManager;
   private readonly katanaView: KatanaViewModel;
   private readonly shieldView: ShieldViewModel;
   private readonly potionView: PotionViewModel;
@@ -534,6 +535,7 @@ export class VoxelEngine {
       warningProgress: 0,
       dropAvailable: false,
     },
+    audioMuted: false,
     targetName: null,
     targetCoords: null,
   };
@@ -676,7 +678,7 @@ export class VoxelEngine {
     this.world.prewarmAround(this.player.position.x, this.player.position.z, this.renderDistance);
     this.applyTitleMeadowCamera(performance.now());
     this.updateSunShadowTarget(this.camera.position.x, this.camera.position.y, this.camera.position.z);
-    this.audio = new VoxelAudio();
+    this.audio = new AudioManager();
     this.katanaView = new KatanaViewModel(this.scene);
     this.shieldView = new ShieldViewModel(this.scene);
     this.potionView = new PotionViewModel(this.scene);
@@ -712,9 +714,39 @@ export class VoxelEngine {
     };
   }
 
+  getAudioManager(): AudioManager {
+    return this.audio;
+  }
+
+  isAudioMuted(): boolean {
+    return this.audio.isMuted();
+  }
+
+  setAudioMuted(muted: boolean): void {
+    this.audio.setMuted(muted);
+    this.emitStats();
+  }
+
+  toggleAudioMuted(): boolean {
+    const nextMuted = !this.audio.isMuted();
+    this.audio.setMuted(nextMuted);
+    this.emitStats();
+    return nextMuted;
+  }
+
+  setMusicVolume(volume: number): void {
+    this.audio.setAmbientVolume(volume);
+  }
+
+  setSfxVolume(volume: number): void {
+    this.audio.setSfxVolume(volume);
+  }
+
   enterGame(): void {
     this.hasStarted = true;
     this.isPlaying = true;
+    this.audio.unlock();
+    this.audio.setAmbientPlaying(true);
     this.player.updateCameraTransform();
     this.world.updateChunksAroundPlayer(
       this.player.position.x,
@@ -763,6 +795,7 @@ export class VoxelEngine {
     this.chopCompletedWaitingRelease = false;
     this.resetChopHold();
     this.cancelRecallSilent();
+    this.audio.setAmbientPlaying(false);
     this.callbacks.onPlayingChange(false, this.hasStarted);
 
     const canvas = this.renderer.domElement;
@@ -1123,6 +1156,7 @@ export class VoxelEngine {
   }
 
   private cancelRecallSilent(): void {
+    this.audio.stopRecallChannelSound();
     if (!this.recallActive && this.recallElapsed === 0 && this.recallMode === null) return;
     this.recallActive = false;
     this.recallMode = null;
@@ -1174,7 +1208,7 @@ export class VoxelEngine {
         this.recallActive = true;
         this.recallMode = 'to_return';
         this.recallElapsed = 0;
-        this.audio.playRecallStartSound();
+        this.audio.playRecallStartSound(true);
         this.emitStats();
       } else {
         const now = performance.now();
@@ -1190,7 +1224,7 @@ export class VoxelEngine {
     this.recallActive = true;
     this.recallMode = 'to_castle';
     this.recallElapsed = 0;
-    this.audio.playRecallStartSound();
+    this.audio.playRecallStartSound(false);
     this.emitStats();
   }
 
@@ -1239,7 +1273,7 @@ export class VoxelEngine {
   breakTargetBlock(): void {
     if (this.holdingKatana && !this.world.isCarryingLog()) {
       this.katanaView.triggerSlash();
-      this.audio.playSlashSound();
+      this.audio.playSlashSound(this.equippedKatana ?? 'normal');
 
       const katanaDmg = getKatanaDamage(this.equippedKatana);
       const frostSlowDuration =
@@ -1466,7 +1500,11 @@ export class VoxelEngine {
       return;
     }
     this.backpackOpen = !this.backpackOpen;
-    this.audio.playStowSound();
+    if (this.backpackOpen) {
+      this.audio.playBackpackOpenSound();
+    } else {
+      this.audio.playBackpackCloseSound();
+    }
     this.emitStats();
   }
 
@@ -1978,6 +2016,7 @@ export class VoxelEngine {
     this.lastHudRecallProgress = recallProgress;
     this.latestStats.craftingMaterialCounts = this.world.getCraftingMaterialCounts();
     this.latestStats.backpackItems = this.world.getBackpackItems();
+    this.latestStats.audioMuted = this.audio.isMuted();
     this.latestStats.bossHud = this.world.getBossHudState(
       this.player.position.x,
       this.player.position.z,
@@ -2107,6 +2146,8 @@ export class VoxelEngine {
     if (document.pointerLockElement === canvas) {
       this.hasStarted = true;
       this.isPlaying = true;
+      this.audio.unlock();
+      this.audio.setAmbientPlaying(true);
       this.callbacks.onPlayingChange(true, true);
     } else if (
       !this.isTouchDevice &&
@@ -2136,6 +2177,7 @@ export class VoxelEngine {
   };
 
   private readonly onMouseDown = (e: MouseEvent): void => {
+    this.audio.unlock();
     if (
       !this.isPlaying ||
       this.shopOpen ||
@@ -2187,6 +2229,7 @@ export class VoxelEngine {
   };
 
   private readonly onKeyDown = (e: KeyboardEvent): void => {
+    this.audio.unlock();
     if (this.shopOpen) {
       if (e.code === 'Escape' && !e.repeat) {
         e.preventDefault();
@@ -2442,7 +2485,7 @@ export class VoxelEngine {
       }
 
       this.katanaView.triggerSlash();
-      this.audio.playSlashSound();
+      this.audio.playSlashSound(this.equippedKatana ?? 'normal');
 
       const katanaDmg = getKatanaDamage(this.equippedKatana);
       const frostSlowDuration =
@@ -2621,6 +2664,7 @@ export class VoxelEngine {
   }
 
   private readonly onTouchStart = (e: TouchEvent): void => {
+    this.audio.unlock();
     this.lastTouchTimestamp = performance.now();
     if (
       !this.isPlaying ||
@@ -2783,9 +2827,14 @@ export class VoxelEngine {
     this.callbacks.onWebGLError?.('');
   };
 
+  private readonly onVisibilityChange = (): void => {
+    this.audio.setVisibilityPaused(document.hidden);
+  };
+
   private bindEvents(): void {
     const canvas = this.renderer.domElement;
     document.addEventListener('pointerlockchange', this.onPointerLockChange);
+    document.addEventListener('visibilitychange', this.onVisibilityChange);
     document.addEventListener('mousemove', this.onMouseMove);
     canvas.addEventListener('mousedown', this.onMouseDown);
     window.addEventListener('mouseup', this.onMouseUp);
@@ -2808,6 +2857,7 @@ export class VoxelEngine {
   private unbindEvents(): void {
     const canvas = this.renderer.domElement;
     document.removeEventListener('pointerlockchange', this.onPointerLockChange);
+    document.removeEventListener('visibilitychange', this.onVisibilityChange);
     document.removeEventListener('mousemove', this.onMouseMove);
     canvas.removeEventListener('mousedown', this.onMouseDown);
     window.removeEventListener('mouseup', this.onMouseUp);
@@ -3155,7 +3205,7 @@ export class VoxelEngine {
             ),
             this.player.position.z,
           );
-          this.audio.playRecallCompleteSound();
+          this.audio.playRecallCompleteSound(true);
           this.callbacks.onToast('Đã biến trở lại vị trí trước khi biến về!');
         } else {
           this.recallReturnPoint = {
@@ -3181,7 +3231,7 @@ export class VoxelEngine {
             ),
             this.player.position.z,
           );
-          this.audio.playRecallCompleteSound();
+          this.audio.playRecallCompleteSound(false);
           this.callbacks.onToast(
             'Đã biến về thành! Ấn Biến về / Z thêm 1 lần nữa để quay lại vị trí cũ.',
           );
@@ -3566,6 +3616,13 @@ export class VoxelEngine {
   private updateDragonZoneStormWeather(dt: number): void {
     const inDragonZone =
       this.isPlaying && isInsideDragonZone(this.player.position.x, this.player.position.z);
+    const inCastle =
+      this.isPlaying &&
+      getCitadelZoneAt(this.player.position.x, this.player.position.z) !== 'outside';
+
+    this.audio.setAmbientZone(
+      inDragonZone ? 'dragon_zone' : inCastle ? 'castle' : 'meadow',
+    );
 
     if (inDragonZone && !this.wasInDragonZone) {
       this.callbacks.onToast(

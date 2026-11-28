@@ -45,6 +45,7 @@ export default function App() {
     detectTouchDevice()
   );
   const [isFullscreen, setIsFullscreen] = useState<boolean>(() => isFullscreenActive());
+  const [audioMuted, setAudioMuted] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [webglError, setWebglError] = useState<string>('');
 
@@ -128,6 +129,17 @@ export default function App() {
     setTouchControlsEnabled((prev) => !prev);
   }, []);
 
+  const handleToggleAudioMute = useCallback(() => {
+    const engine = engineRef.current;
+    if (!engine) {
+      setAudioMuted((prev) => !prev);
+      return;
+    }
+    const nextMuted = engine.toggleAudioMuted();
+    setAudioMuted(nextMuted);
+    showToast(nextMuted ? 'Đã tắt âm thanh game' : 'Đã bật âm thanh & nhạc nền', 1400);
+  }, [showToast]);
+
   const handleVirtualKey = useCallback((code: string, pressed: boolean) => {
     engineRef.current?.setVirtualKey(code, pressed);
   }, []);
@@ -175,8 +187,10 @@ export default function App() {
         engine={engineInstance}
         isPlaying={isPlaying}
         isFullscreen={isFullscreen}
+        audioMuted={audioMuted}
         touchMode={touchControlsEnabled}
         onToggleFullscreen={handleToggleFullscreen}
+        onToggleAudioMute={handleToggleAudioMute}
         onPause={handlePause}
         moneySlot={<MoneyTracker engine={engineInstance} />}
         xpSlot={<XpBar engine={engineInstance} />}
@@ -220,10 +234,12 @@ export default function App() {
         sensitivity={sensitivity}
         touchControlsEnabled={touchControlsEnabled}
         isFullscreen={isFullscreen}
+        audioMuted={audioMuted}
         onRenderDistanceChange={handleRenderDistanceChange}
         onSensitivityChange={handleSensitivityChange}
         onToggleTouchControls={handleToggleTouchControls}
         onToggleFullscreen={handleToggleFullscreen}
+        onToggleAudioMute={handleToggleAudioMute}
         onPlay={handlePlay}
       />
 

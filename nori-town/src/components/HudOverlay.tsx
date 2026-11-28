@@ -1,13 +1,15 @@
 import { memo, ReactNode, useEffect, useRef } from 'react';
-import { Maximize2, Minimize2, Settings, Sparkles } from 'lucide-react';
+import { Maximize2, Minimize2, Settings, Sparkles, Volume2, VolumeX } from 'lucide-react';
 import { HudStats, VoxelEngine } from '../game/engine';
 
 interface HudOverlayProps {
   engine: VoxelEngine | null;
   isPlaying: boolean;
   isFullscreen: boolean;
+  audioMuted?: boolean;
   touchMode?: boolean;
   onToggleFullscreen: () => void;
+  onToggleAudioMute?: () => void;
   onPause: () => void;
   moneySlot?: ReactNode;
   xpSlot?: ReactNode;
@@ -21,8 +23,10 @@ export const HudOverlay = memo(function HudOverlay({
   engine,
   isPlaying,
   isFullscreen,
+  audioMuted = false,
   touchMode = false,
   onToggleFullscreen,
+  onToggleAudioMute,
   onPause,
   moneySlot,
   xpSlot,
@@ -303,6 +307,24 @@ export const HudOverlay = memo(function HudOverlay({
       {isPlaying && (
         <div className="fixed top-2.5 right-2.5 sm:top-4 sm:right-4 z-20 flex flex-col items-end gap-2">
           <div className="flex items-center gap-1.5 sm:gap-2">
+            {onToggleAudioMute && (
+              <button
+                type="button"
+                onClick={onToggleAudioMute}
+                aria-label={audioMuted ? 'Bật âm thanh' : 'Tắt âm thanh'}
+                title={audioMuted ? 'Bật âm thanh' : 'Tắt âm thanh'}
+                className={`bg-slate-950/80 border hover:bg-slate-800/90 active:scale-95 text-white px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-xl text-xs sm:text-sm font-medium shadow-lg transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                  audioMuted ? 'border-rose-400/40 text-rose-200' : 'border-white/15'
+                }`}
+              >
+                {audioMuted ? (
+                  <VolumeX className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-rose-300" />
+                ) : (
+                  <Volume2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-300" />
+                )}
+              </button>
+            )}
+
             <button
               type="button"
               onClick={onToggleFullscreen}
